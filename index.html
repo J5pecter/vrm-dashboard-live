@@ -138,6 +138,13 @@ h1,h2,h3{letter-spacing:-.028em;line-height:1.16}
 .demobox{margin-top:14px;padding:11px 13px;border-radius:var(--r3);background:var(--p-soft);
   color:var(--p-ink);font-size:12.5px;line-height:1.7}
 
+.pwwrap{position:relative}
+.pwwrap .inp{padding-right:44px}
+.pweye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:32px;height:32px;
+  display:grid;place-items:center;border-radius:var(--r3);color:var(--ink3);transition:.15s}
+.pweye:hover{color:var(--p);background:var(--line2)}
+.pweye[aria-pressed="true"]{color:var(--p)}
+
 /* ---------- shell ---------- */
 #app{display:none}
 .topbar{position:fixed;inset:0 0 auto 0;height:var(--topbar);z-index:40;display:flex;align-items:center;
@@ -380,7 +387,11 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
         </div>
         <div class="f">
           <label class="lbl" for="lpw">Password</label>
-          <input id="lpw" class="inp" type="password" placeholder="Enter password" autocomplete="current-password">
+          <div class="pwwrap">
+            <input id="lpw" class="inp" type="password" placeholder="Enter password" autocomplete="current-password">
+            <button type="button" id="lpweye" class="pweye" aria-label="Show password" aria-pressed="false"
+                    title="Show password"></button>
+          </div>
         </div>
         <button class="btn pri" id="lgo" type="submit" style="width:100%;justify-content:center;padding:11px">Sign in</button>
       </form>
@@ -710,6 +721,7 @@ function setLoginRole(role) {
   $('ldemo').style.display = 'none';
   $('lerr').style.display = 'none';
   $('lpw').value = '';
+  setPwVisible(false);
   setTimeout(function () { (role === 'VRM' ? $('lvrm') : $('lpw')).focus(); }, 40);
 }
 $('tabVrm').onclick = function () { setLoginRole('VRM'); };
@@ -732,6 +744,26 @@ $('lforgot').onclick = function () {
     box.innerHTML = '<b>Request sent</b><br>' + esc(d.message);
   }).catch(function (e) { un(); loginErr(e.message); });
 };
+
+/* Reveal toggle on the sign-in password. Reverts to hidden whenever the field is
+   cleared or the role changes, so a revealed password is never left on screen. */
+var EYE_SHOW = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>';
+var EYE_HIDE = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l18 18M10.6 6.1A9.6 9.6 0 0 1 12 5.5c6.4 0 10 6.5 10 6.5a17 17 0 0 1-2.7 3.6M6.2 8A17 17 0 0 0 2 12s3.6 6.5 10 6.5c1.2 0 2.3-.2 3.3-.6"/></svg>';
+
+function setPwVisible(on) {
+  var f = $('lpw'), b = $('lpweye');
+  f.type = on ? 'text' : 'password';
+  b.innerHTML = on ? EYE_HIDE : EYE_SHOW;
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  b.setAttribute('aria-label', on ? 'Hide password' : 'Show password');
+  b.title = on ? 'Hide password' : 'Show password';
+}
+setPwVisible(false);
+$('lpweye').onclick = function () {
+  setPwVisible($('lpw').type === 'password');
+  $('lpw').focus();
+};
+
 function loginErr(msg) { var b = $('lerr'); b.textContent = msg; b.style.display = ''; }
 
 function loadVrmList() {
@@ -774,6 +806,7 @@ loadVrmList();
 /* =========================== APP SHELL ==================================== */
 
 var IC = {
+  undo:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M3.5 13a9 9 0 1 0 2.1-9.4L3 7"/></svg>',
   trend:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/></svg>',
   chart:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
   table:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>',
@@ -812,6 +845,8 @@ var ADMIN_TABS = [
   { id: 'scheme',    label: 'Scheme Analysis',       ic: IC.layers },
   { id: 'alltxns',  label: 'All Transactions',      ic: IC.table },
   { id: 'clients',  label: 'Client Consolidated',   ic: IC.layers },
+  { id: 'batches',  label: 'Upload History',        ic: IC.up },
+  { id: 'restore',  label: 'Restore',               ic: IC.undo },
   { id: 'access',   label: 'VRMs & Access',         ic: IC.shield },
   { id: 'activity', label: 'Activity Log',          ic: IC.clock }
 ];
@@ -885,7 +920,7 @@ function signOut() {
 
 function refresh(announce) {
   return api('getData', S.session.token).then(function (d) {
-    S.data = d; S.creds = null; S.audit = null;
+    S.data = d; S.creds = null; S.audit = null; S.deleted = null; S.batches = null;
     render(); buildSidebar();
     if (announce) toast('Data reloaded from the sheet.', 'i');
   }).catch(function (e) {
@@ -897,6 +932,7 @@ function refresh(announce) {
 /* Applies a fresh server payload after any mutating call. */
 function absorb(d) {
   S.data = d; S.confirm = null; S.creds = null; S.audit = null;
+  S.deleted = null; S.batches = null;
   render(); buildSidebar();
   return d;
 }
@@ -1880,7 +1916,8 @@ var VIEWS = {
   summary: viewSummary, data: viewData, clients: viewClients,
   overview: viewOverview, vrmwise: viewVrmwise, alltxns: viewAllTxns,
   access: viewAccess, activity: viewActivity, analytics: viewAnalytics,
-  scheme: viewScheme, clientdetail: viewClientDetail
+  scheme: viewScheme, clientdetail: viewClientDetail,
+  restore: viewRestore, batches: viewBatches
 };
 
 function render() {
@@ -2354,6 +2391,157 @@ function leagueTable(rows, met, f) {
         }).join('') + '</tbody></table></div>'
       : emptyState('No VRM activity in this range', 'Adjust the filters above.')) +
     '</div>';
+}
+
+/* ------------------------------ ADMIN: Restore ---------------------------- *
+ * Deleted transactions are flagged, not erased, so a mistaken deletion is
+ * recoverable. This is that bin.
+ * ========================================================================== */
+function loadDeleted() {
+  if (S.loadingDeleted) return;
+  S.loadingDeleted = true;
+  api('getDeletedTxns', S.session.token).then(function (d) {
+    S.loadingDeleted = false; S.deleted = d.txns || []; render();
+  }).catch(function (e) { S.loadingDeleted = false; fail(e); });
+}
+
+function viewRestore() {
+  if (!S.deleted) { after(loadDeleted); return loadingPanel('Restore', 'Reading deleted transactions…'); }
+  var q = (S.q.restore || '').toLowerCase();
+  var rows = S.deleted.filter(function (t) {
+    return !q || (t.clientCode + ' ' + t.clientName + ' ' + t.scheme + ' ' +
+                  t.vrmEmpCode + ' ' + (t.batchId || '') + ' ' + (t.deletedBy || ''))
+                 .toLowerCase().indexOf(q) >= 0;
+  }).sort(function (a, b) { return (b.deletedAt || '').localeCompare(a.deletedAt || ''); });
+
+  /* Group by batch so a rolled-back upload can be put back in one go. */
+  var batches = {};
+  rows.forEach(function (t) {
+    var b = t.batchId || '(no batch)';
+    batches[b] = (batches[b] || 0) + 1;
+  });
+  var batchKeys = Object.keys(batches).filter(function (b) { return b !== '(no batch)'; });
+
+  var m = metrics(rows);
+
+  return pageHead('Restore deleted transactions',
+      S.deleted.length + ' in the bin' + (q ? ' · ' + rows.length + ' matching' : ''),
+      (S.deleted.length
+        ? guard('restoreall',
+            '<button class="btn xs acc" data-act="dorestoreall">Confirm — restore all ' + S.deleted.length + '</button>',
+            '<button class="btn sm acc" data-act="arm">Restore all</button>')
+        : '')) +
+    (S.deleted.length
+      ? '<div class="panel" style="border-left:3px solid var(--warn)"><div style="padding:14px 18px;' +
+        'font-size:13.5px;color:var(--ink2)">These rows are excluded from every figure while they sit ' +
+        'here. Restoring one puts it straight back into the totals.</div></div>'
+      : '') +
+    (batchKeys.length
+      ? '<div class="panel"><div class="ptop"><div><h3>Restore a whole upload</h3></div></div>' +
+        '<div style="padding:16px 20px;display:flex;gap:10px;flex-wrap:wrap">' +
+        batchKeys.map(function (b) {
+          return '<div class="row" style="gap:8px;padding:8px 12px;border:1px solid var(--line);' +
+            'border-radius:var(--r2);background:var(--surf2)">' +
+            '<span class="mono">' + esc(b) + '</span>' +
+            '<span class="muted" style="font-size:12px">' + batches[b] + ' row(s)</span>' +
+            '<button class="btn xs acc" data-act="restorebatch" data-batch="' + esc(b) + '">Restore</button>' +
+            '</div>';
+        }).join('') + '</div></div>'
+      : '') +
+    '<div class="panel"><div class="ptop"><div><h3>Deleted transactions</h3></div>' +
+    '<div class="tools">' + searchBox('restore', 'Search client, scheme, batch…') + '</div></div>' +
+    (rows.length
+      ? '<div class="twrap"><table><thead><tr>' +
+        '<th>Deleted</th><th>By</th><th>Txn Date</th><th>Client</th><th>Scheme</th>' +
+        '<th>TXN Type</th><th class="num">Amount</th><th>Status</th><th>VRM</th><th>Batch</th><th></th>' +
+        '</tr></thead><tbody>' +
+        rows.map(function (t) {
+          return '<tr><td class="mono" style="white-space:nowrap">' + esc(stamp(t.deletedAt)) + '</td>' +
+            '<td class="mono">' + esc(t.deletedBy || '—') + '</td>' +
+            '<td class="mono">' + esc(dmy(t.date)) + '</td>' +
+            '<td class="mono">' + esc(t.clientCode) +
+              '<div class="muted" style="font-size:11px">' + esc(t.clientName) + '</div></td>' +
+            '<td><span class="cx" style="max-width:190px" title="' + esc(t.scheme) + '">' +
+              esc(t.scheme || '—') + '</span></td>' +
+            '<td>' + typePill(t.txnType) + '</td>' +
+            '<td class="num">' + rupee(t.amount) + '</td>' +
+            '<td>' + statusPill(t.status) + '</td>' +
+            '<td class="mono" style="font-size:11.5px">' + esc(t.vrmEmpCode) + '</td>' +
+            '<td class="mono" style="font-size:11.5px">' + esc(t.batchId || '—') + '</td>' +
+            '<td style="text-align:right">' +
+              '<button class="btn xs acc" data-act="restore" data-id="' + esc(t.id) + '">Restore</button>' +
+            '</td></tr>';
+        }).join('') +
+        '</tbody><tfoot><tr><td colspan="6">Held out of the figures</td>' +
+        '<td class="num">' + rupee(m.sip + m.lumpsum + m.redemption) + '</td>' +
+        '<td colspan="4"></td></tr></tfoot></table></div>'
+      : emptyState(q ? 'Nothing matches' : 'The bin is empty',
+          q ? 'Try a different search.' : 'Deleted transactions will appear here, ready to restore.')) +
+    '</div>';
+}
+
+/* --------------------------- ADMIN: Upload history ------------------------ */
+function loadBatches() {
+  if (S.loadingBatches) return;
+  S.loadingBatches = true;
+  api('getUploadBatches', S.session.token).then(function (d) {
+    S.loadingBatches = false; S.batches = d.batches || []; render();
+  }).catch(function (e) { S.loadingBatches = false; fail(e); });
+}
+
+function viewBatches() {
+  if (!S.batches) { after(loadBatches); return loadingPanel('Upload history', 'Reading upload batches…'); }
+  var q = (S.q.batches || '').toLowerCase();
+  var rows = S.batches.filter(function (b) {
+    return !q || (b.batchId + ' ' + b.fileName + ' ' + b.uploadedBy + ' ' + b.notes)
+                 .toLowerCase().indexOf(q) >= 0;
+  });
+  var totalRows = rows.reduce(function (a, b) { return a + b.inserted; }, 0);
+
+  return pageHead('Upload history', rows.length + ' upload(s) · ' + totalRows + ' rows loaded', '') +
+    '<div class="panel"><div class="ptop"><div><h3>Uploads</h3></div>' +
+    '<div class="tools">' + searchBox('batches', 'Search file, batch, uploader…') + '</div></div>' +
+    (rows.length
+      ? '<div class="twrap"><table><thead><tr>' +
+        '<th>When</th><th>File</th><th>By</th><th>Role</th>' +
+        '<th class="num">Rows in file</th><th class="num">Loaded</th><th class="num">Rejected</th>' +
+        '<th class="num">Still live</th><th class="num">Deleted</th><th>Notes</th><th></th>' +
+        '</tr></thead><tbody>' +
+        rows.map(function (b) {
+          var partly = b.deletedRows > 0 && b.liveRows > 0;
+          return '<tr><td class="mono" style="white-space:nowrap">' + esc(stamp(b.uploadedAt)) + '</td>' +
+            '<td>' + esc(b.fileName || '—') +
+              '<div class="mono muted" style="font-size:11px">' + esc(b.batchId) +
+              (b.fileType ? ' · ' + esc(b.fileType) : '') + '</div></td>' +
+            '<td class="mono">' + esc(b.uploadedBy) + '</td>' +
+            '<td>' + esc(b.role) + '</td>' +
+            '<td class="num">' + b.rows + '</td>' +
+            '<td class="num tot">' + b.inserted + '</td>' +
+            '<td class="num">' + (b.failed
+              ? '<span style="color:var(--dan)">' + b.failed + '</span>' : '0') + '</td>' +
+            '<td class="num">' + b.liveRows + '</td>' +
+            '<td class="num">' + (b.deletedRows
+              ? '<span style="color:var(--warn)">' + b.deletedRows + '</span>' : '0') + '</td>' +
+            '<td style="font-size:12px">' + esc(b.notes || '') +
+              (partly ? '<span class="pill warn">partly corrected</span>' : '') + '</td>' +
+            '<td style="text-align:right"><div class="row" style="justify-content:flex-end;gap:6px">' +
+              (b.deletedRows
+                ? '<button class="btn xs acc" data-act="restorebatch" data-batch="' + esc(b.batchId) + '">Restore</button>'
+                : '') +
+              (b.liveRows
+                ? guard('db:' + b.batchId,
+                    '<button class="btn xs dan" data-act="delbatch" data-batch="' + esc(b.batchId) +
+                      '">Confirm — undo ' + b.liveRows + '</button>',
+                    '<button class="btn xs" data-act="arm">Undo upload</button>')
+                : '') +
+            '</div></td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : emptyState(q ? 'Nothing matches' : 'No uploads yet',
+          q ? 'Try a different search.' : 'Every CSV/Excel upload is recorded here.')) +
+    '</div>' +
+    '<div class="panel" style="border-left:3px solid var(--p)"><div style="padding:14px 18px;' +
+    'font-size:13.5px;color:var(--ink2)">"Undo upload" soft-deletes every row a batch created, so a ' +
+    'bad file can be rolled back in one action and put back again from Restore.</div></div>';
 }
 
 /* ============================== DIALOGS ================================== */
@@ -2877,9 +3065,31 @@ var ACT = {
   back: function () { S.tab = 'clients'; buildSidebar(); render(); },
   clearTf: function () { S.fType = ''; S.fStatus = ''; S.fVrm = ''; render(); },
   restore: function (btn) {
-    var un = lock(btn, 'Restoring');
+    var un = lock(btn, '');
     api('restoreTxn', S.session.token, btn.dataset.id).then(function (d) {
-      absorb(d); toast('Transaction restored.');
+      absorb(d); toast('Transaction restored — it is back in the figures.');
+    }).catch(function (e) { un(); fail(e); });
+  },
+  restorebatch: function (btn) {
+    var b = btn.dataset.batch, un = lock(btn, '');
+    api('restoreBatch', S.session.token, b).then(function (d) {
+      var n = (d.result || {}).restored || 0;
+      absorb(d); toast(n + ' transaction(s) restored from batch ' + b + '.');
+    }).catch(function (e) { un(); fail(e); });
+  },
+  dorestoreall: function (btn) {
+    var un = lock(btn, 'Restoring');
+    api('restoreAllTxns', S.session.token).then(function (d) {
+      var n = (d.result || {}).restored || 0;
+      absorb(d); toast(n + ' transaction(s) restored.');
+    }).catch(function (e) { un(); fail(e); });
+  },
+  delbatch: function (btn) {
+    var b = btn.dataset.batch, un = lock(btn, 'Undoing');
+    api('deleteBatch', S.session.token, b).then(function (d) {
+      var n = (d.result || {}).deleted || 0;
+      absorb(d);
+      toast('Upload ' + b + ' rolled back — ' + n + ' row(s) removed. Restore them from the Restore tab.');
     }).catch(function (e) { un(); fail(e); });
   },
   anreset: function () {
