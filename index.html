@@ -514,18 +514,39 @@ function useFetch() {
   return !!API_URL || typeof google === 'undefined' || !google.script || !google.script.run;
 }
 
+/*
+ * Writes on the server are serialised behind one lock, so when two people save
+ * at the same moment one of them gets bounced. That is a normal, transient
+ * collision — not something a user should ever see — so retry it quietly with
+ * backoff and only surface an error if it keeps losing.
+ */
+var RETRY_DELAYS = [400, 1200, 2500];
+
 function api(fn) {
   var args = Array.prototype.slice.call(arguments, 1);
   busy(1);
+  return attempt_(fn, args, 0)
+    .then(function (data) { busy(-1); return data; })
+    .catch(function (e) {
+      busy(-1);
+      throw (e instanceof Error) ? e : new Error(String(e));
+    });
+}
+
+function attempt_(fn, args, n) {
   return (useFetch() ? apiFetch_(fn, args) : apiGsr_(fn, args))
     .then(function (out) {
-      busy(-1);
       if (out && out.ok) return out.data;
       throw new Error((out && out.error) || 'Unexpected response from the server.');
     })
     .catch(function (e) {
-      busy(-1);
-      throw (e instanceof Error) ? e : new Error(String(e));
+      var msg = (e && e.message) ? e.message : String(e);
+      var transient = /busy with another change|busy right now|taking too long/i.test(msg);
+      if (transient && n < RETRY_DELAYS.length) {
+        return new Promise(function (r) { setTimeout(r, RETRY_DELAYS[n]); })
+          .then(function () { return attempt_(fn, args, n + 1); });
+      }
+      throw e;
     });
 }
 
@@ -541,23 +562,39 @@ function apiGsr_(fn, args) {
 }
 
 function apiFetch_(fn, args) {
+  /* Apps Script kills an execution at 6 minutes. Without a client-side deadline a
+     request that is queued behind a slow one just hangs, and the user sits on a
+     spinner with no idea why — so give up first and say something useful. */
+  var ac = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  var timedOut = false;
+  var timer = setTimeout(function () { timedOut = true; if (ac) ac.abort(); }, 40000);
+
   /* text/plain keeps this a CORS "simple request" — an application/json body
      would trigger an OPTIONS preflight, which Apps Script cannot answer. */
-  return fetch(API_URL, {
+  var opts = {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ fn: fn, args: args }),
     redirect: 'follow'
-  }).then(function (r) {
+  };
+  if (ac) opts.signal = ac.signal;
+
+  return fetch(API_URL, opts).then(function (r) {
     if (!r.ok) throw new Error('Server returned ' + r.status + '. Check the deployment is live and set to "Anyone".');
     return r.text();
   }).then(function (txt) {
+    clearTimeout(timer);
     try { return JSON.parse(txt); }
     catch (e) {
       /* Almost always a sign-in page HTML instead of JSON. */
       throw new Error('The server did not return data. Re-deploy with "Who has access: Anyone".');
     }
   }).catch(function (e) {
+    clearTimeout(timer);
+    if (timedOut || (e && e.name === 'AbortError')) {
+      throw new Error('The server is taking too long — it is probably busy with another request. ' +
+        'Wait a minute and try again.');
+    }
     if (e instanceof TypeError) throw new Error('Cannot reach the server. Check your connection.');
     throw e;
   });
