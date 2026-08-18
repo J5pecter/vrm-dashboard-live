@@ -547,6 +547,63 @@ function toIso(v) {
   }
 }
 
+/* ------------------------- date-order inference ---------------------------- *
+ *
+ * "08-17-2026" and "17-08-2026" are the same day written two ways, and guessing
+ * wrong silently shifts every figure into the wrong month — or rejects the whole
+ * file. So the order is inferred from the FILE rather than assumed:
+ *
+ *   a value whose first part is > 12  can only be day-first  (17-08-2026)
+ *   a value whose second part is > 12 can only be month-first (08-17-2026)
+ *
+ * One unambiguous row settles it for the rest. If a file contains both, that is
+ * a genuine contradiction and it is reported instead of picked over.
+ * ========================================================================== */
+function inferDateOrder(values) {
+  var dmy = 0, mdy = 0;
+  (values || []).forEach(function (v) {
+    if (v instanceof Date) return;                       /* already a real date */
+    var m = String(v == null ? '' : v).trim()
+      .match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2}|\d{4})$/);
+    if (!m) return;
+    var a = num(m[1]), b = num(m[2]);
+    if (a > 12 && b >= 1 && b <= 12) dmy++;
+    else if (b > 12 && a >= 1 && a <= 12) mdy++;
+  });
+  if (dmy && mdy) return 'MIXED';
+  if (mdy) return 'MDY';
+  if (dmy) return 'DMY';
+  return '';                     /* every row ambiguous — caller picks a default */
+}
+
+/** toIso, but told which of the two leading numbers is the day. */
+function toIsoOrdered(v, order) {
+  if (v === null || v === undefined || v === '') return '';
+  if (v instanceof Date && !isNaN(v)) return toIso(v);
+  if (typeof v === 'number') return toIso(v);            /* Excel serial */
+
+  var str = String(v).trim(), m;
+  /* An ISO value is unambiguous whatever the file's convention is. */
+  if ((m = str.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/))) return toIso(str);
+
+  m = str.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2}|\d{4})$/);
+  if (!m) return toIso(str);                             /* let toIso try the rest */
+
+  var a = num(m[1]), b = num(m[2]);
+  var y = m[3].length === 2 ? 2000 + num(m[3]) : num(m[3]);
+  var d, mo;
+  if (a > 12) { d = a; mo = b; }                         /* can only be day-first */
+  else if (b > 12) { mo = a; d = b; }                    /* can only be month-first */
+  else if (order === 'MDY') { mo = a; d = b; }
+  else { d = a; mo = b; }                                /* DMY default */
+
+  if (!y || y < 1900 || y > 2200 || mo < 1 || mo > 12 || d < 1) return '';
+  var dim = [31, ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 29 : 28,
+             31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1];
+  if (d > dim) return '';
+  return y + '-' + ('0' + mo).slice(-2) + '-' + ('0' + d).slice(-2);
+}
+
 /* --------------------------- server bridge -------------------------------- *
  * Two transports, same call signature everywhere else in the app:
  *
@@ -2632,9 +2689,11 @@ function importPreviewDialog(rows, skipped, fileName) {
   });
   var mix = Object.keys(counts).map(function (k) { return counts[k] + ' × ' + k; }).join(', ');
 
+  var ord = window.__dateOrder === 'MDY'
+    ? 'month-first (MM-DD-YYYY)' : 'day-first (DD-MM-YYYY)';
   modal('Upload ' + rows.length + ' row(s)',
     'From <b>' + esc(fileName) + '</b>' + (skipped ? ' — ' + skipped + ' blank row(s) ignored' : '') +
-    '.<br>' + esc(mix) +
+    '.<br>Dates read as <b>' + ord + '</b> — check the first row below looks right.<br>' + esc(mix) +
     (isAdmin()
       ? '<br><span class="muted">VRM columns are respected; an unknown VRM name is created.</span>'
       : '<br><span class="muted">Rows must belong to you — a different VRM in the file will be reported.</span>'),
@@ -2925,6 +2984,20 @@ function rowsFromMatrix(matrix) {
                     '. Download the template to see the expected layout.');
   }
 
+  /* Settle day-first vs month-first once, from every date in the file. */
+  var rawDates = [];
+  for (var d0 = hi + 1; d0 < matrix.length; d0++) {
+    var rw = matrix[d0] || [];
+    if (idx.date !== undefined) rawDates.push(rw[idx.date]);
+  }
+  var order = inferDateOrder(rawDates);
+  if (order === 'MIXED') {
+    throw new Error('This file mixes day-first and month-first dates (it contains both ' +
+      'something like 17-08-2026 and something like 08-17-2026). Please make the date ' +
+      'column consistent, then upload again.');
+  }
+  window.__dateOrder = order || 'DMY';
+
   var out = [], blank = 0;
   for (var i = hi + 1; i < matrix.length; i++) {
     var row = matrix[i] || [];
@@ -2944,8 +3017,8 @@ function rowsFromMatrix(matrix) {
       status: String(get('status') == null ? '' : get('status')).trim(),
       reason: String(get('reason') == null ? '' : get('reason')).trim()
     };
-    /* Normalise the date here so the preview shows what will be stored. */
-    rec.date = toIso(rec.date) || rec.date;
+    /* Normalise here so the preview shows exactly what will be stored. */
+    rec.date = toIsoOrdered(rec.date, order) || '';
 
     var empty = !rec.clientCode && !rec.clientName && !rec.amount &&
                 !rec.txnType && !String(rec.date || '').trim();
