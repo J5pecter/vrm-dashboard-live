@@ -298,6 +298,47 @@ body.hasdemo .topbar{top:32px}
 body.hasdemo .side{top:calc(var(--topbar) + 32px)}
 body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
 
+
+/* ---------- waterfall + status ---------- */
+.wf{padding:18px 20px 20px}
+.wfrow{display:flex;align-items:center;gap:14px;padding:7px 0}
+.wfrow.wftot{border-top:1px solid var(--line);margin-top:4px;padding-top:12px}
+.wflab{width:130px;flex:0 0 130px;font-size:13.5px;font-weight:600;color:var(--ink2)}
+.wfrow.wftot .wflab{color:var(--ink);font-weight:700}
+.wfbar{flex:1;height:20px;background:var(--line2);border-radius:5px;overflow:hidden;min-width:60px}
+.wfbar>div{height:100%;border-radius:5px;transition:width .7s cubic-bezier(.2,.9,.25,1)}
+.wf-sip{background:var(--p)} .wf-lump{background:var(--p2)}
+.wf-gross{background:var(--grad)} .wf-red{background:var(--dan)}
+.wf-net{background:linear-gradient(90deg,var(--a),var(--a2))}
+.wfval{width:150px;flex:0 0 150px;text-align:right;font-variant-numeric:tabular-nums;
+  font-size:14px;font-weight:600;color:var(--ink)}
+.wfrow.wftot .wfval{font-weight:800;font-size:15.5px}
+.wfval.neg,.neg{color:var(--dan)}
+.wfsum{margin-top:16px;padding:13px 15px;background:var(--bg);border:1px solid var(--line);
+  border-radius:var(--r2);font-size:14px;color:var(--ink2);text-align:center;line-height:2}
+.wfsum b{color:var(--ink)} .wfsum .netbig{color:var(--a);font-size:17px}
+.kpi.net{border-color:var(--a)} .kpi.net .ki{background:var(--a-soft);color:var(--a)}
+.kpi.net .kv{color:var(--a)}
+.kpi.red .ki{background:var(--dan-soft);color:var(--dan)}
+.kpi.red .kv{color:var(--dan)}
+.statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;padding:18px 20px}
+.statbox{padding:15px;border-radius:var(--r2);border:1px solid var(--line);background:var(--surf2)}
+.statbox .sl{font-size:12px;font-weight:600;color:var(--ink2);margin-bottom:7px}
+.statbox .sv{font-size:21px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.statbox .sn{margin-top:5px;font-size:11.5px;color:var(--ink3)}
+.statbox.ok{border-left:3px solid var(--ok)} .statbox.ok .sv{color:var(--ok)}
+.statbox.warn{border-left:3px solid var(--warn)} .statbox.warn .sv{color:var(--warn)}
+.statbox.dan{border-left:3px solid var(--dan)} .statbox.dan .sv{color:var(--dan)}
+.statbox.net{border-left:3px solid var(--a);background:var(--a-soft)} .statbox.net .sv{color:var(--a)}
+.metricToggles{display:flex;gap:7px;flex-wrap:wrap;padding:0 20px 14px}
+.metricToggles button{padding:5px 11px;border-radius:999px;border:1px solid var(--line);
+  background:var(--surf);font-size:12px;font-weight:600;color:var(--ink3)}
+.metricToggles button[aria-pressed="true"]{color:#fff;border-color:transparent}
+.uperr{margin-top:14px;max-height:190px;overflow:auto;padding:12px 14px;border-radius:var(--r2);
+  background:var(--dan-soft);border-left:3px solid var(--dan);font-size:12.5px;line-height:1.75}
+.uperr b{color:var(--dan)}
+.uperr ol{margin:6px 0 0;padding-left:20px}
+
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 @keyframes tin{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
@@ -401,46 +442,54 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
 
 <script>
 /* ===========================================================================
- *  DEMO BACKEND — used ONLY by the GitHub Pages build (docs/index.html).
+ *  DEMO BACKEND — used ONLY by the GitHub Pages demo (docs/demo.html).
  *
- *  The real app talks to Code.gs through google.script.run. GitHub Pages is
- *  static hosting, so there is no Apps Script and no Google Sheet. This file
- *  stands in a fake google.script.run that keeps everything in memory, so the
- *  full UI is explorable. Nothing persists — a refresh resets the data.
+ *  The real app posts {fn, args} to the Apps Script deployment. Static hosting
+ *  has no backend, so this stands in a fake transport that keeps everything in
+ *  memory. Nothing persists — a refresh resets it.
  *
- *  It deliberately contains NO real credentials. Every demo password is
- *  "demo1234" and is displayed on the sign-in screen.
+ *  Mirrors the CR data model: TxnType + Amount, Txn Status rules, PAN masking,
+ *  and VRM read-only permissions.
+ *
+ *  Contains NO real credentials. Every demo password is "demo1234", shown on the
+ *  sign-in screen, and the PANs are obviously fake.
  * =========================================================================== */
 (function () {
   var DEMO_PW = 'demo1234';
 
   var VRMS = [
-    ['VRM001', 'Riddhi Mistry',      DEMO_PW],
-    ['VRM002', 'Pavan Soni',         DEMO_PW],
-    ['VRM003', 'Swarnarekha Shetty', DEMO_PW],
-    ['VRM004', 'Aakansha Baranwal',  DEMO_PW],
-    ['VRM005', 'Manisha Mahante',    DEMO_PW],
-    ['VRM006', 'Khushi Dodiya',      DEMO_PW],
-    ['VRM007', 'Pavan Soni',         DEMO_PW]
+    ['VRM001', 'Riddhi Mistry'], ['VRM002', 'Pavan Soni'],
+    ['VRM003', 'Swarnarekha Shetty'], ['VRM004', 'Aakansha Baranwal'],
+    ['VRM005', 'Manisha Mahante'], ['VRM006', 'Khushi Mahesh Dodiya'],
+    ['VRM007', 'Pavan Soni']
   ].map(function (v) {
-    return { empCode: v[0], name: v[1], password: v[2], failed: 0, lockedUntil: '', lockedUntilMs: 0 };
+    return { empCode: v[0], name: v[1], password: DEMO_PW, failed: 0,
+             lockedUntil: '', lockedUntilMs: 0 };
   });
 
   var ADMIN = { password: DEMO_PW, failed: 0, lockedUntil: '', lockedUntilMs: 0 };
   var CFG = { MAX_FAILED_ATTEMPTS: 5, LOCKOUT_MINUTES: 15, MIN_PASSWORD_LEN: 6,
-              NEW_CLIENT_BASIS: 'FIRST_EVER_IN_REF_MONTH' };
+              COUNTED_STATUSES: ['COMPLETED'], VRM_SEES_FULL_PAN: false, VRM_CAN_EXPORT: false };
 
-  var LOG = [], TX = [], seq = 0;
+  var LOG = [], TX = [], DELETED = [], seq = 0;
 
-  /* ---- deterministic pseudo-random sample book (no Math.random, so the
-          demo looks the same for everyone) ---- */
-  var FIRST = ['Rakesh','Meera','Anil','Priya','Vikram','Sunita','Arjun','Kavita','Rohit','Neha',
-               'Sanjay','Deepa','Amit','Pooja','Rahul','Shweta','Nikhil','Anita','Manoj','Divya'];
-  var LAST = ['Patel','Iyer','Sharma','Desai','Nair','Joshi','Reddy','Mehta','Kulkarni','Gupta'];
+  var RMS = ['Rajashri Alkesh Mohandas', 'Sameer Vinod Kulkarni', 'Anita Prakash Rane',
+             'Girish Mohan Bhatt', 'Nandini Suresh Iyer'];
+  var SCHEMES = [
+    'KOTAK EQUITY SAVINGS FUND REGULAR GROWTH',
+    'HDFC FLEXI CAP FUND GROWTH',
+    'ICICI PRUDENTIAL BLUECHIP FUND GROWTH',
+    'SBI SMALL CAP FUND REGULAR GROWTH',
+    'AXIS MIDCAP FUND GROWTH',
+    'NIPPON INDIA LIQUID FUND GROWTH',
+    'MIRAE ASSET LARGE CAP FUND GROWTH'
+  ];
+  var FIRST = ['SOMA VIDYA', 'RAKESH', 'MEERA', 'ANIL', 'PRIYA', 'VIKRAM', 'SUNITA',
+               'ARJUN', 'KAVITA', 'ROHIT', 'NEHA', 'SANJAY', 'DEEPA', 'AMIT'];
+  var LAST = ['SAGAR', 'PATEL', 'IYER', 'SHARMA', 'DESAI', 'NAIR', 'JOSHI', 'REDDY'];
 
-  /* Deterministic integer hash — same sample book for every visitor. Needs real
-     bit mixing: a plain (i * k) % m collapses whenever the caller's stride
-     shares a factor with m (a stride of 7 into 7 buckets returns a constant). */
+  /* Deterministic hash so every visitor sees the same book. Needs real bit
+     mixing: a plain (i*k)%m collapses when the stride shares a factor with m. */
   function seeded(i, m) {
     var h = ((i + 1) * 2654435761) | 0;
     h ^= h >>> 13; h = (h * 1274126177) | 0; h ^= h >>> 16;
@@ -451,45 +500,63 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
     var months = ['2026-06', '2026-07', '2026-08'];
     var n = 0;
     for (var c = 0; c < 26; c++) {
-      var vrm = VRMS[seeded(c * 7 + 3, VRMS.length)];
+      var vrm = VRMS[seeded(c * 3 + 1, VRMS.length)];
       var name = FIRST[seeded(c * 13, FIRST.length)] + ' ' + LAST[seeded(c * 17, LAST.length)];
-      var code = 'CL1' + (2340 + c * 37);
-      /* Most clients started earlier; a few are brand new in the latest month. */
+      var code = 'S' + (70810 + c * 37);
+      /* Obviously fake PAN — five letters, four digits, one letter. */
+      var pan = 'AAAAA' + ('000' + (1000 + c)).slice(-4) + 'A';
+      var rm = RMS[seeded(c * 7 + 2, RMS.length)];
       var startAt = c < 20 ? 0 : (c < 24 ? 1 : 2);
+
       for (var m = startAt; m < months.length; m++) {
-        var sip = (1 + seeded(c + m * 3, 6)) * 2500;
-        var lump = seeded(c * 3 + m, 5) === 0 ? 0 : (1 + seeded(c * 5 + m, 8)) * 25000;
         var day = 3 + seeded(c + m * 11, 24);
-        TX.push({
-          id: 'TXD' + (++n),
-          clientCode: code, clientName: name,
-          vrmEmpCode: vrm.empCode, vrmName: vrm.name,
-          sip: sip, lumpsum: lump,
-          date: months[m] + '-' + ('0' + day).slice(-2),
-          createdAt: months[m] + '-' + ('0' + day).slice(-2) + 'T10:15:00',
-          enteredBy: vrm.empCode
-        });
+        var date = months[m] + '-' + ('0' + day).slice(-2);
+        var hh = 9 + seeded(c + m * 5, 9), mm = seeded(c * 3 + m, 60);
+        var time = ('0' + hh).slice(-2) + ':' + ('0' + mm).slice(-2);
+
+        function push(type, amount, status, reason) {
+          TX.push({ id: 'TXD' + (++n), date: date, time: time,
+            clientCode: code, clientName: name, pan: pan,
+            vrm: vrm.name, rmName: rm,
+            scheme: SCHEMES[seeded(c + m * 3, SCHEMES.length)],
+            txnType: type, amount: amount, status: status, reason: reason || '',
+            vrmEmpCode: vrm.empCode, batchId: 'DEMO', source: 'UPLOAD',
+            createdBy: vrm.empCode, createdAt: date + 'T' + time + ':00',
+            updatedBy: '', updatedAt: '', transferId: '' });
+        }
+
+        push('SIP', (1 + seeded(c + m * 3, 6)) * 2500, 'COMPLETED', 'ALLOTMENT DONE');
+        if (seeded(c * 3 + m, 5) !== 0) {
+          push('LUMPSUM', (1 + seeded(c * 5 + m, 8)) * 25000, 'COMPLETED', 'ALLOTMENT DONE');
+        }
+        /* Some redemptions, so Net Sales differs from Gross. */
+        if (seeded(c * 11 + m, 4) === 0) {
+          push('REDEMPTION', (1 + seeded(c + m, 6)) * 15000, 'COMPLETED', '');
+        }
+        /* A few pending and rejected, to show they stay out of the figures. */
+        if (seeded(c * 17 + m, 9) === 0) {
+          push('LUMPSUM', (1 + seeded(c, 4)) * 30000, 'IN_PROCESS', '');
+        }
+        if (seeded(c * 23 + m, 11) === 0) {
+          push('LUMPSUM', (1 + seeded(c, 3)) * 20000, 'REJECTED', 'Invalid bank details');
+        }
       }
     }
-    /* A short pre-existing audit trail so the Activity Log is not empty. */
-    [['2026-08-14T09:12:00','VRM001','VRM','LOGIN_SUCCESS','Riddhi Mistry (VRM001) signed in',1],
-     ['2026-08-14T09:31:00','VRM001','VRM','IMPORT','Imported 18 transaction(s), skipped 2 blank/invalid row(s)',18],
-     ['2026-08-15T11:02:00','VRM004','VRM','LOGIN_FAILED','Sign-in failed for Aakansha Baranwal (VRM004), attempt 2 of 5',1],
-     ['2026-08-15T11:03:00','VRM004','VRM','LOGIN_SUCCESS','Aakansha Baranwal (VRM004) signed in',1],
-     ['2026-08-16T16:40:00','ADMIN','ADMIN','TRANSFER_CLIENT','Transferred client CL12377 (3 txn(s)) from VRM002 to VRM001 (Riddhi Mistry)',3],
-     ['2026-08-16T18:07:00','VRM006','VRM','CHANGE_PASSWORD','Khushi Dodiya (VRM006) changed their own password',1],
-     ['2026-08-17T10:22:00','ADMIN','ADMIN','LOGIN_SUCCESS','Admin signed in',1]
+
+    [['2026-08-14T09:12:00', 'VRM001', 'VRM', 'LOGIN_SUCCESS', 'Riddhi Mistry (VRM001) signed in', 1],
+     ['2026-08-14T09:31:00', 'VRM001', 'VRM', 'UPLOAD', 'Uploaded "aug-book.xlsx": 18 transaction(s) (12 SIP, 6 LUMPSUM) [batch BDEMO1]', 18],
+     ['2026-08-15T11:02:00', 'VRM004', 'VRM', 'PERMISSION_DENIED', 'Refused delete transaction — not permitted for a VRM', 1],
+     ['2026-08-16T16:40:00', 'ADMIN', 'ADMIN', 'TRANSFER_CLIENT', 'Transferred client S70847 (3 txn(s)) from VRM002 to VRM001', 3],
+     ['2026-08-16T18:07:00', 'VRM006', 'VRM', 'CHANGE_PASSWORD', 'Khushi Mahesh Dodiya (VRM006) changed their own password', 1],
+     ['2026-08-17T10:22:00', 'ADMIN', 'ADMIN', 'LOGIN_SUCCESS', 'Admin signed in', 1]
     ].forEach(function (r) {
       LOG.push({ timestamp: r[0], actor: r[1], role: r[2], action: r[3], details: r[4], affectedCount: r[5] });
     });
   })();
 
-  /* ---- helpers mirroring Code.gs ---- */
+  /* ---------------------------- helpers ---------------------------------- */
   var clock = new Date('2026-08-17T12:00:00');
-  function nowIso() {
-    clock = new Date(clock.getTime() + 60000);          /* advance a minute per write */
-    return clock.toISOString().slice(0, 19);
-  }
+  function nowIso() { clock = new Date(clock.getTime() + 60000); return clock.toISOString().slice(0, 19); }
   function log(actor, role, action, details, n) {
     LOG.push({ timestamp: nowIso(), actor: actor, role: role, action: action, details: details, affectedCount: n });
   }
@@ -497,33 +564,48 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
     for (var i = 0; i < VRMS.length; i++) if (VRMS[i].empCode === String(code).toUpperCase()) return VRMS[i];
     return null;
   }
-  /* Compare on epoch millis, never on a parsed string. A UTC string with the "Z"
-     stripped gets re-read as LOCAL time, which in IST puts the deadline 5.5h in
-     the past and silently unlocks the account. lockedUntil is display-only. */
   function locked(o) { return !!o.lockedUntilMs && o.lockedUntilMs > Date.now(); }
-
-  function lockFor(o, minutes) {
-    o.lockedUntilMs = Date.now() + minutes * 60000;
-    var d = new Date(o.lockedUntilMs);                 /* local wall-clock, for display */
+  function lockFor(o, mins) {
+    o.lockedUntilMs = Date.now() + mins * 60000;
+    var d = new Date(o.lockedUntilMs);
     o.lockedUntil = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' +
       ('0' + d.getDate()).slice(-2) + 'T' + ('0' + d.getHours()).slice(-2) + ':' +
-      ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2);
+      ('0' + d.getMinutes()).slice(-2) + ':00';
     return o.lockedUntil;
   }
-
   function clearLock(o) { o.failed = 0; o.lockedUntil = ''; o.lockedUntilMs = 0; }
   function nextCode() {
     var max = 0;
     VRMS.forEach(function (v) { var m = v.empCode.match(/^VRM(\d+)$/); if (m) max = Math.max(max, +m[1]); });
     return 'VRM' + ('00' + (max + 1)).slice(-3);
   }
-  function nd(v) {                                       /* same rules as normDate_ */
+  function maskPan(p) {
+    p = String(p || '').toUpperCase();
+    if (!p) return '';
+    if (p.length < 7) return p.charAt(0) + '****';
+    return p.slice(0, 5) + '****' + p.slice(-1);
+  }
+  function normType(v) {
+    var k = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    var map = { SIP: 'SIP', LUMPSUM: 'LUMPSUM', LUMP: 'LUMPSUM', PURCHASE: 'LUMPSUM',
+                ONETIME: 'LUMPSUM', REDEMPTION: 'REDEMPTION', REDEEM: 'REDEMPTION',
+                SWP: 'REDEMPTION', WITHDRAWAL: 'REDEMPTION' };
+    return map[k] || '';
+  }
+  function normStatus(v) {
+    var k = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    var map = { COMPLETED: 'COMPLETED', COMPLETE: 'COMPLETED', SUCCESS: 'COMPLETED',
+                ALLOTMENTDONE: 'COMPLETED', INPROCESS: 'IN_PROCESS', PENDING: 'IN_PROCESS',
+                REJECTED: 'REJECTED', FAILED: 'REJECTED', CANCELLED: 'REJECTED' };
+    return map[k] || '';
+  }
+  function normDate(v) {
     if (!v) return '';
-    if (v instanceof Date) return v.toISOString().slice(0, 10);
-    if (typeof v === 'number' && v > 0 && v < 100000) return new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 10);
     var s = String(v).trim(), m;
     if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) return mk(m[1], m[2], m[3]);
-    if ((m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4}|\d{2})$/))) return mk(m[3].length === 2 ? '20' + m[3] : m[3], m[2], m[1]);
+    if ((m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4}|\d{2})$/))) {
+      return mk(m[3].length === 2 ? '20' + m[3] : m[3], m[2], m[1]);
+    }
     return '';
     function mk(y, mo, d) {
       y = +y; mo = +mo; d = +d;
@@ -531,20 +613,36 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
       return y + '-' + ('0' + mo).slice(-2) + '-' + ('0' + d).slice(-2);
     }
   }
+  function normTime(v) {
+    if (!v) return '';
+    var str = String(v).toUpperCase().replace(/\./g, ''), m;
+    m = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/);
+    if (!m) { m = str.match(/^(\d{1,2})\s*(AM|PM)$/); if (!m) return ''; m = [0, m[1], '00', m[2]]; }
+    var h = +m[1], mi = +m[2], ap = m[3];
+    if (ap === 'PM' && h < 12) h += 12;
+    if (ap === 'AM' && h === 12) h = 0;
+    if (h > 23 || mi > 59) return '';
+    return ('0' + h).slice(-2) + ':' + ('0' + mi).slice(-2);
+  }
+
+  var TOKENS = {};
   function session(token) {
     var s = TOKENS[token];
     if (!s) throw new Error('Your session has expired. Please sign in again.');
     return s;
   }
-  function admin(token) {
+  function adminOnly(token, action) {
     var s = session(token);
-    if (s.role !== 'ADMIN') throw new Error('Admin access required for this action.');
+    if (s.role !== 'ADMIN') {
+      log(s.empCode, s.role, 'PERMISSION_DENIED', 'Refused ' + action + ' — not permitted for a VRM', 1);
+      throw new Error('Transaction deletion is restricted. Please contact Admin for correction or deletion.');
+    }
     return s;
   }
-  var TOKENS = {};
 
   function payload(s) {
     var isAdmin = s.role === 'ADMIN';
+    var fullPan = isAdmin || CFG.VRM_SEES_FULL_PAN;
     return {
       vrms: VRMS.map(function (v) {
         var o = { empCode: v.empCode, name: v.name };
@@ -552,19 +650,34 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
         return o;
       }),
       txns: (isAdmin ? TX : TX.filter(function (t) { return t.vrmEmpCode === s.empCode; }))
-              .map(function (t) { return JSON.parse(JSON.stringify(t)); }),
+        .map(function (t) {
+          var c = JSON.parse(JSON.stringify(t));
+          if (!fullPan) { c.pan = maskPan(c.pan); c.panMasked = true; } else { c.panMasked = false; }
+          return c;
+        }),
       adminExists: true,
-      config: { newClientBasis: CFG.NEW_CLIENT_BASIS, minPasswordLen: CFG.MIN_PASSWORD_LEN,
-                maxFailedAttempts: CFG.MAX_FAILED_ATTEMPTS, lockoutMinutes: CFG.LOCKOUT_MINUTES },
+      perms: {
+        canDelete: isAdmin, canEdit: isAdmin, canTransfer: isAdmin,
+        canExport: isAdmin || CFG.VRM_CAN_EXPORT, canSeeFullPan: fullPan,
+        canManageVrms: isAdmin, canViewAudit: isAdmin, canViewAllVrms: isAdmin
+      },
+      config: {
+        newClientBasis: 'FIRST_EVER_IN_REF_MONTH', minPasswordLen: CFG.MIN_PASSWORD_LEN,
+        maxFailedAttempts: CFG.MAX_FAILED_ATTEMPTS, lockoutMinutes: CFG.LOCKOUT_MINUTES,
+        countedStatuses: CFG.COUNTED_STATUSES.slice(),
+        txnTypes: ['SIP', 'LUMPSUM', 'REDEMPTION'],
+        statuses: ['COMPLETED', 'IN_PROCESS', 'REJECTED']
+      },
       serverTime: clock.toISOString().slice(0, 19)
     };
   }
   function ok(d) { return { ok: true, data: d === undefined ? null : d }; }
 
-  /* ---- the API surface, matching Code.gs one-for-one ---- */
+  /* ------------------------------- API ---------------------------------- */
   var API = {
     bootstrap: function () {
-      return ok({ vrms: VRMS.map(function (v) { return { empCode: v.empCode, name: v.name, locked: locked(v) }; }) });
+      return ok({ vrms: VRMS.map(function (v) {
+        return { empCode: v.empCode, name: v.name, locked: locked(v) }; }) });
     },
 
     login: function (role, empCode, pw) {
@@ -573,26 +686,23 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
       var target = role === 'ADMIN' ? ADMIN : find(empCode);
       var who = role === 'ADMIN' ? 'ADMIN' : (target ? target.empCode : String(empCode || '-'));
       var label = role === 'ADMIN' ? 'Admin' : (target ? target.name + ' (' + target.empCode + ')' : who);
-
-      if (!target) { log(who, role, 'LOGIN_FAILED', 'Sign-in failed: no such VRM "' + who + '"', 1);
+      if (!target) { log(who, role, 'LOGIN_FAILED', 'no such VRM', 1);
                      throw new Error('That VRM account was not found. Refresh and pick again.'); }
       if (locked(target)) {
-        log(who, role, 'LOGIN_LOCKED', 'Sign-in blocked, account locked until ' + target.lockedUntil, 1);
-        throw new Error(role === 'ADMIN'
-          ? 'Admin sign-in is locked after too many failed attempts.'
-          : 'Account locked, contact admin.');
+        log(who, role, 'LOGIN_LOCKED', 'blocked, locked until ' + target.lockedUntil, 1);
+        throw new Error(role === 'ADMIN' ? 'Admin sign-in is locked after too many failed attempts.'
+                                         : 'Account locked, contact admin.');
       }
       if (pw !== target.password) {
         target.failed++;
-        log(who, role, 'LOGIN_FAILED', 'Sign-in failed for ' + label + ', attempt ' + target.failed + ' of ' + CFG.MAX_FAILED_ATTEMPTS, 1);
+        log(who, role, 'LOGIN_FAILED', 'attempt ' + target.failed + ' of ' + CFG.MAX_FAILED_ATTEMPTS, 1);
         if (target.failed >= CFG.MAX_FAILED_ATTEMPTS) {
           var until = lockFor(target, CFG.LOCKOUT_MINUTES);
-          log(who, role, 'ACCOUNT_LOCKED', 'Account locked after ' + CFG.MAX_FAILED_ATTEMPTS + ' failed attempts; locked until ' + until, 1);
-          throw new Error(role === 'ADMIN'
-            ? 'Too many failed attempts. Admin sign-in is locked for ' + CFG.LOCKOUT_MINUTES + ' minutes.'
-            : 'Too many failed attempts. Account locked, contact admin.');
+          log(who, role, 'ACCOUNT_LOCKED', 'locked until ' + until, 1);
+          throw new Error('Too many failed attempts. Account locked, contact admin.');
         }
-        throw new Error('Incorrect password. ' + (CFG.MAX_FAILED_ATTEMPTS - target.failed) + ' attempt(s) left before lockout.');
+        throw new Error('Incorrect password. ' + (CFG.MAX_FAILED_ATTEMPTS - target.failed) +
+                        ' attempt(s) left before lockout.');
       }
       clearLock(target);
       log(who, role, 'LOGIN_SUCCESS', label + ' signed in', 1);
@@ -610,94 +720,181 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
 
     getData: function (token) { return ok(payload(session(token))); },
 
-    addTxns: function (token, rows, mode) {
+    addTxns: function (token, rows, mode, meta) {
       var s = session(token);
-      mode = String(mode).toUpperCase() === 'IMPORT' ? 'IMPORT' : 'ADD';
-      var made = [], skipped = 0, noVrm = 0, created = [];
+      meta = meta || {};
+      var made = [], errors = [], blank = 0, created = [];
+      var batchId = 'B' + Date.now().toString(36).toUpperCase();
       (rows || []).forEach(function (r, i) {
+        var line = r.__line || (i + 2);
+        var date = normDate(r.date), type = normType(r.txnType), status = normStatus(r.status);
+        var amount = +String(r.amount).replace(/[,\s₹]/g, '') || 0;
+        var pan = String(r.pan || '').toUpperCase().replace(/\s+/g, '');
         var cc = String(r.clientCode || '').trim(), cn = String(r.clientName || '').trim();
-        var sip = +r.sip || 0, lump = +r.lumpsum || 0, date = nd(r.date);
-        if ((!cc && !cn) || !date || (!sip && !lump)) { skipped++; return; }
-        var vrm = null;
+
+        if (!cc && !cn && !amount && !type && !date) { blank++; return; }
+        if (!date) { errors.push('Row ' + line + ': TxnDate is missing or unreadable.'); return; }
+        if (!cc && !cn) { errors.push('Row ' + line + ': needs a Client Code or Client Name.'); return; }
+        if (!String(r.txnType || '').trim()) { errors.push('Row ' + line + ': TXN Type is blank.'); return; }
+        if (!type) { errors.push('Row ' + line + ': TXN Type "' + r.txnType +
+                    '" is not recognised. Use SIP, Lumpsum or Redemption.'); return; }
+        if (!String(r.status || '').trim()) { errors.push('Row ' + line + ': Txn Status is blank.'); return; }
+        if (!status) { errors.push('Row ' + line + ': Txn Status "' + r.status +
+                      '" is not recognised. Use Completed, In Process or Rejected.'); return; }
+        if (amount <= 0) { errors.push('Row ' + line + ': Amount must be greater than zero.'); return; }
+        if (pan && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)) {
+          errors.push('Row ' + line + ': PAN "' + maskPan(pan) + '" is not a valid format (AAAAA9999A).'); return;
+        }
+
+        var owner = null;
+        var wantName = String(r.vrm || '').toUpperCase().replace(/\s+/g, ' ');
+        VRMS.forEach(function (v) {
+          if (!owner && v.name.toUpperCase().replace(/\s+/g, ' ') === wantName) owner = v;
+        });
         if (s.role === 'ADMIN') {
-          var wc = String(r.vrmEmpCode || '').trim().toUpperCase();
-          var wn = String(r.vrmName || '').trim().toUpperCase().replace(/\s+/g, ' ');
-          if (wc) vrm = find(wc);
-          if (!vrm && wn) {
-            VRMS.forEach(function (v) { if (!vrm && v.name.toUpperCase().replace(/\s+/g, ' ') === wn) vrm = v; });
-            if (!vrm && mode === 'IMPORT') {
-              vrm = { empCode: nextCode(), name: String(r.vrmName).trim(), password: DEMO_PW, failed: 0, lockedUntil: '', lockedUntilMs: 0 };
-              VRMS.push(vrm); created.push(vrm.empCode + ' / ' + vrm.name);
-              log('ADMIN', 'ADMIN', 'ADD_VRM', 'Auto-created VRM ' + vrm.empCode + ' ("' + vrm.name + '") during import', 1);
-            }
+          if (!owner && wantName && mode === 'IMPORT') {
+            owner = { empCode: nextCode(), name: String(r.vrm).trim(), password: DEMO_PW,
+                      failed: 0, lockedUntil: '', lockedUntilMs: 0 };
+            VRMS.push(owner); created.push(owner.empCode + ' / ' + owner.name);
           }
-          if (!vrm) { if (wc) skipped++; else noVrm++; return; }
-        } else { vrm = find(s.empCode); }
-        made.push({ id: 'TXN' + (++seq), clientCode: cc || cn.toUpperCase().replace(/\s+/g, '-'),
-          clientName: cn || cc, vrmEmpCode: vrm.empCode, vrmName: vrm.name, sip: sip, lumpsum: lump,
-          date: date, createdAt: nowIso(), enteredBy: s.role === 'ADMIN' ? 'ADMIN' : s.empCode });
+          if (!owner) { errors.push('Row ' + line + ': VRM "' + (r.vrm || '(blank)') +
+                        '" is not recognised. Add the VRM first, or correct the file.'); return; }
+        } else {
+          var me = find(s.empCode);
+          if (owner && owner.empCode !== me.empCode) {
+            errors.push('Row ' + line + ': VRM mismatch — the file says "' + r.vrm +
+                        '" but you are signed in as ' + me.name + ' (' + me.empCode + '). ' +
+                        'Please contact Admin or correct the uploaded file.');
+            return;
+          }
+          owner = me;
+        }
+
+        made.push({ id: 'TXN' + (++seq), date: date, time: normTime(r.time),
+          clientCode: cc || cn.toUpperCase().replace(/\s+/g, '-'), clientName: cn || cc,
+          pan: pan, vrm: String(r.vrm || owner.name), rmName: String(r.rmName || ''),
+          scheme: String(r.scheme || ''), txnType: type, amount: amount,
+          status: status, reason: String(r.reason || ''),
+          vrmEmpCode: owner.empCode, batchId: batchId,
+          source: mode === 'IMPORT' ? 'UPLOAD' : 'MANUAL',
+          createdBy: s.role === 'ADMIN' ? 'ADMIN' : s.empCode, createdAt: nowIso(),
+          updatedBy: '', updatedAt: '', transferId: '' });
       });
+
+      if (mode === 'IMPORT' && errors.length) {
+        log(s.empCode, s.role, 'UPLOAD_REJECTED',
+          'Upload "' + (meta.fileName || '') + '" rejected: ' + errors.length + ' invalid row(s)', 0);
+        var bad = payload(s);
+        bad.result = { inserted: 0, rejected: errors.length, blank: blank,
+                       errors: errors.slice(0, 50), errorTotal: errors.length, batchId: '' };
+        return ok(bad);
+      }
+
       made.forEach(function (t) { TX.push(t); });
-      log(s.role === 'ADMIN' ? 'ADMIN' : s.empCode, s.role, mode === 'IMPORT' ? 'IMPORT' : 'ADD_TXN',
-        (mode === 'IMPORT' ? 'Imported ' : 'Added ') + made.length + ' transaction(s)' +
-        (skipped ? ', skipped ' + skipped + ' blank/invalid row(s)' : '') +
-        (noVrm ? ', skipped ' + noVrm + ' row(s) with no VRM emp code or VRM name' : ''), made.length);
+      var byType = {};
+      made.forEach(function (t) { byType[t.txnType] = (byType[t.txnType] || 0) + 1; });
+      log(s.role === 'ADMIN' ? 'ADMIN' : s.empCode, s.role,
+        mode === 'IMPORT' ? 'UPLOAD' : 'ADD_TXN',
+        (mode === 'IMPORT' ? 'Uploaded "' + (meta.fileName || '') + '": ' : 'Added ') +
+        made.length + ' transaction(s) (' +
+        Object.keys(byType).map(function (k) { return byType[k] + ' ' + k; }).join(', ') + ')' +
+        (mode === 'IMPORT' ? ' [batch ' + batchId + ']' : ''), made.length);
+
       var p = payload(s);
-      p.result = { inserted: made.length, skipped: skipped, noVrm: noVrm, createdVrms: created };
+      p.result = { inserted: made.length, rejected: 0, blank: blank, errors: [],
+                   errorTotal: 0, createdVrms: created,
+                   batchId: mode === 'IMPORT' ? batchId : '' };
       return ok(p);
     },
 
     editTxn: function (token, id, f) {
-      var s = session(token), t = null;
+      var s = adminOnly(token, 'edit transaction');
+      var t = null;
       TX.forEach(function (x) { if (x.id === id) t = x; });
       if (!t) throw new Error('That transaction no longer exists — refresh and try again.');
-      if (s.role !== 'ADMIN' && t.vrmEmpCode !== s.empCode) throw new Error('You can only edit your own transactions.');
       var ch = [];
-      if (f.date !== undefined) { var d = nd(f.date); if (!d) throw new Error('That investment date could not be understood.');
+      if (f.txnType) { var ty = normType(f.txnType);
+        if (!ty) throw new Error('TXN Type must be SIP, Lumpsum or Redemption.');
+        if (ty !== t.txnType) { ch.push('type ' + t.txnType + ' -> ' + ty); t.txnType = ty; } }
+      if (f.status) { var st = normStatus(f.status);
+        if (!st) throw new Error('Txn Status must be Completed, In Process or Rejected.');
+        if (st !== t.status) { ch.push('status ' + t.status + ' -> ' + st); t.status = st; } }
+      if (f.amount !== undefined && +f.amount !== t.amount) {
+        if (+f.amount <= 0) throw new Error('Amount must be greater than zero.');
+        ch.push('amount ' + t.amount + ' -> ' + f.amount); t.amount = +f.amount; }
+      if (f.pan !== undefined) {
+        var pan = String(f.pan).toUpperCase().replace(/\s+/g, '');
+        if (pan && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)) throw new Error('PAN must look like AAAAA9999A.');
+        if (pan !== t.pan) { ch.push('PAN updated'); t.pan = pan; } }
+      if (f.date) { var d = normDate(f.date);
+        if (!d) throw new Error('That transaction date could not be understood.');
         if (d !== t.date) { ch.push('date ' + t.date + ' -> ' + d); t.date = d; } }
-      if (f.vrmEmpCode && s.role === 'ADMIN') {
-        var nv = find(f.vrmEmpCode);
+      if (f.time !== undefined) { var tm = normTime(f.time);
+        if (tm !== t.time) { ch.push('time updated'); t.time = tm; } }
+      if (f.vrmEmpCode) { var nv = find(f.vrmEmpCode);
         if (!nv) throw new Error('Unknown VRM emp code: ' + f.vrmEmpCode);
-        if (nv.empCode !== t.vrmEmpCode) { ch.push('VRM ' + t.vrmEmpCode + ' -> ' + nv.empCode + ' (' + nv.name + ')');
-          t.vrmEmpCode = nv.empCode; t.vrmName = nv.name; }
-      }
-      if (f.clientCode !== undefined && f.clientCode && f.clientCode !== t.clientCode) { ch.push('client code ' + t.clientCode + ' -> ' + f.clientCode); t.clientCode = f.clientCode; }
-      if (f.clientName !== undefined && f.clientName !== t.clientName) { ch.push('client name -> ' + f.clientName); t.clientName = f.clientName; }
-      if (f.sip !== undefined && +f.sip !== t.sip) { ch.push('SIP ' + t.sip + ' -> ' + (+f.sip)); t.sip = +f.sip; }
-      if (f.lumpsum !== undefined && +f.lumpsum !== t.lumpsum) { ch.push('Lumpsum ' + t.lumpsum + ' -> ' + (+f.lumpsum)); t.lumpsum = +f.lumpsum; }
+        if (nv.empCode !== t.vrmEmpCode) {
+          ch.push('VRM ' + t.vrmEmpCode + ' -> ' + nv.empCode);
+          t.vrmEmpCode = nv.empCode; t.vrm = nv.name; } }
+      ['clientCode', 'clientName', 'rmName', 'scheme', 'reason'].forEach(function (k) {
+        if (f[k] !== undefined && String(f[k]) !== t[k]) { ch.push(k + ' updated'); t[k] = String(f[k]); }
+      });
       if (!ch.length) throw new Error('Nothing changed.');
-      log(s.role === 'ADMIN' ? 'ADMIN' : s.empCode, s.role, 'EDIT_TXN', 'Edited txn ' + t.id + ': ' + ch.join('; '), 1);
+      t.updatedBy = 'ADMIN'; t.updatedAt = nowIso();
+      log('ADMIN', 'ADMIN', 'EDIT_TXN', 'Edited txn ' + t.id + ': ' + ch.join('; '), 1);
       return ok(payload(s));
     },
 
     deleteTxn: function (token, id) {
-      var s = session(token), t = null;
+      var s = adminOnly(token, 'delete transaction');
+      var t = null;
       TX.forEach(function (x) { if (x.id === id) t = x; });
       if (!t) throw new Error('That transaction no longer exists — refresh and try again.');
-      if (s.role !== 'ADMIN' && t.vrmEmpCode !== s.empCode) throw new Error('You can only delete your own transactions.');
       TX = TX.filter(function (x) { return x.id !== id; });
-      log(s.role === 'ADMIN' ? 'ADMIN' : s.empCode, s.role, 'DELETE_TXN',
-        'Deleted txn ' + t.id + ' (client ' + t.clientCode + ', VRM ' + t.vrmEmpCode + ')', 1);
+      t.deletedBy = 'ADMIN'; t.deletedAt = nowIso();
+      DELETED.push(t);
+      log('ADMIN', 'ADMIN', 'DELETE_TXN',
+        'Deleted txn ' + t.id + ' (' + t.txnType + ' ' + t.amount + ') — recoverable from Restore', 1);
       return ok(payload(s));
     },
 
+    restoreTxn: function (token, id) {
+      var s = adminOnly(token, 'restore transaction');
+      var t = null;
+      DELETED.forEach(function (x) { if (x.id === id) t = x; });
+      if (!t) throw new Error('That transaction is not in the deleted list.');
+      DELETED = DELETED.filter(function (x) { return x.id !== id; });
+      TX.push(t);
+      log('ADMIN', 'ADMIN', 'RESTORE_TXN', 'Restored txn ' + t.id, 1);
+      return ok(payload(s));
+    },
+
+    getDeletedTxns: function (token) {
+      adminOnly(token, 'view deleted transactions');
+      return ok({ txns: DELETED.slice() });
+    },
+
     deleteClient: function (token, code) {
-      var s = session(token), n = 0;
+      var s = adminOnly(token, 'delete client');
+      var n = 0;
       TX = TX.filter(function (t) {
-        var hit = t.clientCode.toUpperCase() === String(code).toUpperCase() &&
-                  (s.role === 'ADMIN' || t.vrmEmpCode === s.empCode);
-        if (hit) n++;
+        var hit = String(t.clientCode).toUpperCase() === String(code).toUpperCase();
+        if (hit) { t.deletedBy = 'ADMIN'; t.deletedAt = nowIso(); DELETED.push(t); n++; }
         return !hit;
       });
       if (!n) throw new Error('No transactions found for client ' + code + '.');
-      log(s.role === 'ADMIN' ? 'ADMIN' : s.empCode, s.role, 'DELETE_CLIENT',
-        'Deleted all ' + n + ' transaction(s) for client ' + code, n);
+      log('ADMIN', 'ADMIN', 'DELETE_CLIENT', 'Deleted all ' + n + ' transaction(s) for client ' + code, n);
       var p = payload(s); p.result = { deleted: n }; return ok(p);
     },
 
     bulkDeleteTxns: function (token, ids) {
-      var s = admin(token), before = TX.length;
-      TX = TX.filter(function (t) { return (ids || []).indexOf(t.id) < 0; });
+      var s = adminOnly(token, 'bulk delete');
+      var before = TX.length;
+      TX = TX.filter(function (t) {
+        var hit = (ids || []).indexOf(t.id) >= 0;
+        if (hit) { t.deletedBy = 'ADMIN'; t.deletedAt = nowIso(); DELETED.push(t); }
+        return !hit;
+      });
       var n = before - TX.length;
       if (!n) throw new Error('Those transactions no longer exist — refresh and try again.');
       log('ADMIN', 'ADMIN', 'BULK_DELETE', 'Bulk-deleted ' + n + ' transaction(s)', n);
@@ -705,48 +902,52 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
     },
 
     deleteAllData: function (token) {
-      var s = admin(token), n = TX.length;
-      TX = [];
-      log('ADMIN', 'ADMIN', 'DELETE_ALL', 'Deleted ALL transaction data (' + n + ' row(s)). VRMs, Config and AuditLog untouched.', n);
+      var s = adminOnly(token, 'delete all data');
+      var n = TX.length; TX = [];
+      log('ADMIN', 'ADMIN', 'DELETE_ALL', 'Deleted ALL transaction data (' + n + ' row(s))', n);
       var p = payload(s); p.result = { deleted: n }; return ok(p);
     },
 
+    transferClient: function (token, code, to) {
+      var s = adminOnly(token, 'transfer client');
+      var dest = find(to);
+      if (!dest) throw new Error('Destination VRM not found: ' + to);
+      var n = 0, from = {};
+      TX.forEach(function (t) {
+        if (String(t.clientCode).toUpperCase() === String(code).toUpperCase()) {
+          from[t.vrmEmpCode] = 1; t.vrmEmpCode = dest.empCode; t.vrm = dest.name; n++;
+        }
+      });
+      if (!n) throw new Error('No transactions found for client ' + code + '.');
+      log('ADMIN', 'ADMIN', 'TRANSFER_CLIENT', 'Transferred client ' + code + ' (' + n +
+        ' txn(s)) from ' + Object.keys(from).join(', ') + ' to ' + dest.empCode, n);
+      var p = payload(s); p.result = { moved: n, to: dest.empCode, toName: dest.name }; return ok(p);
+    },
+
     addVRM: function (token, name, pw) {
-      var s = admin(token);
-      name = String(name || '').trim();
-      pw = String(pw == null ? '' : pw);
-      if (!name) throw new Error('Please enter the VRM name.');
-      if (pw.length < CFG.MIN_PASSWORD_LEN) throw new Error('Password must be at least ' + CFG.MIN_PASSWORD_LEN + ' characters.');
-      var v = { empCode: nextCode(), name: name, password: pw, failed: 0, lockedUntil: '', lockedUntilMs: 0 };
+      var s = adminOnly(token, 'add VRM');
+      if (!String(name || '').trim()) throw new Error('Please enter the VRM name.');
+      if (String(pw || '').length < CFG.MIN_PASSWORD_LEN) {
+        throw new Error('Password must be at least ' + CFG.MIN_PASSWORD_LEN + ' characters.');
+      }
+      var v = { empCode: nextCode(), name: String(name).trim(), password: String(pw),
+                failed: 0, lockedUntil: '', lockedUntilMs: 0 };
       VRMS.push(v);
-      log('ADMIN', 'ADMIN', 'ADD_VRM', 'Added VRM ' + v.empCode + ' ("' + name + '")', 1);
-      var p = payload(s); p.result = { empCode: v.empCode, name: name }; return ok(p);
+      log('ADMIN', 'ADMIN', 'ADD_VRM', 'Added VRM ' + v.empCode + ' ("' + v.name + '")', 1);
+      var p = payload(s); p.result = { empCode: v.empCode, name: v.name }; return ok(p);
     },
 
     deleteVRM: function (token, code) {
-      var s = admin(token), v = find(code);
+      var s = adminOnly(token, 'delete VRM');
+      var v = find(code);
       if (!v) throw new Error('VRM not found: ' + code);
       var before = TX.length;
       TX = TX.filter(function (t) { return t.vrmEmpCode !== v.empCode; });
       VRMS = VRMS.filter(function (x) { return x.empCode !== v.empCode; });
       var n = before - TX.length;
-      log('ADMIN', 'ADMIN', 'DELETE_VRM', 'Deleted VRM ' + v.empCode + ' ("' + v.name + '") and their ' + n + ' transaction(s)', n + 1);
+      log('ADMIN', 'ADMIN', 'DELETE_VRM',
+        'Deleted VRM ' + v.empCode + ' and their ' + n + ' transaction(s)', n + 1);
       var p = payload(s); p.result = { deletedTxns: n }; return ok(p);
-    },
-
-    transferClient: function (token, code, to) {
-      var s = admin(token), dest = find(to);
-      if (!dest) throw new Error('Destination VRM not found: ' + to);
-      var n = 0, from = {};
-      TX.forEach(function (t) {
-        if (t.clientCode.toUpperCase() === String(code).toUpperCase()) {
-          from[t.vrmEmpCode] = 1; t.vrmEmpCode = dest.empCode; t.vrmName = dest.name; n++;
-        }
-      });
-      if (!n) throw new Error('No transactions found for client ' + code + '.');
-      log('ADMIN', 'ADMIN', 'TRANSFER_CLIENT', 'Transferred client ' + code + ' (' + n + ' txn(s)) from ' +
-        Object.keys(from).join(', ') + ' to ' + dest.empCode + ' (' + dest.name + ')', n);
-      var p = payload(s); p.result = { moved: n, to: dest.empCode, toName: dest.name }; return ok(p);
     },
 
     changeVrmPassword: function (token, oldPw, newPw) {
@@ -754,61 +955,78 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
       if (s.role !== 'VRM') throw new Error('Use "Change admin password" for the admin account.');
       var v = find(s.empCode);
       if (String(oldPw) !== v.password) throw new Error('Your current password is incorrect.');
-      if (!newPw) throw new Error('The new password cannot be blank.');
-      if (String(newPw).length < CFG.MIN_PASSWORD_LEN) throw new Error('New password must be at least ' + CFG.MIN_PASSWORD_LEN + ' characters.');
+      if (String(newPw).length < CFG.MIN_PASSWORD_LEN) {
+        throw new Error('New password must be at least ' + CFG.MIN_PASSWORD_LEN + ' characters.');
+      }
       if (String(newPw) === String(oldPw)) throw new Error('The new password must be different from the current one.');
       v.password = String(newPw);
-      log(v.empCode, 'VRM', 'CHANGE_PASSWORD', v.name + ' (' + v.empCode + ') changed their own password', 1);
+      log(v.empCode, 'VRM', 'CHANGE_PASSWORD', v.name + ' changed their own password', 1);
       return ok(payload(s));
     },
 
     changeAdminPassword: function (token, oldPw, newPw) {
-      var s = admin(token);
+      var s = adminOnly(token, 'change admin password');
       if (String(oldPw) !== ADMIN.password) throw new Error('Your current admin password is incorrect.');
-      if (!newPw) throw new Error('The new password cannot be blank.');
-      if (String(newPw).length < CFG.MIN_PASSWORD_LEN) throw new Error('New password must be at least ' + CFG.MIN_PASSWORD_LEN + ' characters.');
-      if (String(newPw) === String(oldPw)) throw new Error('The new password must be different from the current one.');
+      if (String(newPw).length < CFG.MIN_PASSWORD_LEN) {
+        throw new Error('New password must be at least ' + CFG.MIN_PASSWORD_LEN + ' characters.');
+      }
       ADMIN.password = String(newPw); clearLock(ADMIN);
       log('ADMIN', 'ADMIN', 'CHANGE_ADMIN_PASSWORD', 'Admin password changed', 1);
       return ok(payload(s));
     },
 
     resetVrmPassword: function (token, code, newPw) {
-      var s = admin(token), v = find(code);
+      var s = adminOnly(token, 'reset password');
+      var v = find(code);
       if (!v) throw new Error('VRM not found: ' + code);
-      if (String(newPw == null ? '' : newPw).length < CFG.MIN_PASSWORD_LEN) {
+      if (String(newPw || '').length < CFG.MIN_PASSWORD_LEN) {
         throw new Error('New password must be at least ' + CFG.MIN_PASSWORD_LEN + ' characters.');
       }
       v.password = String(newPw); clearLock(v);
-      log('ADMIN', 'ADMIN', 'RESET_VRM_PASSWORD',
-        'Reset password for ' + v.empCode + ' ("' + v.name + '"); failed attempts and lockout cleared', 1);
+      log('ADMIN', 'ADMIN', 'RESET_VRM_PASSWORD', 'Reset password for ' + v.empCode, 1);
       return ok(payload(s));
     },
 
     unlockVrm: function (token, code) {
-      var s = admin(token), v = find(code);
+      var s = adminOnly(token, 'unlock VRM');
+      var v = find(code);
       if (!v) throw new Error('VRM not found: ' + code);
       clearLock(v);
-      log('ADMIN', 'ADMIN', 'UNLOCK_VRM', 'Unlocked ' + v.empCode + ' ("' + v.name + '"); failed attempts reset to 0', 1);
+      log('ADMIN', 'ADMIN', 'UNLOCK_VRM', 'Unlocked ' + v.empCode, 1);
       return ok(payload(s));
     },
 
     getVrmCredentials: function (token) {
-      admin(token);
+      adminOnly(token, 'view accounts');
       return ok({ vrms: VRMS.map(function (v) {
-        return { empCode: v.empCode, name: v.name, password: v.password, failedAttempts: v.failed,
+        return { empCode: v.empCode, name: v.name, hashed: true, failedAttempts: v.failed,
                  locked: locked(v), lockedUntil: locked(v) ? v.lockedUntil : '',
-                 entries: TX.filter(function (t) { return t.vrmEmpCode === v.empCode; }).length, createdAt: '' };
-      }) });
+                 entries: TX.filter(function (t) { return t.vrmEmpCode === v.empCode; }).length,
+                 createdAt: '' }; }) });
     },
 
     getAuditLog: function (token, limit) {
-      admin(token);
+      adminOnly(token, 'view audit log');
       var rows = LOG.slice().reverse();
-      var total = rows.length;
-      var cap = parseInt(limit, 10), truncated = false;
+      var total = rows.length, cap = parseInt(limit, 10), truncated = false;
       if (!isNaN(cap) && cap > 0 && rows.length > cap) { rows = rows.slice(0, cap); truncated = true; }
       return ok({ log: rows, total: total, truncated: truncated });
+    },
+
+    requestPasswordReset: function (empCode) {
+      log(String(empCode || '-'), 'VRM', 'PASSWORD_RESET_REQUESTED',
+        'Password reset requested for "' + empCode + '"', 1);
+      return ok({ message: 'Your admin has been notified. They will set a new password for you.' });
+    },
+
+    logExport: function (token, what, n) {
+      var s = session(token);
+      if (s.role !== 'ADMIN' && !CFG.VRM_CAN_EXPORT) {
+        log(s.empCode, s.role, 'PERMISSION_DENIED', 'Refused export — not permitted for a VRM', 1);
+        throw new Error('Export is restricted. Please contact Admin.');
+      }
+      log(s.empCode || s.role, s.role, 'EXPORT', 'Exported "' + what + '" (' + n + ' row(s))', n);
+      return ok({ logged: true });
     }
   };
 
@@ -819,10 +1037,10 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
   Object.keys(API).forEach(function (k) {
     proto[k] = function () {
       var args = arguments, s = this._s, f = this._f;
-      setTimeout(function () {                     /* mimic a little network latency */
+      setTimeout(function () {
         try { s && s(API[k].apply(null, args)); }
         catch (e) { f ? f(e) : null; }
-      }, 140);
+      }, 120);
     };
   });
   window.google = { script: { run: proto, host: { close: function () {} } } };
@@ -838,10 +1056,6 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
    storage: the sheet is the single source of truth and the session lives in
    memory only (closing the tab signs you out).
    =========================================================================== */
-
-/* How "New client transactions" is counted. Change this one constant (and the
-   matching NEW_CLIENT_BASIS row in the Config tab) to switch the rule later. */
-var NEW_CLIENT_BASIS = 'FIRST_EVER_IN_REF_MONTH';
 
 var SHEETJS_URLS = [
   'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js',
@@ -1204,6 +1418,7 @@ var ADMIN_TABS = [
   { id: 'overview',  label: 'Consolidated Overview', ic: IC.chart },
   { id: 'analytics', label: 'Revenue Analysis',      ic: IC.trend },
   { id: 'vrmwise',   label: 'VRM-wise Summary',      ic: IC.users },
+  { id: 'scheme',    label: 'Scheme Analysis',       ic: IC.layers },
   { id: 'alltxns',  label: 'All Transactions',      ic: IC.table },
   { id: 'clients',  label: 'Client Consolidated',   ic: IC.layers },
   { id: 'access',   label: 'VRMs & Access',         ic: IC.shield },
@@ -1295,32 +1510,98 @@ function absorb(d) {
   return d;
 }
 
-/* ======================= SHARED CALCULATIONS ============================== */
-/*
- *  Gross sales            = SIP + Lumpsum
- *  Reference month/year   = derived from the LATEST InvestmentDate in scope
- *  New client txn count   = clients whose FIRST-EVER investment falls in the
- *                           reference month (see NEW_CLIENT_BASIS)
- *  Client count           = distinct client codes in scope
+/* ======================= SHARED CALCULATIONS ============================== *
+ *
+ * The client mirror of the server's business logic. Every figure on every screen
+ * comes from metrics() so the definitions cannot drift between components:
+ *
+ *   SIP        = sum(Amount) where TxnType = SIP        and the status counts
+ *   LUMPSUM    = sum(Amount) where TxnType = LUMPSUM    and the status counts
+ *   REDEMPTION = sum(Amount) where TxnType = REDEMPTION and the status counts
+ *   GROSS      = SIP + LUMPSUM              (redemption deliberately excluded)
+ *   NET        = GROSS - REDEMPTION
+ *
+ * Which statuses count is decided by the server (Config: COUNTED_STATUSES,
+ * default COMPLETED) and travels in the payload, so the rule is set in one place.
+ * ========================================================================== */
+
+var TT = { SIP: 'SIP', LUMPSUM: 'LUMPSUM', REDEMPTION: 'REDEMPTION' };
+var TS = { COMPLETED: 'COMPLETED', IN_PROCESS: 'IN_PROCESS', REJECTED: 'REJECTED' };
+
+var TT_LABEL = { SIP: 'SIP', LUMPSUM: 'Lumpsum', REDEMPTION: 'Redemption' };
+var TS_LABEL = { COMPLETED: 'Completed', IN_PROCESS: 'In Process', REJECTED: 'Rejected' };
+
+/* How "New client transactions" is counted. One constant, easy to switch. */
+var NEW_CLIENT_BASIS = 'FIRST_EVER_IN_REF_MONTH';
+
+function countedSet() {
+  var list = (S.data && S.data.config && S.data.config.countedStatuses) || ['COMPLETED'];
+  var o = {};
+  list.forEach(function (x) { o[x] = true; });
+  return o;
+}
+function isCounted(t) { return !!countedSet()[t.status]; }
+
+/** A purchase, i.e. something that adds business rather than removing it. */
+function isPurchase(t) { return t.txnType === TT.SIP || t.txnType === TT.LUMPSUM; }
+
+function metrics(txns) {
+  var counted = countedSet();
+  var m = { sip: 0, lumpsum: 0, redemption: 0, gross: 0, net: 0,
+            pending: 0, rejected: 0, txns: 0, countedTxns: 0,
+            pendingTxns: 0, rejectedTxns: 0 };
+  (txns || []).forEach(function (t) {
+    var amt = num(t.amount);
+    m.txns++;
+    /* Pending and rejected are tracked separately so they stay visible without
+       ever leaking into the finalised figures. */
+    if (t.status === TS.IN_PROCESS) { m.pendingTxns++; if (isPurchase(t)) m.pending += amt; }
+    if (t.status === TS.REJECTED) { m.rejectedTxns++; m.rejected += amt; }
+    if (!counted[t.status]) return;
+    m.countedTxns++;
+    if (t.txnType === TT.SIP) m.sip += amt;
+    else if (t.txnType === TT.LUMPSUM) m.lumpsum += amt;
+    else if (t.txnType === TT.REDEMPTION) m.redemption += amt;
+  });
+  m.gross = m.sip + m.lumpsum;
+  m.net = m.gross - m.redemption;
+  return m;
+}
+
+/** Distinct client codes, regardless of status. */
+function clientCount(txns) {
+  return uniq((txns || []).map(function (t) {
+    return String(t.clientCode || '').toUpperCase();
+  }).filter(Boolean)).length;
+}
+
+/**
+ * KPIs for a set of transactions. The reference month/year comes from the LATEST
+ * TxnDate present, not today's date, so loading historic data shows that period
+ * rather than an empty current month.
  */
 function kpis(txns) {
-  var dated = txns.filter(function (t) { return t.date; });
+  var dated = (txns || []).filter(function (t) { return t.date; });
   var latest = '';
   dated.forEach(function (t) { if (t.date > latest) latest = t.date; });
 
   var refMonth = latest ? latest.slice(0, 7) : '';
   var refYear = latest ? latest.slice(0, 4) : '';
 
-  var gm = 0, gy = 0, sm = 0, sy = 0, lm = 0, ly = 0, txM = 0;
-  var first = {};                                        /* clientCode -> first date */
+  var monthTx = dated.filter(function (t) { return t.date.slice(0, 7) === refMonth; });
+  var yearTx = dated.filter(function (t) { return t.date.slice(0, 4) === refYear; });
+
+  var mm = metrics(monthTx), my = metrics(yearTx), all = metrics(txns);
+
+  /* First-ever PURCHASE per client — a redemption does not make someone a new
+     client, and a rejected transaction never happened. */
+  var first = {};
   dated.forEach(function (t) {
-    var g = num(t.sip) + num(t.lumpsum);
-    if (t.date.slice(0, 4) === refYear) { gy += g; sy += num(t.sip); ly += num(t.lumpsum); }
-    if (t.date.slice(0, 7) === refMonth) { gm += g; sm += num(t.sip); lm += num(t.lumpsum); txM++; }
-    var c = t.clientCode.toUpperCase();
+    if (!isPurchase(t) || !isCounted(t)) return;
+    var c = String(t.clientCode || '').toUpperCase();
+    if (!c) return;
     if (!first[c] || t.date < first[c]) first[c] = t.date;
   });
-
   var newClients = 0;
   Object.keys(first).forEach(function (c) {
     if (NEW_CLIENT_BASIS === 'FIRST_EVER_IN_REF_MONTH' && first[c].slice(0, 7) === refMonth) newClients++;
@@ -1329,89 +1610,236 @@ function kpis(txns) {
   return {
     latest: latest, refMonth: refMonth, refYear: refYear,
     refLabel: refMonth ? monLabel(refMonth) : '-',
-    grossMonth: gm, grossYear: gy, sipMonth: sm, sipYear: sy,
-    lumpMonth: lm, lumpYear: ly, txnsMonth: txM,
-    clients: uniq(txns.map(function (t) { return t.clientCode.toUpperCase(); }).filter(Boolean)).length,
-    newClients: newClients, txns: txns.length
+    month: mm, year: my, all: all,
+    clients: clientCount(txns),
+    clientsMonth: clientCount(monthTx),
+    newClients: newClients,
+    txns: (txns || []).length
   };
 }
 
-/* One row per month present in the data (most recent 12). */
+/** One row per month present, most recent 12, with every metric. */
 function monthly(txns) {
   var m = {};
-  txns.forEach(function (t) {
+  (txns || []).forEach(function (t) {
     if (!t.date) return;
     var k = t.date.slice(0, 7);
-    if (!m[k]) m[k] = { key: k, sip: 0, lump: 0, n: 0 };
-    m[k].sip += num(t.sip); m[k].lump += num(t.lumpsum); m[k].n++;
+    if (!m[k]) m[k] = [];
+    m[k].push(t);
   });
-  return Object.keys(m).sort().slice(-12).map(function (k) { return m[k]; });
+  return Object.keys(m).sort().slice(-12).map(function (k) {
+    var mx = metrics(m[k]);
+    mx.key = k;
+    mx.clients = clientCount(m[k]);
+    return mx;
+  });
 }
 
-/* One row per client code, across the whole scope. */
+/** One row per client code. */
 function byClient(txns) {
   var m = {};
-  txns.forEach(function (t) {
-    var k = t.clientCode.toUpperCase();
+  (txns || []).forEach(function (t) {
+    var k = String(t.clientCode || '').toUpperCase();
     if (!k) return;
-    if (!m[k]) m[k] = { clientCode: t.clientCode, clientName: t.clientName, sip: 0, lump: 0, n: 0, vrms: [], first: t.date, last: t.date };
+    if (!m[k]) m[k] = { clientCode: t.clientCode, clientName: t.clientName, pan: t.pan,
+                        panMasked: t.panMasked, rows: [], vrms: [], rms: [],
+                        first: t.date, last: t.date };
     var r = m[k];
-    r.sip += num(t.sip); r.lump += num(t.lumpsum); r.n++;
+    r.rows.push(t);
     if (t.clientName && !r.clientName) r.clientName = t.clientName;
+    if (t.pan && !r.pan) { r.pan = t.pan; r.panMasked = t.panMasked; }
     if (t.vrmEmpCode && r.vrms.indexOf(t.vrmEmpCode) < 0) r.vrms.push(t.vrmEmpCode);
+    if (t.rmName && r.rms.indexOf(t.rmName) < 0) r.rms.push(t.rmName);
     if (t.date && (!r.first || t.date < r.first)) r.first = t.date;
     if (t.date && (!r.last || t.date > r.last)) r.last = t.date;
   });
   return Object.keys(m).map(function (k) {
-    m[k].total = m[k].sip + m[k].lump; return m[k];
-  }).sort(function (a, b) { return b.total - a.total; });
+    var r = m[k];
+    var mx = metrics(r.rows);
+    r.sip = mx.sip; r.lumpsum = mx.lumpsum; r.redemption = mx.redemption;
+    r.gross = mx.gross; r.net = mx.net; r.n = r.rows.length;
+    r.pending = mx.pending; r.rejected = mx.rejected;
+    return r;
+  }).sort(function (a, b) { return b.net - a.net; });
 }
 
-/* One row per VRM (admin). */
+/** One row per VRM. */
 function byVrm(txns, vrms) {
   var m = {};
   (vrms || []).forEach(function (v) {
-    m[v.empCode.toUpperCase()] = { empCode: v.empCode, name: v.name, sip: 0, lump: 0, n: 0, clients: {} };
+    m[v.empCode.toUpperCase()] = { empCode: v.empCode, name: v.name, rows: [], clients: {}, rms: [] };
   });
-  txns.forEach(function (t) {
-    var k = (t.vrmEmpCode || '-').toUpperCase();
-    if (!m[k]) m[k] = { empCode: t.vrmEmpCode || '-', name: t.vrmName || '(unassigned)', sip: 0, lump: 0, n: 0, clients: {} };
-    m[k].sip += num(t.sip); m[k].lump += num(t.lumpsum); m[k].n++;
-    if (t.clientCode) m[k].clients[t.clientCode.toUpperCase()] = 1;
+  (txns || []).forEach(function (t) {
+    var k = String(t.vrmEmpCode || '-').toUpperCase();
+    if (!m[k]) m[k] = { empCode: t.vrmEmpCode || '-', name: t.vrm || '(unassigned)', rows: [], clients: {}, rms: [] };
+    var r = m[k];
+    r.rows.push(t);
+    if (t.clientCode) r.clients[String(t.clientCode).toUpperCase()] = 1;
+    if (t.rmName && r.rms.indexOf(t.rmName) < 0) r.rms.push(t.rmName);
   });
   return Object.keys(m).map(function (k) {
     var r = m[k];
-    r.gross = r.sip + r.lump;
+    var mx = metrics(r.rows);
+    r.sip = mx.sip; r.lumpsum = mx.lumpsum; r.redemption = mx.redemption;
+    r.gross = mx.gross; r.net = mx.net;
+    r.pending = mx.pending; r.rejected = mx.rejected;
+    r.n = r.rows.length;
+    r.clientCount = Object.keys(r.clients).length;
+    return r;
+  }).sort(function (a, b) { return b.net - a.net; });
+}
+
+/** One row per scheme (admin analysis). */
+function byScheme(txns) {
+  var m = {};
+  (txns || []).forEach(function (t) {
+    var k = String(t.scheme || '(not supplied)').toUpperCase();
+    if (!m[k]) m[k] = { scheme: t.scheme || '(not supplied)', rows: [], clients: {} };
+    m[k].rows.push(t);
+    if (t.clientCode) m[k].clients[String(t.clientCode).toUpperCase()] = 1;
+  });
+  return Object.keys(m).map(function (k) {
+    var r = m[k];
+    var mx = metrics(r.rows);
+    r.sip = mx.sip; r.lumpsum = mx.lumpsum; r.redemption = mx.redemption;
+    r.gross = mx.gross; r.net = mx.net; r.n = r.rows.length;
     r.clientCount = Object.keys(r.clients).length;
     return r;
   }).sort(function (a, b) { return b.gross - a.gross; });
 }
 
+/** Search across every column a user can see. */
 function matches(t, q) {
   if (!q) return true;
   q = q.toLowerCase();
-  return [t.clientCode, t.clientName, t.vrmEmpCode, t.vrmName, dmy(t.date), t.date,
-          String(t.sip), String(t.lumpsum), t.enteredBy]
+  return [t.clientCode, t.clientName, t.pan, t.vrm, t.vrmEmpCode, t.rmName, t.scheme,
+          TT_LABEL[t.txnType] || t.txnType, TS_LABEL[t.status] || t.status,
+          t.reason, dmy(t.date), t.date, hhmm(t.time), String(t.amount), t.batchId]
     .some(function (f) { return String(f || '').toLowerCase().indexOf(q) >= 0; });
 }
 
-/* ============================== KPI CARDS ================================= */
+/* --------------------------- display helpers ------------------------------ */
+
+/** 24h "13:47" -> "01:47 PM" for display; storage stays 24h so sorting works. */
+function hhmm(t) {
+  var m = String(t || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return '';
+  var h = num(m[1]), ap = h >= 12 ? 'PM' : 'AM';
+  var h12 = h % 12; if (h12 === 0) h12 = 12;
+  return ('0' + h12).slice(-2) + ':' + m[2] + ' ' + ap;
+}
+
+function typePill(t) {
+  var cls = t === TT.REDEMPTION ? 'warn' : (t === TT.SIP ? '' : 'ok');
+  return '<span class="pill ' + cls + '">' + esc(TT_LABEL[t] || t || '?') + '</span>';
+}
+
+function statusPill(st) {
+  var cls = st === TS.COMPLETED ? 'ok' : (st === TS.REJECTED ? 'lock' : 'warn');
+  return '<span class="pill ' + cls + '">' + esc(TS_LABEL[st] || st || '?') + '</span>';
+}
+
+/** Signed amount: a redemption is money leaving, so it reads as negative. */
+function amountCell(t) {
+  var neg = t.txnType === TT.REDEMPTION;
+  var dim = !isCounted(t) ? ';opacity:.55' : '';
+  return '<span style="color:' + (neg ? 'var(--dan)' : 'var(--ink)') + dim + '">' +
+         (neg ? '-' : '') + rupee(t.amount) + '</span>';
+}
+
+function panCell(t) {
+  if (!t.pan) return '<span class="muted">—</span>';
+  return '<span class="mono">' + esc(t.pan) + '</span>' +
+         (t.panMasked ? '<span class="muted" style="font-size:10.5px"> masked</span>' : '');
+}
+
+/* ============================== KPI CARDS ================================= *
+ * Ordered as the CR requires: Net Sales first, because it is the figure that
+ * represents business actually retained.
+ * ========================================================================== */
 function kpiCards(k) {
   var cards = [
-    { t: 'Gross sales - month', v: k.grossMonth, s: k.refLabel + ' - SIP + Lumpsum', ic: IC.rupee, g: '' },
-    { t: 'Gross sales - year',  v: k.grossYear,  s: (k.refYear || '-') + ' calendar year', ic: IC.cal, g: '' },
-    { t: 'SIP - month',         v: k.sipMonth,   s: k.refLabel + ' SIP only', ic: IC.repeat, g: 'g2' },
-    { t: 'SIP - year',          v: k.sipYear,    s: (k.refYear || '-') + ' SIP only', ic: IC.repeat, g: 'g2' },
-    { t: 'Client count',        v: k.clients,    s: 'distinct client codes', ic: IC.user, g: '', plain: true },
-    { t: 'New client txns',     v: k.newClients, s: 'first-ever investment in ' + k.refLabel, ic: IC.spark, g: 'g2', plain: true }
+    { t: 'Net Sales — ' + k.refLabel, v: k.month.net, ic: IC.spark, g: 'net',
+      s: 'Gross ' + shortInr(k.month.gross) + ' − Redemption ' + shortInr(k.month.redemption) },
+    { t: 'Net Sales — ' + (k.refYear || '-'), v: k.year.net, ic: IC.spark, g: 'net',
+      s: 'year to date' },
+    { t: 'Gross Sales — ' + k.refLabel, v: k.month.gross, ic: IC.rupee, g: '',
+      s: 'SIP + Lumpsum' },
+    { t: 'Gross Sales — ' + (k.refYear || '-'), v: k.year.gross, ic: IC.cal, g: '',
+      s: 'SIP + Lumpsum' },
+    { t: 'Redemption — ' + k.refLabel, v: k.month.redemption, ic: IC.down, g: 'red',
+      s: 'money withdrawn' },
+    { t: 'Redemption — ' + (k.refYear || '-'), v: k.year.redemption, ic: IC.down, g: 'red',
+      s: 'money withdrawn' },
+    { t: 'SIP — ' + k.refLabel, v: k.month.sip, ic: IC.repeat, g: 'g2', s: '' },
+    { t: 'SIP — ' + (k.refYear || '-'), v: k.year.sip, ic: IC.repeat, g: 'g2', s: '' },
+    { t: 'Lumpsum — ' + k.refLabel, v: k.month.lumpsum, ic: IC.rupee, g: 'g2', s: '' },
+    { t: 'Lumpsum — ' + (k.refYear || '-'), v: k.year.lumpsum, ic: IC.rupee, g: 'g2', s: '' },
+    { t: 'Clients', v: k.clients, ic: IC.user, g: '', plain: true, s: 'distinct client codes' },
+    { t: 'New clients — ' + k.refLabel, v: k.newClients, ic: IC.spark, g: '', plain: true,
+      s: 'first-ever purchase this month' }
   ];
-  return '<div class="kpis">' + cards.map(function (c, i) {
+  return '<div class="kpis">' + cards.map(function (c) {
     return '<div class="kpi ' + c.g + '">' +
       '<div class="kt"><span class="ki">' + c.ic + '</span>' + esc(c.t) + '</div>' +
-      '<div class="kv" data-count="' + num(c.v) + '" data-plain="' + (c.plain ? 1 : 0) + '" data-i="' + i + '">' +
+      '<div class="kv" data-count="' + num(c.v) + '" data-plain="' + (c.plain ? 1 : 0) + '">' +
       (c.plain ? '0' : rupee(0)) + '</div>' +
-      '<div class="ks">' + esc(c.s) + '</div></div>';
+      (c.s ? '<div class="ks">' + esc(c.s) + '</div>' : '') +
+      '</div>';
   }).join('') + '</div>';
+}
+
+/* ============================== WATERFALL ================================= *
+ * SIP + Lumpsum = Gross, minus Redemption = Net. The whole point is that the
+ * arithmetic is visible, so the bars are proportional and the maths is spelled
+ * out underneath rather than left implied.
+ * ========================================================================== */
+function waterfall(m, title) {
+  var max = Math.max(m.sip + m.lumpsum, m.gross, Math.abs(m.net), m.redemption, 1);
+  var pctOf = function (v) { return Math.max(1.5, Math.abs(v) / max * 100); };
+
+  var bars = [
+    { label: 'SIP', v: m.sip, cls: 'wf-sip' },
+    { label: 'Lumpsum', v: m.lumpsum, cls: 'wf-lump' },
+    { label: 'Gross Sales', v: m.gross, cls: 'wf-gross', rule: true },
+    { label: 'Redemption', v: -m.redemption, cls: 'wf-red' },
+    { label: 'Net Sales', v: m.net, cls: 'wf-net', rule: true }
+  ];
+
+  return '<div class="panel">' +
+    '<div class="ptop"><div><h3>' + esc(title || 'How the business adds up') + '</h3></div></div>' +
+    '<div class="wf">' +
+      bars.map(function (b) {
+        return '<div class="wfrow' + (b.rule ? ' wftot' : '') + '">' +
+          '<div class="wflab">' + esc(b.label) + '</div>' +
+          '<div class="wfbar"><div class="' + b.cls + '" style="width:' + pctOf(b.v).toFixed(1) + '%"></div></div>' +
+          '<div class="wfval' + (b.v < 0 ? ' neg' : '') + '">' +
+            (b.v < 0 ? '− ' : '') + rupee(Math.abs(b.v)) + '</div></div>';
+      }).join('') +
+      '<div class="wfsum">' +
+        '<span>' + rupee(m.sip) + '</span> + <span>' + rupee(m.lumpsum) + '</span>' +
+        ' = <b>' + rupee(m.gross) + '</b> − <span class="neg">' + rupee(m.redemption) + '</span>' +
+        ' = <b class="netbig">' + rupee(m.net) + '</b>' +
+      '</div>' +
+    '</div></div>';
+}
+
+/* Pending / rejected, kept visible but plainly outside the finalised figures. */
+function statusStrip(m) {
+  var counted = countedSet();
+  var note = Object.keys(counted).map(function (k) { return TS_LABEL[k] || k; }).join(' + ');
+  return '<div class="panel"><div class="ptop"><div><h3>Transaction status</h3>' +
+    '<p>Counting ' + esc(note) + ' towards business figures</p></div></div>' +
+    '<div class="statgrid">' +
+      '<div class="statbox ok"><div class="sl">Counted business</div><div class="sv">' + rupee(m.gross) + '</div>' +
+        '<div class="sn">' + m.countedTxns + ' transaction(s)</div></div>' +
+      '<div class="statbox warn"><div class="sl">In Process (pending)</div><div class="sv">' + rupee(m.pending) + '</div>' +
+        '<div class="sn">' + m.pendingTxns + ' transaction(s) — not in Gross</div></div>' +
+      '<div class="statbox dan"><div class="sl">Rejected</div><div class="sv">' + rupee(m.rejected) + '</div>' +
+        '<div class="sn">' + m.rejectedTxns + ' transaction(s) — excluded</div></div>' +
+      '<div class="statbox net"><div class="sl">Final Net Sales</div><div class="sv">' + rupee(m.net) + '</div>' +
+        '<div class="sn">Gross − Redemption</div></div>' +
+    '</div></div>';
 }
 
 /* Count-up animation on load / refresh. */
@@ -1440,29 +1868,17 @@ function animateCounts() {
 
 /* ================================ CHARTS ================================= */
 /* Chart.js when the CDN is reachable, hand-drawn CSS bars when it is not. */
-function chartPanel(id, title, sub, rows, mode) {
-  var legend = mode === 'vrm'
-    ? '<i style="background:var(--p)"></i>SIP<i style="background:var(--a);margin-left:16px"></i>Lumpsum'
-    : '<i style="background:var(--p)"></i>SIP<i style="background:var(--a);margin-left:16px"></i>Lumpsum';
-  return '<div class="panel">' +
-    '<div class="ptop"><div><h3>' + esc(title) + '</h3>' + (sub ? '<p>' + esc(sub) + '</p>' : '') + '</div></div>' +
-    (rows.length
-      ? '<div class="chartbox" id="' + id + '_box"><canvas id="' + id + '"></canvas></div>' +
-        '<div class="legend">' + legend + '</div>'
-      : emptyState('Nothing to chart yet', 'Upload or add transactions to see the SIP vs Lumpsum split.')) +
-    '</div>';
-}
 
-function drawChart(id, labels, sip, lump) {
+function drawChart(id, labels, seriesA, seriesB, names) {
   var box = $(id + '_box');
   if (!box) return;
   var ink = getComputedStyle(document.documentElement).getPropertyValue('--ink2').trim() || '#4b5164';
   var line = getComputedStyle(document.documentElement).getPropertyValue('--line').trim() || '#e6e8f0';
   var p = getComputedStyle(document.documentElement).getPropertyValue('--p').trim() || '#4f46e5';
-  var a = getComputedStyle(document.documentElement).getPropertyValue('--a').trim() || '#0d9488';
+  var a = getComputedStyle(document.documentElement).getPropertyValue('--dan').trim() || '#df1b41';
   var surf = getComputedStyle(document.documentElement).getPropertyValue('--surf').trim() || '#fff';
 
-  if (!window.Chart) return fallbackBars(box, labels, sip, lump, p, a);
+  if (!window.Chart) return fallbackBars(box, labels, seriesA, seriesB, p, a);
 
   var cv = $(id);
   if (!cv) return;
@@ -1473,8 +1889,8 @@ function drawChart(id, labels, sip, lump) {
     data: {
       labels: labels,
       datasets: [
-        { label: 'SIP', data: sip, backgroundColor: p, borderRadius: 5, maxBarThickness: 42 },
-        { label: 'Lumpsum', data: lump, backgroundColor: a, borderRadius: 5, maxBarThickness: 42 }
+        { label: (names && names[0]) || 'A', data: seriesA, backgroundColor: p, borderRadius: 5, maxBarThickness: 42 },
+        { label: (names && names[1]) || 'B', data: seriesB, backgroundColor: a, borderRadius: 5, maxBarThickness: 42 }
       ]
     },
     options: {
@@ -1522,12 +1938,558 @@ function emptyState(title, sub) {
          '<span>' + esc(sub) + '</span></div>';
 }
 
+/* ============================ MONTHLY TREND =============================== *
+ * Five series at once is unreadable, so the default is the three that answer
+ * "how are we doing" — Gross, Redemption, Net — with SIP and Lumpsum available
+ * as toggles rather than always on.
+ * ========================================================================== */
+var TREND_SERIES = [
+  { key: 'gross',      label: 'Gross Sales', color: 'var(--p)',   raw: '#635bff' },
+  { key: 'redemption', label: 'Redemption',  color: 'var(--dan)', raw: '#df1b41' },
+  { key: 'net',        label: 'Net Sales',   color: 'var(--a)',   raw: '#09825d' },
+  { key: 'sip',        label: 'SIP',         color: 'var(--p2)',  raw: '#7a73ff' },
+  { key: 'lumpsum',    label: 'Lumpsum',     color: 'var(--cyan)', raw: '#00b8d9' }
+];
+
+S.trendOn = { gross: true, redemption: true, net: true, sip: false, lumpsum: false };
+
+function trendPanel(id, m) {
+  return '<div class="panel"><div class="ptop"><div><h3>Monthly trend</h3></div></div>' +
+    (m.length
+      ? '<div class="metricToggles">' + TREND_SERIES.map(function (sr) {
+          var on = !!S.trendOn[sr.key];
+          return '<button data-trend="' + sr.key + '" aria-pressed="' + on + '"' +
+                 (on ? ' style="background:' + sr.color + '"' : '') + '>' + esc(sr.label) + '</button>';
+        }).join('') + '</div>' +
+        '<div class="chartbox" id="' + id + '_box"><canvas id="' + id + '"></canvas></div>'
+      : emptyState('Nothing to chart yet', 'Upload transactions to see the trend.')) +
+    '</div>';
+}
+
+/** Multi-series monthly chart honouring the toggles. */
+function drawTrend(id, m) {
+  var box = $(id + '_box');
+  if (!box || !m.length) return;
+  var labels = m.map(function (r) { return monLabel(r.key); });
+  var on = TREND_SERIES.filter(function (sr) { return S.trendOn[sr.key]; });
+  if (!on.length) {
+    box.innerHTML = '<div class="empty"><b>No metrics selected</b>' +
+      '<span>Turn at least one on above.</span></div>';
+    return;
+  }
+  if (!box.querySelector('canvas')) box.innerHTML = '<canvas id="' + id + '"></canvas>';
+
+  var cv = $(id);
+  if (!window.Chart || !cv) {
+    /* No chart library: fall back to bars for the first selected series. */
+    return fallbackBars(box, labels, m.map(function (r) { return num(r[on[0].key]); }),
+                        m.map(function () { return 0; }), on[0].raw, on[0].raw);
+  }
+  var ink = cssVar('--ink2', '#425466'), line = cssVar('--line', '#e6ebf1'),
+      surf = cssVar('--surf', '#ffffff');
+  window._charts = window._charts || {};
+  if (window._charts[id]) { try { window._charts[id].destroy(); } catch (e) {} }
+
+  window._charts[id] = new Chart(cv.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: on.map(function (sr) {
+        var isLine = (sr.key === 'net');
+        return {
+          type: isLine ? 'line' : 'bar',
+          label: sr.label,
+          data: m.map(function (r) { return num(r[sr.key]); }),
+          backgroundColor: cssVar(sr.color.replace('var(', '').replace(')', ''), sr.raw),
+          borderColor: cssVar(sr.color.replace('var(', '').replace(')', ''), sr.raw),
+          borderWidth: isLine ? 3 : 0,
+          borderRadius: isLine ? 0 : 5,
+          maxBarThickness: 38,
+          tension: 0.3,
+          pointRadius: isLine ? 3 : 0,
+          fill: false,
+          order: isLine ? 0 : 1
+        };
+      })
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 800, easing: 'easeOutQuart' },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'bottom',
+                  labels: { color: ink, boxWidth: 12, font: { size: 12 } } },
+        tooltip: {
+          backgroundColor: surf, titleColor: ink, bodyColor: ink,
+          borderColor: line, borderWidth: 1, padding: 10, cornerRadius: 8,
+          callbacks: { label: function (c) { return c.dataset.label + ': ' + rupee(c.parsed.y); } }
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: ink, font: { size: 11 } }, border: { color: line } },
+        y: { grid: { color: line }, border: { display: false },
+             ticks: { color: ink, font: { size: 11 },
+                      callback: function (v) { return shortInr(v); } } }
+      }
+    }
+  });
+}
+
+function cssVar(name, fallback) {
+  try {
+    var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  } catch (e) { return fallback; }
+}
+
+/* --------------------------- shared table pieces -------------------------- */
+
+function can(p) { return !!(S.data && S.data.perms && S.data.perms[p]); }
+
+/* Export buttons only exist if this session is allowed to extract data. */
+function expBtns(what) {
+  if (!can('canExport')) return '';
+  return '<button class="btn sm" data-act="csv" data-what="' + what + '">' + IC.down + ' CSV</button>' +
+         '<button class="btn sm" data-act="xlsx" data-what="' + what + '">' + IC.down + ' Excel</button>';
+}
+
+/* The twelve source columns, in the file's order. */
+var TXN_COLS =
+  '<th>Txn Date</th><th>Txn Time</th><th>Client Code</th><th>Client Name</th>' +
+  '<th>PAN No.</th><th>VRM</th><th>RM Name</th><th>Scheme Name</th>' +
+  '<th>TXN Type</th><th class="num">Amount</th><th>Txn Status</th><th>Reason for Rejection</th>';
+
+function txnCells(t) {
+  return '<td class="mono" style="white-space:nowrap">' + esc(dmy(t.date)) + '</td>' +
+    '<td class="mono muted" style="white-space:nowrap">' + esc(hhmm(t.time) || '—') + '</td>' +
+    '<td class="mono"><b>' + esc(t.clientCode) + '</b></td>' +
+    '<td>' + esc(t.clientName) + '</td>' +
+    '<td>' + panCell(t) + '</td>' +
+    '<td>' + esc(t.vrm || '') + '<div class="mono muted" style="font-size:11px">' + esc(t.vrmEmpCode) + '</div></td>' +
+    '<td>' + (t.rmName ? esc(t.rmName) : '<span class="muted">—</span>') + '</td>' +
+    '<td><span class="cx" title="' + esc(t.scheme) + '">' + (t.scheme ? esc(t.scheme) : '<span class="muted">—</span>') + '</span></td>' +
+    '<td>' + typePill(t.txnType) + '</td>' +
+    '<td class="num">' + amountCell(t) + '</td>' +
+    '<td>' + statusPill(t.status) + '</td>' +
+    '<td>' + (t.reason
+      ? (t.status === TS.REJECTED
+          ? '<span style="color:var(--dan);font-weight:600">' + esc(t.reason) + '</span>'
+          : '<span class="muted">' + esc(t.reason) + '</span>')
+      : '<span class="muted">—</span>') + '</td>';
+}
+
+/** Totals row that reconciles with the KPIs above it. */
+function txnFoot(rows, extraCols) {
+  var m = metrics(rows);
+  return '<tfoot><tr><td colspan="9">Counted totals (' + rows.length + ' rows)</td>' +
+    '<td class="num">SIP ' + rupee(m.sip) + ' · Lump ' + rupee(m.lumpsum) +
+    ' · Red ' + rupee(m.redemption) + '</td>' +
+    '<td colspan="' + (2 + (extraCols || 0)) + '">Gross <b>' + rupee(m.gross) +
+    '</b> · Net <b style="color:var(--a)">' + rupee(m.net) + '</b></td></tr></tfoot>';
+}
+
+/* ------------------------------ VRM: Summary ------------------------------ */
+function viewSummary() {
+  var t = S.data.txns, k = kpis(t), m = monthly(t);
+  after(function () { drawTrend('c1', m); });
+
+  return pageHead('My summary', S.session.name + ' (' + S.session.empCode + ') — ' + k.refLabel, '') +
+    kpiCards(k) +
+    waterfall(k.month, 'How ' + k.refLabel + ' adds up') +
+    trendPanel('c1', m) +
+    statusStrip(k.all);
+}
+
+/* ------------------------------- VRM: Data -------------------------------- */
+function viewData() {
+  var q = S.q.data || '';
+  var rows = S.data.txns.filter(function (t) { return matches(t, q); })
+    .sort(function (a, b) {
+      return (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || '');
+    });
+
+  return pageHead('My data', rows.length + ' of ' + S.data.txns.length + ' rows',
+      '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload CSV/Excel</button>' +
+      '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Upload template</button>') +
+    /* CR: a VRM cannot amend or remove anything after upload. */
+    (can('canDelete') ? '' :
+      '<div class="panel" style="border-left:3px solid var(--p)"><div style="padding:14px 18px;' +
+      'font-size:13.5px;color:var(--ink2)">Corrections are handled by Admin. If a transaction is ' +
+      'wrong, contact Admin with the client code and transaction date — deletion and editing are ' +
+      'restricted to keep the audit trail intact.</div></div>') +
+    '<div class="panel"><div class="ptop"><div><h3>Transactions</h3></div>' +
+    '<div class="tools">' + searchBox('data', 'Search client, PAN, scheme, amount…') + expBtns('vrmtxns') + '</div></div>' +
+    (rows.length
+      ? '<div class="twrap"><table><thead><tr>' + TXN_COLS + '</tr></thead><tbody>' +
+        rows.map(function (t) { return '<tr>' + txnCells(t) + '</tr>'; }).join('') +
+        '</tbody>' + txnFoot(rows, 0) + '</table></div>'
+      : emptyState(q ? 'No matching transactions' : 'No transactions yet',
+          q ? 'Try a different search term.' : 'Upload a CSV or Excel file to get started.')) +
+    '</div>';
+}
+
+/* -------------------------- Client Consolidated --------------------------- */
+function viewClients() {
+  var admin = isAdmin();
+  var q = (S.q.clients || '').toLowerCase();
+  var all = byClient(S.data.txns);
+  var rows = all.filter(function (r) {
+    return !q || (r.clientCode + ' ' + r.clientName + ' ' + (r.pan || '') + ' ' +
+                  r.vrms.join(' ') + ' ' + r.rms.join(' ')).toLowerCase().indexOf(q) >= 0;
+  });
+  var tot = { sip: 0, lumpsum: 0, redemption: 0, gross: 0, net: 0, n: 0 };
+  rows.forEach(function (r) {
+    tot.sip += r.sip; tot.lumpsum += r.lumpsum; tot.redemption += r.redemption;
+    tot.gross += r.gross; tot.net += r.net; tot.n += r.n;
+  });
+  var vrmOpts = (S.data.vrms || []).map(function (v) {
+    return '<option value="' + esc(v.empCode) + '">' + esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
+  }).join('');
+
+  return pageHead('Client consolidated', rows.length + ' clients', '') +
+    '<div class="panel"><div class="ptop"><div><h3>Per-client totals</h3></div>' +
+    '<div class="tools">' + searchBox('clients', 'Search client, PAN, VRM…') + expBtns('clients') + '</div></div>' +
+    (rows.length
+      ? '<div class="twrap"><table><thead><tr>' +
+        '<th>Client Code</th><th>Client Name</th><th>PAN No.</th>' +
+        (admin ? '<th>VRM</th><th>RM Name</th>' : '') +
+        '<th class="num">SIP</th><th class="num">Lumpsum</th><th class="num">Gross</th>' +
+        '<th class="num">Redemption</th><th class="num">Net Sales</th>' +
+        '<th class="num">Txns</th><th>First</th><th>Last</th>' +
+        (admin ? '<th></th>' : '') + '</tr></thead><tbody>' +
+        rows.map(function (r) {
+          return '<tr>' +
+            '<td class="mono"><b><button class="btn xs gh" data-act="client" data-code="' + esc(r.clientCode) +
+              '" style="padding:0;font-family:inherit">' + esc(r.clientCode) + '</button></b></td>' +
+            '<td>' + esc(r.clientName) + '</td>' +
+            '<td>' + panCell(r) + '</td>' +
+            (admin ? '<td class="mono" style="font-size:11.5px">' + esc(r.vrms.join(', ') || '—') + '</td>' +
+                     '<td style="font-size:12px">' + esc(r.rms.join(', ') || '—') + '</td>' : '') +
+            '<td class="num">' + rupee(r.sip) + '</td>' +
+            '<td class="num">' + rupee(r.lumpsum) + '</td>' +
+            '<td class="num tot">' + rupee(r.gross) + '</td>' +
+            '<td class="num" style="color:var(--dan)">' + (r.redemption ? '−' + rupee(r.redemption) : rupee(0)) + '</td>' +
+            '<td class="num tot" style="color:var(--a)">' + rupee(r.net) + '</td>' +
+            '<td class="num">' + r.n + '</td>' +
+            '<td class="mono">' + esc(dmy(r.first)) + '</td>' +
+            '<td class="mono">' + esc(dmy(r.last)) + '</td>' +
+            (admin
+              ? '<td style="text-align:right"><div class="row" style="justify-content:flex-end;gap:6px">' +
+                '<select class="inp sm" data-dest="' + esc(r.clientCode) + '" style="width:auto;padding:4px 8px;font-size:11.5px">' +
+                '<option value="">Transfer to…</option>' + vrmOpts + '</select>' +
+                '<button class="btn xs acc" data-act="transfer" data-code="' + esc(r.clientCode) + '">' + IC.send + '</button>' +
+                guard('dc:' + r.clientCode,
+                  '<button class="btn xs dan" data-act="delclient" data-code="' + esc(r.clientCode) + '">Confirm</button>',
+                  '<button class="btn xs" data-act="arm">' + IC.trash + '</button>') +
+                '</div></td>'
+              : '') + '</tr>';
+        }).join('') +
+        '</tbody><tfoot><tr><td colspan="' + (admin ? 5 : 3) + '">Total</td>' +
+        '<td class="num">' + rupee(tot.sip) + '</td><td class="num">' + rupee(tot.lumpsum) + '</td>' +
+        '<td class="num">' + rupee(tot.gross) + '</td>' +
+        '<td class="num" style="color:var(--dan)">−' + rupee(tot.redemption) + '</td>' +
+        '<td class="num" style="color:var(--a)">' + rupee(tot.net) + '</td>' +
+        '<td class="num">' + tot.n + '</td><td colspan="' + (admin ? 3 : 2) + '"></td>' +
+        '</tr></tfoot></table></div>'
+      : emptyState('No clients yet', 'Client rows appear as soon as transactions exist.')) +
+    '</div>';
+}
+
+/* ------------------------------ Client detail ----------------------------- */
+function viewClientDetail() {
+  var code = S.clientCode;
+  var rows = S.data.txns.filter(function (t) {
+    return String(t.clientCode).toUpperCase() === String(code).toUpperCase();
+  }).sort(function (a, b) {
+    return (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || '');
+  });
+  if (!rows.length) {
+    return pageHead('Client ' + code, 'not found in your data', '') +
+      '<div class="panel">' + emptyState('Nothing to show', 'This client has no transactions in your scope.') + '</div>';
+  }
+  var c = byClient(rows)[0];
+  var m = metrics(rows);
+
+  return pageHead('Client ' + c.clientCode, c.clientName,
+      '<button class="btn sm" data-act="back">← Back to clients</button>') +
+    '<div class="panel"><div class="ptop"><div><h3>Client details</h3></div></div>' +
+    '<div style="padding:18px 20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px">' +
+      [['Client Code', esc(c.clientCode)], ['Client Name', esc(c.clientName)],
+       ['PAN No.', panCell(c)], ['VRM', esc(c.vrms.join(', ') || '—')],
+       ['RM Name', esc(c.rms.join(', ') || '—')], ['Transactions', String(rows.length)],
+       ['First transaction', esc(dmy(c.first))], ['Latest transaction', esc(dmy(c.last))]
+      ].map(function (kv) {
+        return '<div><div class="lbl">' + kv[0] + '</div><div style="font-size:14px">' + kv[1] + '</div></div>';
+      }).join('') +
+    '</div></div>' +
+    waterfall(m, 'This client’s business') +
+    '<div class="panel"><div class="ptop"><div><h3>Transaction history</h3></div>' +
+    '<div class="tools">' + expBtns('clientdetail') + '</div></div>' +
+    '<div class="twrap"><table><thead><tr>' +
+      '<th>Txn Date</th><th>Txn Time</th><th>Scheme Name</th><th>TXN Type</th>' +
+      '<th class="num">Amount</th><th>Txn Status</th><th>Reason for Rejection</th>' +
+    '</tr></thead><tbody>' +
+    rows.map(function (t) {
+      return '<tr><td class="mono" style="white-space:nowrap">' + esc(dmy(t.date)) + '</td>' +
+        '<td class="mono muted">' + esc(hhmm(t.time) || '—') + '</td>' +
+        '<td><span class="cx" title="' + esc(t.scheme) + '">' + esc(t.scheme || '—') + '</span></td>' +
+        '<td>' + typePill(t.txnType) + '</td>' +
+        '<td class="num">' + amountCell(t) + '</td>' +
+        '<td>' + statusPill(t.status) + '</td>' +
+        '<td>' + (t.reason ? esc(t.reason) : '<span class="muted">—</span>') + '</td></tr>';
+    }).join('') +
+    '</tbody></table></div></div>';
+}
+
+/* --------------------------- ADMIN: Overview ------------------------------ */
+function viewOverview() {
+  var t = S.data.txns, k = kpis(t), m = monthly(t);
+  after(function () { drawTrend('c1', m); });
+  var vw = byVrm(t, S.data.vrms);
+  var active = vw.filter(function (v) { return v.n > 0; }).length;
+
+  return pageHead('Consolidated overview',
+      k.refLabel + ' · ' + t.length + ' transactions · ' + active + ' of ' +
+      (S.data.vrms || []).length + ' VRMs active', '') +
+    kpiCards(k) +
+    waterfall(k.month, 'How ' + k.refLabel + ' adds up — whole business') +
+    trendPanel('c1', m) +
+    statusStrip(k.all);
+}
+
+/* --------------------------- ADMIN: VRM-wise ------------------------------ */
+function viewVrmwise() {
+  var q = (S.q.vrmwise || '').toLowerCase();
+  var sortKey = S.vrmSort || 'net';
+  var rows = byVrm(S.data.txns, S.data.vrms).filter(function (r) {
+    return !q || (r.empCode + ' ' + r.name + ' ' + r.rms.join(' ')).toLowerCase().indexOf(q) >= 0;
+  }).sort(function (a, b) {
+    if (sortKey === 'clients') return b.clientCount - a.clientCount;
+    if (sortKey === 'txns') return b.n - a.n;
+    return num(b[sortKey]) - num(a[sortKey]);
+  });
+
+  var top = rows.filter(function (r) { return r.n > 0; }).slice(0, 12);
+  after(function () {
+    drawChart('c2', top.map(function (r) { return r.empCode; }),
+      top.map(function (r) { return r.gross; }),
+      top.map(function (r) { return r.redemption; }),
+      ['Gross Sales', 'Redemption']);
+  });
+
+  var tot = { sip: 0, lumpsum: 0, redemption: 0, gross: 0, net: 0, n: 0 };
+  rows.forEach(function (r) {
+    tot.sip += r.sip; tot.lumpsum += r.lumpsum; tot.redemption += r.redemption;
+    tot.gross += r.gross; tot.net += r.net; tot.n += r.n;
+  });
+
+  var SORTS = [['net', 'Net Sales'], ['gross', 'Gross Sales'], ['sip', 'SIP'],
+               ['lumpsum', 'Lumpsum'], ['redemption', 'Redemption'],
+               ['clients', 'Clients'], ['txns', 'Transactions']];
+
+  return pageHead('VRM-wise summary', rows.length + ' VRMs', '') +
+    '<div class="panel"><div class="ptop"><div><h3>VRM comparison</h3></div></div>' +
+    (top.length
+      ? '<div class="chartbox" id="c2_box"><canvas id="c2"></canvas></div>' +
+        '<div class="legend"><i style="background:var(--p)"></i>Gross Sales' +
+        '<i style="background:var(--dan);margin-left:16px"></i>Redemption</div>'
+      : emptyState('Nothing to chart', 'No VRM activity yet.')) + '</div>' +
+    '<div class="panel"><div class="ptop"><div><h3>Per-VRM performance</h3></div>' +
+    '<div class="tools">' +
+      '<span class="muted" style="font-size:12px">Sort by</span>' +
+      '<select class="inp" data-sort="vrm" style="width:auto;padding:6px 10px;font-size:12.5px">' +
+      SORTS.map(function (kv) {
+        return '<option value="' + kv[0] + '"' + (sortKey === kv[0] ? ' selected' : '') + '>' + kv[1] + '</option>';
+      }).join('') + '</select>' +
+      searchBox('vrmwise', 'Search VRM…') + expBtns('vrmwise') + '</div></div>' +
+    '<div class="twrap"><table><thead><tr><th>#</th><th>VRM</th><th>RM Name(s)</th>' +
+    '<th class="num">Clients</th><th class="num">SIP</th><th class="num">Lumpsum</th>' +
+    '<th class="num">Gross</th><th class="num">Redemption</th><th class="num">Net Sales</th>' +
+    '<th class="num">Txns</th><th class="num">Share of Net</th></tr></thead><tbody>' +
+    (rows.length ? rows.map(function (r, i) {
+      var share = tot.net > 0 ? (r.net / tot.net * 100) : 0;
+      return '<tr><td class="muted">' + (i + 1) + '</td>' +
+        '<td><b>' + esc(r.name) + '</b><div class="mono muted" style="font-size:11.5px">' + esc(r.empCode) + '</div></td>' +
+        '<td style="font-size:12px">' + esc(r.rms.slice(0, 3).join(', ') || '—') +
+          (r.rms.length > 3 ? ' <span class="muted">+' + (r.rms.length - 3) + '</span>' : '') + '</td>' +
+        '<td class="num">' + r.clientCount + '</td>' +
+        '<td class="num">' + rupee(r.sip) + '</td><td class="num">' + rupee(r.lumpsum) + '</td>' +
+        '<td class="num tot">' + rupee(r.gross) + '</td>' +
+        '<td class="num" style="color:var(--dan)">' + (r.redemption ? '−' + rupee(r.redemption) : rupee(0)) + '</td>' +
+        '<td class="num tot" style="color:var(--a)">' + rupee(r.net) + '</td>' +
+        '<td class="num">' + r.n + '</td>' +
+        '<td class="num">' + share.toFixed(1) + '%</td></tr>';
+    }).join('') : '<tr><td colspan="11" class="empty">No VRMs match that search.</td></tr>') +
+    '</tbody><tfoot><tr><td colspan="3">Total</td><td class="num">' + clientCount(S.data.txns) + '</td>' +
+    '<td class="num">' + rupee(tot.sip) + '</td><td class="num">' + rupee(tot.lumpsum) + '</td>' +
+    '<td class="num">' + rupee(tot.gross) + '</td>' +
+    '<td class="num" style="color:var(--dan)">−' + rupee(tot.redemption) + '</td>' +
+    '<td class="num" style="color:var(--a)">' + rupee(tot.net) + '</td>' +
+    '<td class="num">' + tot.n + '</td><td class="num">100%</td></tr></tfoot></table></div></div>';
+}
+
+/* ------------------------- ADMIN: All transactions ------------------------ */
+function viewAllTxns() {
+  var q = S.q.alltxns || '';
+  var fType = S.fType || '', fStatus = S.fStatus || '', fVrm = S.fVrm || '';
+  var rows = S.data.txns.filter(function (t) {
+    if (fType && t.txnType !== fType) return false;
+    if (fStatus && t.status !== fStatus) return false;
+    if (fVrm && String(t.vrmEmpCode).toUpperCase() !== fVrm.toUpperCase()) return false;
+    return matches(t, q);
+  }).sort(function (a, b) {
+    return (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || '');
+  });
+
+  var selIds = Object.keys(S.sel).filter(function (k) { return S.sel[k]; });
+  var shownSel = rows.filter(function (r) { return S.sel[r.id]; }).length;
+  var allShown = rows.length > 0 && shownSel === rows.length;
+
+  var vrmOpts = (S.data.vrms || []).map(function (v) {
+    return '<option value="' + esc(v.empCode) + '"' + (fVrm === v.empCode ? ' selected' : '') + '>' +
+           esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
+  }).join('');
+
+  return pageHead('All transactions', rows.length + ' of ' + S.data.txns.length + ' rows',
+      '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload CSV/Excel</button>' +
+      '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Template</button>' +
+      guard('all',
+        '<button class="btn xs dan" data-act="delall">Confirm — delete ALL</button>',
+        '<button class="btn sm dan" data-act="arm">' + IC.trash + ' Delete ALL data</button>')) +
+    '<div class="panel"><div class="ptop"><div><h3>Filters</h3></div>' +
+    '<div class="tools">' + searchBox('alltxns', 'Search any column…') + expBtns('alltxns') + '</div></div>' +
+    '<div style="padding:14px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
+      '<div><label class="lbl">TXN Type</label><select class="inp" data-tf="fType">' +
+        '<option value="">All types</option>' +
+        [TT.SIP, TT.LUMPSUM, TT.REDEMPTION].map(function (x) {
+          return '<option value="' + x + '"' + (fType === x ? ' selected' : '') + '>' + TT_LABEL[x] + '</option>';
+        }).join('') + '</select></div>' +
+      '<div><label class="lbl">Txn Status</label><select class="inp" data-tf="fStatus">' +
+        '<option value="">All statuses</option>' +
+        [TS.COMPLETED, TS.IN_PROCESS, TS.REJECTED].map(function (x) {
+          return '<option value="' + x + '"' + (fStatus === x ? ' selected' : '') + '>' + TS_LABEL[x] + '</option>';
+        }).join('') + '</select></div>' +
+      '<div style="min-width:200px"><label class="lbl">VRM</label><select class="inp" data-tf="fVrm">' +
+        '<option value="">All VRMs</option>' + vrmOpts + '</select></div>' +
+      '<button class="btn sm" data-act="clearTf">Clear filters</button>' +
+    '</div></div>' +
+    '<div class="panel">' +
+    (selIds.length
+      ? '<div class="selbar"><div class="row"><b>' + selIds.length + ' selected</b>' +
+        '<button class="btn xs gh" data-act="selall">' +
+        (allShown ? 'Unselect all shown' : 'Select all shown (' + rows.length + ')') + '</button>' +
+        '<button class="btn xs gh" data-act="selnone">Clear</button></div>' +
+        guard('bulk',
+          '<button class="btn xs dan" data-act="bulkdel">Confirm — delete ' + selIds.length + '</button>',
+          '<button class="btn sm dan" data-act="arm">' + IC.trash + ' Delete selected (' + selIds.length + ')</button>') +
+        '</div>'
+      : '') +
+    (rows.length
+      ? '<div class="twrap"><table><thead><tr>' +
+        '<th style="width:34px"><input type="checkbox" data-act="selall" ' + (allShown ? 'checked' : '') + '></th>' +
+        TXN_COLS + '<th></th></tr></thead><tbody>' +
+        rows.map(function (t) {
+          return '<tr class="' + (S.sel[t.id] ? 'sel' : '') + '">' +
+            '<td><input type="checkbox" data-act="togsel" data-id="' + esc(t.id) + '" ' +
+              (S.sel[t.id] ? 'checked' : '') + '></td>' +
+            txnCells(t) +
+            '<td style="text-align:right"><div class="row" style="justify-content:flex-end;gap:6px">' +
+            '<button class="btn xs" data-act="edittxn" data-id="' + esc(t.id) + '">' + IC.pen + '</button>' +
+            guard('dt:' + t.id,
+              '<button class="btn xs dan" data-act="deltxn" data-id="' + esc(t.id) + '">Confirm</button>',
+              '<button class="btn xs" data-act="arm">' + IC.trash + '</button>') +
+            '</div></td></tr>';
+        }).join('') +
+        '</tbody>' + txnFoot(rows, 2) + '</table></div>'
+      : emptyState(q || fType || fStatus || fVrm ? 'No matching transactions' : 'No transactions yet',
+          'Adjust the filters, or upload a file.')) +
+    '</div>';
+}
+
+/* --------------------------- ADMIN: Scheme analysis ----------------------- */
+function viewScheme() {
+  var q = (S.q.scheme || '').toLowerCase();
+  var fType = S.fType || '', fStatus = S.fStatus || '', fVrm = S.fVrm || '';
+  var scoped = S.data.txns.filter(function (t) {
+    if (fType && t.txnType !== fType) return false;
+    if (fStatus && t.status !== fStatus) return false;
+    if (fVrm && String(t.vrmEmpCode).toUpperCase() !== fVrm.toUpperCase()) return false;
+    return true;
+  });
+  var rows = byScheme(scoped).filter(function (r) {
+    return !q || r.scheme.toLowerCase().indexOf(q) >= 0;
+  });
+  var top = rows.slice(0, 12);
+  after(function () {
+    drawChart('c3', top.map(function (r) { return r.scheme.slice(0, 22); }),
+      top.map(function (r) { return r.gross; }),
+      top.map(function (r) { return r.redemption; }),
+      ['Gross Sales', 'Redemption']);
+  });
+  var tot = { sip: 0, lumpsum: 0, redemption: 0, gross: 0, net: 0, n: 0 };
+  rows.forEach(function (r) {
+    tot.sip += r.sip; tot.lumpsum += r.lumpsum; tot.redemption += r.redemption;
+    tot.gross += r.gross; tot.net += r.net; tot.n += r.n;
+  });
+  var vrmOpts = (S.data.vrms || []).map(function (v) {
+    return '<option value="' + esc(v.empCode) + '"' + (fVrm === v.empCode ? ' selected' : '') + '>' +
+           esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
+  }).join('');
+
+  return pageHead('Scheme analysis', rows.length + ' schemes', '') +
+    '<div class="panel"><div class="ptop"><div><h3>Filters</h3></div>' +
+    '<div class="tools">' + searchBox('scheme', 'Search scheme…') + expBtns('scheme') + '</div></div>' +
+    '<div style="padding:14px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
+      '<div><label class="lbl">TXN Type</label><select class="inp" data-tf="fType">' +
+        '<option value="">All types</option>' +
+        [TT.SIP, TT.LUMPSUM, TT.REDEMPTION].map(function (x) {
+          return '<option value="' + x + '"' + (fType === x ? ' selected' : '') + '>' + TT_LABEL[x] + '</option>';
+        }).join('') + '</select></div>' +
+      '<div><label class="lbl">Txn Status</label><select class="inp" data-tf="fStatus">' +
+        '<option value="">All statuses</option>' +
+        [TS.COMPLETED, TS.IN_PROCESS, TS.REJECTED].map(function (x) {
+          return '<option value="' + x + '"' + (fStatus === x ? ' selected' : '') + '>' + TS_LABEL[x] + '</option>';
+        }).join('') + '</select></div>' +
+      '<div style="min-width:200px"><label class="lbl">VRM</label><select class="inp" data-tf="fVrm">' +
+        '<option value="">All VRMs</option>' + vrmOpts + '</select></div>' +
+      '<button class="btn sm" data-act="clearTf">Clear filters</button>' +
+    '</div></div>' +
+    '<div class="panel"><div class="ptop"><div><h3>Top schemes</h3></div></div>' +
+    (top.length
+      ? '<div class="chartbox" id="c3_box"><canvas id="c3"></canvas></div>' +
+        '<div class="legend"><i style="background:var(--p)"></i>Gross Sales' +
+        '<i style="background:var(--dan);margin-left:16px"></i>Redemption</div>'
+      : emptyState('Nothing to chart', 'No schemes in scope.')) + '</div>' +
+    '<div class="panel"><div class="ptop"><div><h3>By scheme</h3></div></div>' +
+    '<div class="twrap"><table><thead><tr><th>#</th><th>Scheme Name</th>' +
+    '<th class="num">SIP</th><th class="num">Lumpsum</th><th class="num">Gross</th>' +
+    '<th class="num">Redemption</th><th class="num">Net Sales</th>' +
+    '<th class="num">Clients</th><th class="num">Txns</th></tr></thead><tbody>' +
+    (rows.length ? rows.map(function (r, i) {
+      return '<tr><td class="muted">' + (i + 1) + '</td>' +
+        '<td><span class="cx" title="' + esc(r.scheme) + '">' + esc(r.scheme) + '</span></td>' +
+        '<td class="num">' + rupee(r.sip) + '</td><td class="num">' + rupee(r.lumpsum) + '</td>' +
+        '<td class="num tot">' + rupee(r.gross) + '</td>' +
+        '<td class="num" style="color:var(--dan)">' + (r.redemption ? '−' + rupee(r.redemption) : rupee(0)) + '</td>' +
+        '<td class="num tot" style="color:var(--a)">' + rupee(r.net) + '</td>' +
+        '<td class="num">' + r.clientCount + '</td><td class="num">' + r.n + '</td></tr>';
+    }).join('') : '<tr><td colspan="9" class="empty">No schemes match.</td></tr>') +
+    '</tbody><tfoot><tr><td colspan="2">Total</td>' +
+    '<td class="num">' + rupee(tot.sip) + '</td><td class="num">' + rupee(tot.lumpsum) + '</td>' +
+    '<td class="num">' + rupee(tot.gross) + '</td>' +
+    '<td class="num" style="color:var(--dan)">−' + rupee(tot.redemption) + '</td>' +
+    '<td class="num" style="color:var(--a)">' + rupee(tot.net) + '</td>' +
+    '<td class="num">' + clientCount(scoped) + '</td><td class="num">' + tot.n + '</td>' +
+    '</tr></tfoot></table></div></div>';
+}
+
 /* ============================== RENDER =================================== */
 
 var VIEWS = {
   summary: viewSummary, data: viewData, clients: viewClients,
   overview: viewOverview, vrmwise: viewVrmwise, alltxns: viewAllTxns,
-  access: viewAccess, activity: viewActivity, analytics: viewAnalytics
+  access: viewAccess, activity: viewActivity, analytics: viewAnalytics,
+  scheme: viewScheme, clientdetail: viewClientDetail
 };
 
 function render() {
@@ -1562,10 +2524,6 @@ function searchBox(key, ph) {
     '<input class="inp" type="search" data-q="' + key + '" placeholder="' + esc(ph) + '" value="' + esc(S.q[key] || '') + '">' +
     '</div>';
 }
-function expBtns(what) {
-  return '<button class="btn sm" data-act="csv" data-what="' + what + '">' + IC.down + ' CSV</button>' +
-         '<button class="btn sm" data-act="xlsx" data-what="' + what + '">' + IC.down + ' Excel</button>';
-}
 /* Two-click guard: first click arms, second click acts. */
 function guard(key, armedHtml, idleHtml) {
   return S.confirm === key
@@ -1575,233 +2533,16 @@ function guard(key, armedHtml, idleHtml) {
 }
 
 /* ------------------------------ VRM: Summary ------------------------------ */
-function viewSummary() {
-  var t = S.data.txns, k = kpis(t), m = monthly(t);
-  after(function () { drawChart('c1', m.map(function (r) { return monLabel(r.key); }), m.map(function (r) { return r.sip; }), m.map(function (r) { return r.lump; })); });
-
-  return pageHead('My summary', S.session.name + ' (' + S.session.empCode + ') - ' + k.refLabel, '') +
-    kpiCards(k) +
-    chartPanel('c1', 'Monthly SIP vs Lumpsum', '', m, 'month') +
-    '<div class="panel"><div class="ptop"><div><h3>Month at a glance</h3></div></div>' +
-    '<div class="twrap"><table><thead><tr><th>Month</th><th class="num">SIP</th><th class="num">Lumpsum</th>' +
-    '<th class="num">Gross</th><th class="num">Txns</th></tr></thead><tbody>' +
-    (m.length ? m.slice().reverse().map(function (r) {
-      return '<tr><td><b>' + esc(monLabel(r.key)) + '</b></td>' +
-        '<td class="num">' + rupee(r.sip) + '</td><td class="num">' + rupee(r.lump) + '</td>' +
-        '<td class="num tot">' + rupee(r.sip + r.lump) + '</td><td class="num">' + r.n + '</td></tr>';
-    }).join('') : '<tr><td colspan="5" class="empty">No transactions yet.</td></tr>') +
-    '</tbody></table></div></div>';
-}
 
 /* ------------------------------ VRM: Data -------------------------------- */
-function viewData() {
-  var q = S.q.data || '';
-  var rows = S.data.txns.filter(function (t) { return matches(t, q); })
-    .sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''); });
-  var sip = 0, lump = 0;
-  rows.forEach(function (r) { sip += num(r.sip); lump += num(r.lumpsum); });
-
-  return pageHead('My data', rows.length + ' of ' + S.data.txns.length + ' rows',
-      '<button class="btn sm pri" data-act="addtxn">' + IC.plus + ' Add entry</button>' +
-      '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload CSV/Excel</button>' +
-      '<button class="btn sm" data-act="tplcsv">' + IC.down + ' Template CSV</button>' +
-      '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Template Excel</button>') +
-    '<div class="panel"><div class="ptop"><div><h3>Transactions</h3></div>' +
-    '<div class="tools">' + searchBox('data', 'Search client, amount, date...') + expBtns('vrmtxns') + '</div></div>' +
-    (rows.length
-      ? '<div class="twrap"><table><thead><tr>' +
-        '<th>Client Code</th><th>Client Name</th><th>VRM Emp Code</th><th>VRM Name</th>' +
-        '<th class="num">SIP Amount</th><th class="num">Lumpsum Amount</th><th>Date of Investment</th><th></th>' +
-        '</tr></thead><tbody>' +
-        rows.map(function (t) {
-          return '<tr><td class="mono"><b>' + esc(t.clientCode) + '</b></td><td>' + esc(t.clientName) + '</td>' +
-            '<td class="mono">' + esc(t.vrmEmpCode) + '</td><td>' + esc(t.vrmName) + '</td>' +
-            '<td class="num">' + rupee(t.sip) + '</td><td class="num">' + rupee(t.lumpsum) + '</td>' +
-            '<td class="mono">' + esc(dmy(t.date)) + '</td>' +
-            '<td style="text-align:right">' + guard('dt:' + t.id,
-              '<button class="btn xs dan" data-act="deltxn" data-id="' + esc(t.id) + '">Confirm delete</button>',
-              '<button class="btn xs" data-act="arm">' + IC.trash + ' Delete</button>') + '</td></tr>';
-        }).join('') +
-        '</tbody><tfoot><tr><td colspan="4">Total (' + rows.length + ' rows)</td>' +
-        '<td class="num">' + rupee(sip) + '</td><td class="num">' + rupee(lump) + '</td>' +
-        '<td class="num" colspan="2">' + rupee(sip + lump) + '</td></tr></tfoot></table></div>'
-      : emptyState(q ? 'No matching transactions' : 'No transactions yet',
-          q ? 'Try a different search term.' : 'Use "Add entry" or upload a CSV/Excel file to get started.')) +
-    '</div>';
-}
 
 /* ------------------------- Client Consolidated ---------------------------- */
-function viewClients() {
-  var admin = isAdmin();
-  var q = S.q.clients || '';
-  var all = byClient(S.data.txns);
-  var rows = all.filter(function (r) {
-    if (!q) return true;
-    var s = q.toLowerCase();
-    return (r.clientCode + ' ' + r.clientName + ' ' + r.vrms.join(' ')).toLowerCase().indexOf(s) >= 0;
-  });
-  var sip = 0, lump = 0;
-  rows.forEach(function (r) { sip += r.sip; lump += r.lump; });
-  var vrmOpts = (S.data.vrms || []).map(function (v) {
-    return '<option value="' + esc(v.empCode) + '">' + esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
-  }).join('');
-
-  return pageHead('Client consolidated', rows.length + ' clients', '') +
-    '<div class="panel"><div class="ptop">' +
-    '<div><h3>Per-client totals</h3></div>' +
-    '<div class="tools">' + searchBox('clients', 'Search client code or name...') + expBtns('clients') + '</div></div>' +
-    (rows.length
-      ? '<div class="twrap"><table><thead><tr>' +
-        '<th>Client Code</th><th>Client Name</th>' + (admin ? '<th>VRM(s)</th>' : '') +
-        '<th class="num">SIP Total</th><th class="num">Lumpsum Total</th><th class="num">Combined</th>' +
-        '<th class="num">Txns</th><th>First</th><th>Last</th><th></th></tr></thead><tbody>' +
-        rows.map(function (r) {
-          var actions = admin
-            ? '<div class="row" style="justify-content:flex-end;gap:6px">' +
-              '<select class="inp sm" data-dest="' + esc(r.clientCode) + '" style="width:auto;padding:4px 8px;font-size:11.5px">' +
-              '<option value="">Transfer to...</option>' + vrmOpts + '</select>' +
-              '<button class="btn xs acc" data-act="transfer" data-code="' + esc(r.clientCode) + '">' + IC.send + ' Move</button>' +
-              guard('dc:' + r.clientCode,
-                '<button class="btn xs dan" data-act="delclient" data-code="' + esc(r.clientCode) + '">Confirm delete all</button>',
-                '<button class="btn xs" data-act="arm">' + IC.trash + '</button>') + '</div>'
-            : guard('dc:' + r.clientCode,
-                '<button class="btn xs dan" data-act="delclient" data-code="' + esc(r.clientCode) + '">Confirm delete all</button>',
-                '<button class="btn xs" data-act="arm">' + IC.trash + ' Delete all</button>');
-          return '<tr><td class="mono"><b>' + esc(r.clientCode) + '</b></td><td>' + esc(r.clientName) + '</td>' +
-            (admin ? '<td class="mono" style="font-size:11.5px">' + esc(r.vrms.join(', ') || '-') + '</td>' : '') +
-            '<td class="num">' + rupee(r.sip) + '</td><td class="num">' + rupee(r.lump) + '</td>' +
-            '<td class="num tot">' + rupee(r.total) + '</td><td class="num">' + r.n + '</td>' +
-            '<td class="mono">' + esc(dmy(r.first)) + '</td><td class="mono">' + esc(dmy(r.last)) + '</td>' +
-            '<td style="text-align:right">' + actions + '</td></tr>';
-        }).join('') +
-        '</tbody><tfoot><tr><td colspan="' + (admin ? 3 : 2) + '">Total (' + rows.length + ' clients)</td>' +
-        '<td class="num">' + rupee(sip) + '</td><td class="num">' + rupee(lump) + '</td>' +
-        '<td class="num">' + rupee(sip + lump) + '</td><td colspan="4"></td></tr></tfoot></table></div>'
-      : emptyState('No clients yet', 'Client rows appear here as soon as transactions exist.')) +
-    '</div>';
-}
 
 /* --------------------------- ADMIN: Overview ------------------------------ */
-function viewOverview() {
-  var t = S.data.txns, k = kpis(t), m = monthly(t);
-  after(function () { drawChart('c1', m.map(function (r) { return monLabel(r.key); }), m.map(function (r) { return r.sip; }), m.map(function (r) { return r.lump; })); });
-  var vw = byVrm(t, S.data.vrms);
-  var active = vw.filter(function (v) { return v.n > 0; }).length;
-
-  return pageHead('Consolidated overview',
-      k.refLabel + ' - ' + t.length + ' transactions - ' + active + ' of ' + (S.data.vrms || []).length + ' VRMs active',
-      '<button class="btn sm" data-act="csv" data-what="alltxns">' + IC.down + ' Export all (CSV)</button>' +
-      '<button class="btn sm" data-act="xlsx" data-what="alltxns">' + IC.down + ' Export all (Excel)</button>') +
-    kpiCards(k) +
-    chartPanel('c1', 'Overall SIP vs Lumpsum by month', '', m, 'month') +
-    '<div class="panel"><div class="ptop"><div><h3>Month-by-month roll-up</h3></div></div>' +
-    '<div class="twrap"><table><thead><tr><th>Month</th><th class="num">SIP</th><th class="num">Lumpsum</th>' +
-    '<th class="num">Gross</th><th class="num">Txns</th></tr></thead><tbody>' +
-    (m.length ? m.slice().reverse().map(function (r) {
-      return '<tr><td><b>' + esc(monLabel(r.key)) + '</b></td><td class="num">' + rupee(r.sip) + '</td>' +
-        '<td class="num">' + rupee(r.lump) + '</td><td class="num tot">' + rupee(r.sip + r.lump) + '</td>' +
-        '<td class="num">' + r.n + '</td></tr>';
-    }).join('') : '<tr><td colspan="5" class="empty">No data yet.</td></tr>') +
-    '</tbody></table></div></div>';
-}
 
 /* --------------------------- ADMIN: VRM-wise ------------------------------ */
-function viewVrmwise() {
-  var rows = byVrm(S.data.txns, S.data.vrms);
-  var q = (S.q.vrmwise || '').toLowerCase();
-  var shown = rows.filter(function (r) {
-    return !q || (r.empCode + ' ' + r.name).toLowerCase().indexOf(q) >= 0;
-  });
-  var top = shown.filter(function (r) { return r.gross > 0; }).slice(0, 12);
-  after(function () {
-    drawChart('c2', top.map(function (r) { return r.empCode; }), top.map(function (r) { return r.sip; }), top.map(function (r) { return r.lump; }));
-  });
-  var tS = 0, tL = 0, tN = 0;
-  shown.forEach(function (r) { tS += r.sip; tL += r.lump; tN += r.n; });
-
-  return pageHead('VRM-wise summary', shown.length + ' VRMs', '') +
-    chartPanel('c2', 'VRM comparison', 'Top ' + top.length + ' by gross sales', top, 'vrm') +
-    '<div class="panel"><div class="ptop"><div><h3>Per-VRM performance</h3></div>' +
-    '<div class="tools">' + searchBox('vrmwise', 'Search VRM...') + expBtns('vrmwise') + '</div></div>' +
-    '<div class="twrap"><table><thead><tr><th>#</th><th>Emp Code</th><th>VRM Name</th>' +
-    '<th class="num">SIP</th><th class="num">Lumpsum</th><th class="num">Gross</th>' +
-    '<th class="num">Clients</th><th class="num">Txns</th><th class="num">Share</th></tr></thead><tbody>' +
-    (shown.length ? shown.map(function (r, i) {
-      var share = (tS + tL) > 0 ? (r.gross / (tS + tL) * 100) : 0;
-      return '<tr><td class="muted">' + (i + 1) + '</td><td class="mono"><b>' + esc(r.empCode) + '</b></td>' +
-        '<td>' + esc(r.name) + '</td><td class="num">' + rupee(r.sip) + '</td>' +
-        '<td class="num">' + rupee(r.lump) + '</td><td class="num tot">' + rupee(r.gross) + '</td>' +
-        '<td class="num">' + r.clientCount + '</td><td class="num">' + r.n + '</td>' +
-        '<td class="num">' + share.toFixed(1) + '%</td></tr>';
-    }).join('') : '<tr><td colspan="9" class="empty">No VRMs match that search.</td></tr>') +
-    '</tbody><tfoot><tr><td colspan="3">Total</td><td class="num">' + rupee(tS) + '</td>' +
-    '<td class="num">' + rupee(tL) + '</td><td class="num">' + rupee(tS + tL) + '</td>' +
-    '<td class="num">' + byClient(S.data.txns).length + '</td><td class="num">' + tN + '</td><td class="num">100%</td>' +
-    '</tr></tfoot></table></div></div>';
-}
 
 /* ------------------------- ADMIN: All transactions ------------------------ */
-function viewAllTxns() {
-  var q = S.q.alltxns || '';
-  var rows = S.data.txns.filter(function (t) { return matches(t, q); })
-    .sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''); });
-  var selIds = Object.keys(S.sel).filter(function (k) { return S.sel[k]; });
-  var shownSel = rows.filter(function (r) { return S.sel[r.id]; }).length;
-  var allShown = rows.length > 0 && shownSel === rows.length;
-  var sip = 0, lump = 0;
-  rows.forEach(function (r) { sip += num(r.sip); lump += num(r.lumpsum); });
-  var vrmOpts = (S.data.vrms || []).map(function (v) {
-    return '<option value="' + esc(v.empCode) + '">' + esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
-  }).join('');
-
-  return pageHead('All transactions', rows.length + ' of ' + S.data.txns.length + ' rows',
-      '<button class="btn sm pri" data-act="addtxn">' + IC.plus + ' Add entry</button>' +
-      '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload CSV/Excel</button>' +
-      '<button class="btn sm" data-act="tplcsv">' + IC.down + ' Template CSV</button>' +
-      '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Template Excel</button>' +
-      guard('all',
-        '<button class="btn xs dan" data-act="delall">Confirm - delete ALL data</button>',
-        '<button class="btn sm dan" data-act="arm">' + IC.trash + ' Delete ALL data</button>')) +
-    '<div class="panel"><div class="ptop"><div><h3>Line-level data</h3></div>' +
-    '<div class="tools">' + searchBox('alltxns', 'Search client, VRM, amount, date...') + expBtns('alltxns') + '</div></div>' +
-    (selIds.length
-      ? '<div class="selbar"><div class="row"><b>' + selIds.length + ' row(s) selected</b>' +
-        '<button class="btn xs gh" data-act="selall">' + (allShown ? 'Unselect all shown' : 'Select all shown (' + rows.length + ')') + '</button>' +
-        '<button class="btn xs gh" data-act="selnone">Clear selection</button></div>' +
-        guard('bulk',
-          '<button class="btn xs dan" data-act="bulkdel">Confirm - delete ' + selIds.length + '</button>',
-          '<button class="btn sm dan" data-act="arm">' + IC.trash + ' Delete selected (' + selIds.length + ')</button>') +
-        '</div>'
-      : '') +
-    (rows.length
-      ? '<div class="twrap"><table><thead><tr>' +
-        '<th style="width:34px"><input type="checkbox" data-act="selall" ' + (allShown ? 'checked' : '') + ' title="Select all shown"></th>' +
-        '<th>Client Code</th><th>Client Name</th><th>VRM Emp Code</th><th>VRM Name</th>' +
-        '<th class="num">SIP</th><th class="num">Lumpsum</th><th>Date</th><th>Entered By</th><th></th>' +
-        '</tr></thead><tbody>' +
-        rows.map(function (t) {
-          return '<tr class="' + (S.sel[t.id] ? 'sel' : '') + '">' +
-            '<td><input type="checkbox" data-act="togsel" data-id="' + esc(t.id) + '" ' + (S.sel[t.id] ? 'checked' : '') + '></td>' +
-            '<td class="mono"><b>' + esc(t.clientCode) + '</b></td><td>' + esc(t.clientName) + '</td>' +
-            '<td class="mono">' + esc(t.vrmEmpCode) + '</td><td>' + esc(t.vrmName) + '</td>' +
-            '<td class="num">' + rupee(t.sip) + '</td><td class="num">' + rupee(t.lumpsum) + '</td>' +
-            '<td class="mono">' + esc(dmy(t.date)) + '</td>' +
-            '<td class="mono muted" style="font-size:11.5px">' + esc(t.enteredBy) + '</td>' +
-            '<td style="text-align:right"><div class="row" style="justify-content:flex-end;gap:6px">' +
-            '<button class="btn xs" data-act="edittxn" data-id="' + esc(t.id) + '">' + IC.pen + ' Edit</button>' +
-            guard('dt:' + t.id,
-              '<button class="btn xs dan" data-act="deltxn" data-id="' + esc(t.id) + '">Confirm</button>',
-              '<button class="btn xs" data-act="arm">' + IC.trash + '</button>') +
-            '</div></td></tr>';
-        }).join('') +
-        '</tbody><tfoot><tr><td colspan="5">Total (' + rows.length + ' rows)</td>' +
-        '<td class="num">' + rupee(sip) + '</td><td class="num">' + rupee(lump) + '</td>' +
-        '<td class="num" colspan="3">' + rupee(sip + lump) + '</td></tr></tfoot></table></div>' +
-        '<input type="hidden" id="vrmOptsCache" value="1">'
-      : emptyState(q ? 'No matching transactions' : 'No transactions yet',
-          q ? 'Try a different search term.' : 'Add an entry or upload a file - VRM uploads appear here automatically.')) +
-    '</div>';
-}
 
 /* ------------------------- ADMIN: VRMs & Access -------------------------- */
 
@@ -1956,7 +2697,7 @@ function viewActivity() {
  * earlier, plus a per-VRM performance league table for the admin.
  * ========================================================================== */
 
-S.an = { from: '', to: '', vrm: '', metric: 'gross', gran: 'month' };
+S.an = { from: '', to: '', vrm: '', metric: 'net', gran: 'month' };
 
 var GRAN = {
   day:   { key: function (d) { return d; },              label: function (k) { return dmy(k); },
@@ -1968,9 +2709,11 @@ var GRAN = {
 };
 
 var METRICS = {
-  gross:   { label: 'Gross sales', pick: function (r) { return r.sip + r.lump; } },
-  sip:     { label: 'SIP',         pick: function (r) { return r.sip; } },
-  lumpsum: { label: 'Lumpsum',     pick: function (r) { return r.lump; } }
+  net:        { label: 'Net Sales',   pick: function (r) { return r.net; } },
+  gross:      { label: 'Gross Sales', pick: function (r) { return r.gross; } },
+  redemption: { label: 'Redemption',  pick: function (r) { return r.redemption; } },
+  sip:        { label: 'SIP',         pick: function (r) { return r.sip; } },
+  lumpsum:    { label: 'Lumpsum',     pick: function (r) { return r.lumpsum; } }
 };
 
 /** Transactions passing the analytics filters (date range + VRM). */
@@ -1990,17 +2733,15 @@ function series(rows, gran) {
   var g = GRAN[gran] || GRAN.month, m = {};
   rows.forEach(function (t) {
     var k = g.key(t.date);
-    if (!m[k]) m[k] = { key: k, sip: 0, lump: 0, n: 0, clients: {} };
-    m[k].sip += num(t.sip);
-    m[k].lump += num(t.lumpsum);
-    m[k].n++;
-    if (t.clientCode) m[k].clients[t.clientCode.toUpperCase()] = 1;
+    if (!m[k]) m[k] = [];
+    m[k].push(t);
   });
   return Object.keys(m).sort().map(function (k) {
-    var r = m[k];
-    r.gross = r.sip + r.lump;
-    r.clientCount = Object.keys(r.clients).length;
-    return r;
+    var mx = metrics(m[k]);
+    mx.key = k;
+    mx.n = m[k].length;
+    mx.clientCount = clientCount(m[k]);
+    return mx;
   });
 }
 
@@ -2052,12 +2793,9 @@ function viewAnalytics() {
   var last = ser[ser.length - 1] || null;
   var prev = last ? byKey[prevKey(last.key, f.gran)] : null;
   var yoy = last ? byKey[yoyKey(last.key, f.gran)] : null;
-  var totGross = 0, totSip = 0, totLump = 0, totTxns = 0, cl = {};
-  rows.forEach(function (t) {
-    totSip += num(t.sip); totLump += num(t.lumpsum); totTxns++;
-    if (t.clientCode) cl[t.clientCode.toUpperCase()] = 1;
-  });
-  totGross = totSip + totLump;
+  var rangeM = metrics(rows);
+  var totTxns = rows.length, cl = {};
+  rows.forEach(function (t) { if (t.clientCode) cl[t.clientCode.toUpperCase()] = 1; });
 
   var vrmOpts = (S.data.vrms || []).map(function (v) {
     return '<option value="' + esc(v.empCode) + '"' + (f.vrm === v.empCode ? ' selected' : '') + '>' +
@@ -2068,7 +2806,8 @@ function viewAnalytics() {
   var show = ser.slice(-24);
   after(function () {
     drawChart('cAn', show.map(function (r) { return g.label(r.key); }),
-      show.map(function (r) { return r.sip; }), show.map(function (r) { return r.lump; }));
+      show.map(function (r) { return r.gross; }), show.map(function (r) { return r.redemption; }),
+      ['Gross Sales', 'Redemption']);
   });
 
   var head =
@@ -2103,9 +2842,9 @@ function viewAnalytics() {
     { t: 'Same period last year', v: yoy ? met.pick(yoy) : 0,
       s: yoy ? 'YoY vs ' + g.label(yoy.key) : 'no data a year earlier',
       d: last && yoy ? pct(met.pick(last), met.pick(yoy)) : null, ic: IC.cal },
-    { t: 'Total in range', v: met.pick({ sip: totSip, lump: totLump }),
+    { t: 'Total in range', v: met.pick(rangeM),
       s: totTxns + ' transactions', d: null, ic: IC.chart },
-    { t: 'Average per ' + f.gran, v: ser.length ? met.pick({ sip: totSip, lump: totLump }) / ser.length : 0,
+    { t: 'Average per ' + f.gran, v: ser.length ? met.pick(rangeM) / ser.length : 0,
       s: 'across ' + ser.length + ' ' + f.gran + '(s)', d: null, ic: IC.repeat }
   ];
 
@@ -2119,8 +2858,8 @@ function viewAnalytics() {
   var chart = ser.length
     ? '<div class="panel"><div class="ptop"><div><h3>' + esc(g.name) + ' trend</h3></div></div>' +
       '<div class="chartbox" id="cAn_box"><canvas id="cAn"></canvas></div>' +
-      '<div class="legend"><i style="background:var(--p)"></i>SIP' +
-      '<i style="background:var(--a);margin-left:16px"></i>Lumpsum</div></div>'
+      '<div class="legend"><i style="background:var(--p)"></i>Gross Sales' +
+      '<i style="background:var(--dan);margin-left:16px"></i>Redemption</div></div>'
     : '<div class="panel">' + emptyState('Nothing in this range', 'Widen the dates or clear the filters.') + '</div>';
 
   /* Period-by-period table, newest first, with both growth columns. */
@@ -2129,19 +2868,24 @@ function viewAnalytics() {
     (ser.length
       ? '<div class="twrap"><table><thead><tr><th>Period</th>' +
         '<th class="num">SIP</th><th class="num">Lumpsum</th><th class="num">Gross</th>' +
+        '<th class="num">Redemption</th><th class="num">Net Sales</th>' +
         '<th class="num">Txns</th><th class="num">Clients</th>' +
         '<th class="num">' + g.delta + '</th><th class="num">YoY</th></tr></thead><tbody>' +
         ser.slice().reverse().map(function (r) {
           var p = byKey[prevKey(r.key, f.gran)], y = byKey[yoyKey(r.key, f.gran)];
           return '<tr><td><b>' + esc(g.label(r.key)) + '</b></td>' +
-            '<td class="num">' + rupee(r.sip) + '</td><td class="num">' + rupee(r.lump) + '</td>' +
+            '<td class="num">' + rupee(r.sip) + '</td><td class="num">' + rupee(r.lumpsum) + '</td>' +
             '<td class="num tot">' + rupee(r.gross) + '</td>' +
+            '<td class="num" style="color:var(--dan)">' + (r.redemption ? '-' + rupee(r.redemption) : rupee(0)) + '</td>' +
+            '<td class="num tot" style="color:var(--a)">' + rupee(r.net) + '</td>' +
             '<td class="num">' + r.n + '</td><td class="num">' + r.clientCount + '</td>' +
             '<td class="num">' + deltaCell(p ? pct(met.pick(r), met.pick(p)) : null) + '</td>' +
             '<td class="num">' + deltaCell(y ? pct(met.pick(r), met.pick(y)) : null) + '</td></tr>';
         }).join('') +
-        '</tbody><tfoot><tr><td>Total</td><td class="num">' + rupee(totSip) + '</td>' +
-        '<td class="num">' + rupee(totLump) + '</td><td class="num">' + rupee(totGross) + '</td>' +
+        '</tbody><tfoot><tr><td>Total</td><td class="num">' + rupee(rangeM.sip) + '</td>' +
+        '<td class="num">' + rupee(rangeM.lumpsum) + '</td><td class="num">' + rupee(rangeM.gross) + '</td>' +
+        '<td class="num" style="color:var(--dan)">-' + rupee(rangeM.redemption) + '</td>' +
+        '<td class="num" style="color:var(--a)">' + rupee(rangeM.net) + '</td>' +
         '<td class="num">' + totTxns + '</td><td class="num">' + Object.keys(cl).length + '</td>' +
         '<td colspan="2"></td></tr></tfoot></table></div>'
       : emptyState('No periods to show', 'Adjust the filters above.')) +
@@ -2154,7 +2898,7 @@ function viewAnalytics() {
 function leagueTable(rows, met, f) {
   var per = {};
   (S.data.vrms || []).forEach(function (v) {
-    per[v.empCode.toUpperCase()] = { empCode: v.empCode, name: v.name, sip: 0, lump: 0, n: 0, clients: {}, cur: 0, prv: 0 };
+    per[v.empCode.toUpperCase()] = { empCode: v.empCode, name: v.name, rows: [], n: 0, clients: {}, cur: 0, prv: 0 };
   });
 
   /* Split the filtered range in half so "trend" compares like with like. */
@@ -2163,17 +2907,20 @@ function leagueTable(rows, met, f) {
 
   rows.forEach(function (t) {
     var k = (t.vrmEmpCode || '-').toUpperCase();
-    if (!per[k]) per[k] = { empCode: t.vrmEmpCode || '-', name: t.vrmName || '(unassigned)', sip: 0, lump: 0, n: 0, clients: {}, cur: 0, prv: 0 };
+    if (!per[k]) per[k] = { empCode: t.vrmEmpCode || '-', name: t.vrm || '(unassigned)', rows: [], n: 0, clients: {}, cur: 0, prv: 0 };
     var r = per[k];
-    r.sip += num(t.sip); r.lump += num(t.lumpsum); r.n++;
+    r.rows.push(t); r.n++;
     if (t.clientCode) r.clients[t.clientCode.toUpperCase()] = 1;
-    var val = met.pick({ sip: num(t.sip), lump: num(t.lumpsum) });
+    var one = metrics([t]);
+    var val = met.pick(one);
     if (t.date >= mid) r.cur += val; else r.prv += val;
   });
 
   var list = Object.keys(per).map(function (k) {
     var r = per[k];
-    r.gross = r.sip + r.lump;
+    var mx = metrics(r.rows || []);
+    r.sip = mx.sip; r.lumpsum = mx.lumpsum; r.redemption = mx.redemption;
+    r.gross = mx.gross; r.net = mx.net;
     r.value = met.pick(r);
     r.clientCount = Object.keys(r.clients).length;
     r.trend = pct(r.cur, r.prv);
@@ -2186,15 +2933,16 @@ function leagueTable(rows, met, f) {
 
   after(function () {
     drawChart('cLeague', list.slice(0, 12).map(function (r) { return r.empCode; }),
-      list.slice(0, 12).map(function (r) { return r.sip; }),
-      list.slice(0, 12).map(function (r) { return r.lump; }));
+      list.slice(0, 12).map(function (r) { return r.gross; }),
+      list.slice(0, 12).map(function (r) { return r.redemption; }),
+      ['Gross Sales', 'Redemption']);
   });
 
   return '<div class="panel"><div class="ptop"><div><h3>VRM performance</h3></div></div>' +
     (list.length
       ? '<div class="chartbox" id="cLeague_box"><canvas id="cLeague"></canvas></div>' +
-        '<div class="legend"><i style="background:var(--p)"></i>SIP' +
-        '<i style="background:var(--a);margin-left:16px"></i>Lumpsum</div>' +
+        '<div class="legend"><i style="background:var(--p)"></i>Gross Sales' +
+        '<i style="background:var(--dan);margin-left:16px"></i>Redemption</div>' +
         '<div class="twrap"><table><thead><tr><th>#</th><th>VRM</th>' +
         '<th class="num">' + esc(met.label) + '</th><th>Share</th>' +
         '<th class="num">Clients</th><th class="num">Txns</th>' +
@@ -2250,81 +2998,123 @@ function resetPwDialog(code, name) {
     '<button class="btn dan" data-act="doresetpw">Reset password</button>');
 }
 
-function addTxnDialog() {
-  var vrmSel = isAdmin()
-    ? '<div class="f"><label class="lbl">VRM</label><select class="inp" id="d_vrm">' +
-      (S.data.vrms || []).map(function (v) {
-        return '<option value="' + esc(v.empCode) + '">' + esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
-      }).join('') + '</select></div>'
-    : '<input type="hidden" id="d_vrm" value="' + esc(S.session.empCode) + '">';
-
-  modal('Add a transaction',
-    isAdmin() ? 'Recorded against the VRM you pick.' : 'Recorded against your book (' + esc(S.session.empCode) + ').',
-    '<div class="f"><label class="lbl">Client code</label><input class="inp" id="d_cc" placeholder="e.g. CL10234"></div>' +
-    '<div class="f"><label class="lbl">Client name</label><input class="inp" id="d_cn" placeholder="e.g. Rakesh Patel"></div>' +
-    vrmSel +
-    '<div class="row" style="gap:12px">' +
-      '<div class="f grow"><label class="lbl">SIP amount</label><input class="inp" id="d_sip" type="number" min="0" step="1" value="0"></div>' +
-      '<div class="f grow"><label class="lbl">Lumpsum amount</label><input class="inp" id="d_lump" type="number" min="0" step="1" value="0"></div>' +
-    '</div>' +
-    '<div class="f"><label class="lbl">Date of investment</label><input class="inp" id="d_date" type="date" value="' + today() + '"></div>',
-    '<button class="btn gh" data-act="close">Cancel</button>' +
-    '<button class="btn pri" data-act="doaddtxn">Save transaction</button>');
-}
 
 function editTxnDialog(id) {
   var t = null;
   S.data.txns.forEach(function (x) { if (x.id === id) t = x; });
-  if (!t) return toast('That row is no longer here - refresh.', 'e');
-  var vrmSel = isAdmin()
-    ? '<div class="f"><label class="lbl">VRM</label><select class="inp" id="d_vrm">' +
-      (S.data.vrms || []).map(function (v) {
-        return '<option value="' + esc(v.empCode) + '"' + (v.empCode === t.vrmEmpCode ? ' selected' : '') + '>' +
-               esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
-      }).join('') + '</select></div>'
-    : '';
+  if (!t) return toast('That row is no longer here — refresh.', 'e');
 
-  modal('Edit transaction', 'ID <span class="mono">' + esc(t.id) + '</span> - entered by ' + esc(t.enteredBy) +
-    '. Changing the VRM keeps the emp code and name in step.',
+  var typeOpts = [TT.SIP, TT.LUMPSUM, TT.REDEMPTION].map(function (x) {
+    return '<option value="' + x + '"' + (t.txnType === x ? ' selected' : '') + '>' + TT_LABEL[x] + '</option>';
+  }).join('');
+  var statusOpts = [TS.COMPLETED, TS.IN_PROCESS, TS.REJECTED].map(function (x) {
+    return '<option value="' + x + '"' + (t.status === x ? ' selected' : '') + '>' + TS_LABEL[x] + '</option>';
+  }).join('');
+  var vrmOpts = (S.data.vrms || []).map(function (v) {
+    return '<option value="' + esc(v.empCode) + '"' + (v.empCode === t.vrmEmpCode ? ' selected' : '') + '>' +
+           esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
+  }).join('');
+
+  modal('Edit transaction',
+    'ID <span class="mono">' + esc(t.id) + '</span>' +
+    (t.batchId ? ' · batch <span class="mono">' + esc(t.batchId) + '</span>' : '') +
+    (t.panMasked ? '<br><span class="muted">PAN is masked for your role and cannot be edited here.</span>' : ''),
     '<input type="hidden" id="d_id" value="' + esc(t.id) + '">' +
-    '<div class="f"><label class="lbl">Client code</label><input class="inp" id="d_cc" value="' + esc(t.clientCode) + '"></div>' +
-    '<div class="f"><label class="lbl">Client name</label><input class="inp" id="d_cn" value="' + esc(t.clientName) + '"></div>' +
-    vrmSel +
     '<div class="row" style="gap:12px">' +
-      '<div class="f grow"><label class="lbl">SIP amount</label><input class="inp" id="d_sip" type="number" min="0" step="1" value="' + num(t.sip) + '"></div>' +
-      '<div class="f grow"><label class="lbl">Lumpsum amount</label><input class="inp" id="d_lump" type="number" min="0" step="1" value="' + num(t.lumpsum) + '"></div>' +
+      '<div class="f grow"><label class="lbl">Txn Date</label><input class="inp" id="d_date" type="date" value="' + esc(t.date) + '"></div>' +
+      '<div class="f grow"><label class="lbl">Txn Time</label><input class="inp" id="d_time" type="time" value="' + esc(t.time) + '"></div>' +
     '</div>' +
-    '<div class="f"><label class="lbl">Date of investment</label><input class="inp" id="d_date" type="date" value="' + esc(t.date) + '"></div>',
+    '<div class="row" style="gap:12px">' +
+      '<div class="f grow"><label class="lbl">Client Code</label><input class="inp" id="d_cc" value="' + esc(t.clientCode) + '"></div>' +
+      '<div class="f grow"><label class="lbl">Client Name</label><input class="inp" id="d_cn" value="' + esc(t.clientName) + '"></div>' +
+    '</div>' +
+    (t.panMasked ? '' :
+      '<div class="f"><label class="lbl">PAN No.</label><input class="inp mono" id="d_pan" value="' +
+      esc(t.pan) + '" placeholder="AAAAA9999A"></div>') +
+    '<div class="f"><label class="lbl">VRM (owner)</label><select class="inp" id="d_vrm">' + vrmOpts + '</select></div>' +
+    '<div class="f"><label class="lbl">RM Name</label><input class="inp" id="d_rm" value="' + esc(t.rmName) + '"></div>' +
+    '<div class="f"><label class="lbl">Scheme Name</label><input class="inp" id="d_scheme" value="' + esc(t.scheme) + '"></div>' +
+    '<div class="row" style="gap:12px">' +
+      '<div class="f grow"><label class="lbl">TXN Type</label><select class="inp" id="d_type">' + typeOpts + '</select></div>' +
+      '<div class="f grow"><label class="lbl">Amount</label><input class="inp" id="d_amount" type="number" min="1" step="1" value="' + num(t.amount) + '"></div>' +
+    '</div>' +
+    '<div class="f"><label class="lbl">Txn Status</label><select class="inp" id="d_status">' + statusOpts + '</select></div>' +
+    '<div class="f"><label class="lbl">Reason for Rejection</label><input class="inp" id="d_reason" value="' + esc(t.reason) + '"></div>',
     '<button class="btn gh" data-act="close">Cancel</button>' +
     '<button class="btn pri" data-act="doedittxn">Save changes</button>');
 }
 
 function importPreviewDialog(rows, skipped, fileName) {
   var head = rows.slice(0, 6);
-  modal('Import ' + rows.length + ' row(s)',
-    'From <b>' + esc(fileName) + '</b>' + (skipped ? ' - ' + skipped + ' blank/unusable row(s) will be skipped' : '') +
-    '. ' + (isAdmin() ? 'VRM columns are respected; an unknown VRM name is created automatically.'
-                      : 'Rows are recorded against your book.'),
-    '<div class="twrap" style="max-height:240px;border:1px solid var(--line);border-radius:10px">' +
-    '<table><thead><tr><th>Client</th><th>VRM</th><th class="num">SIP</th><th class="num">Lumpsum</th><th>Date</th></tr></thead><tbody>' +
+  var counts = {};
+  rows.forEach(function (r) {
+    var k = String(r.txnType || '?').toUpperCase();
+    counts[k] = (counts[k] || 0) + 1;
+  });
+  var mix = Object.keys(counts).map(function (k) { return counts[k] + ' × ' + k; }).join(', ');
+
+  modal('Upload ' + rows.length + ' row(s)',
+    'From <b>' + esc(fileName) + '</b>' + (skipped ? ' — ' + skipped + ' blank row(s) ignored' : '') +
+    '.<br>' + esc(mix) +
+    (isAdmin()
+      ? '<br><span class="muted">VRM columns are respected; an unknown VRM name is created.</span>'
+      : '<br><span class="muted">Rows must belong to you — a different VRM in the file will be reported.</span>'),
+    '<div class="twrap" style="max-height:250px;border:1px solid var(--line);border-radius:10px">' +
+    '<table><thead><tr><th>Date</th><th>Client</th><th>Scheme</th><th>Type</th>' +
+    '<th class="num">Amount</th><th>Status</th></tr></thead><tbody>' +
     head.map(function (r) {
-      return '<tr><td class="mono">' + esc(r.clientCode) + '<div class="muted" style="font-size:11px">' + esc(r.clientName) + '</div></td>' +
-        '<td class="mono" style="font-size:11.5px">' + esc(r.vrmEmpCode || r.vrmName || (isAdmin() ? '-' : S.session.empCode)) + '</td>' +
-        '<td class="num">' + rupee(r.sip) + '</td><td class="num">' + rupee(r.lumpsum) + '</td>' +
-        '<td class="mono">' + esc(dmy(r.date)) + '</td></tr>';
+      return '<tr><td class="mono">' + esc(dmy(r.date) || r.date) + '</td>' +
+        '<td class="mono">' + esc(r.clientCode) +
+          '<div class="muted" style="font-size:11px">' + esc(r.clientName) + '</div></td>' +
+        '<td><span class="cx" style="max-width:190px" title="' + esc(r.scheme) + '">' + esc(r.scheme || '—') + '</span></td>' +
+        '<td>' + esc(r.txnType) + '</td>' +
+        '<td class="num">' + rupee(r.amount) + '</td>' +
+        '<td>' + esc(r.status) + '</td></tr>';
     }).join('') +
-    (rows.length > head.length ? '<tr><td colspan="5" class="muted">... and ' + (rows.length - head.length) + ' more</td></tr>' : '') +
+    (rows.length > head.length
+      ? '<tr><td colspan="6" class="muted">… and ' + (rows.length - head.length) + ' more</td></tr>' : '') +
     '</tbody></table></div>',
     '<button class="btn gh" data-act="close">Cancel</button>' +
-    '<button class="btn pri" data-act="doimport">Import ' + rows.length + ' row(s)</button>');
+    '<button class="btn pri" data-act="doimport">Upload ' + rows.length + ' row(s)</button>');
   window._pendingImport = rows;
+  window._pendingFile = fileName;
+}
+
+/** Shown when the server refuses a file — lists the offending rows. */
+function uploadErrorDialog(res, fileName) {
+  var errs = res.errors || [];
+  modal('Upload refused',
+    'Nothing was saved from <b>' + esc(fileName) + '</b>.<br>' +
+    '<span class="muted">The whole file is rejected rather than part of it — a partly-loaded ' +
+    'file leaves you unsure what landed, and re-uploading the corrected file would duplicate it.</span>',
+    '<div class="uperr"><b>' + num(res.errorTotal || errs.length) + ' row(s) need fixing</b>' +
+    '<ol>' + errs.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ol>' +
+    (num(res.errorTotal) > errs.length
+      ? '<div class="muted" style="margin-top:8px">… and ' + (res.errorTotal - errs.length) + ' more</div>'
+      : '') + '</div>',
+    '<button class="btn pri" data-act="close">Close</button>');
 }
 
 /* ======================= IMPORT / EXPORT / TEMPLATE ====================== */
 
-var TPL_HEADERS = ['Client Code', 'Client Name', 'VRM Emp Code', 'VRM Name',
-                   'SIP Amount', 'Lumpsum Amount', 'Date of Investment'];
-var TPL_SAMPLE = ['CL10234', 'Rakesh Patel', 'VRM001', 'Riddhi Mistry', 5000, 100000, '17-08-2026'];
+/* The authoritative upload format: the twelve production columns, in order. */
+var TPL_HEADERS = ['TxnDate', 'TxnTime', 'Client Code', 'Client Name', 'PAN No.',
+                   'VRM', 'RM Name', 'Scheme Name', 'TXN Type', 'Amount',
+                   'Txn Status', 'Reason for Rejection'];
+
+/* Three example rows covering all three transaction types. The PAN is a
+   deliberately fake placeholder — never ship a real one in a template. */
+var TPL_SAMPLE = [
+  ['17-08-2026', '1:47 PM', 'S70810', 'SOMA VIDYA SAGAR', 'AAAAA1111A',
+   'Khushi Mahesh Dodiya', 'Rajashri Alkesh Mohandas',
+   'KOTAK EQUITY SAVINGS FUND REGULAR GROWTH', 'Lumpsum', 5000, 'Completed', 'ALLOTMENT DONE'],
+  ['17-08-2026', '10:15 AM', 'S70811', 'EXAMPLE CLIENT TWO', 'AAAAA2222A',
+   'Khushi Mahesh Dodiya', 'Rajashri Alkesh Mohandas',
+   'HDFC FLEXI CAP FUND GROWTH', 'SIP', 10000, 'Completed', ''],
+  ['18-08-2026', '2:30 PM', 'S70812', 'EXAMPLE CLIENT THREE', 'AAAAA3333A',
+   'Khushi Mahesh Dodiya', 'Rajashri Alkesh Mohandas',
+   'ICICI PRUDENTIAL BLUECHIP FUND GROWTH', 'Redemption', 20000, 'Completed', '']
+];
 
 /* SheetJS is only needed for Excel import/export and the Excel template. */
 function loadSheetJs() {
@@ -2377,70 +3167,121 @@ function saveXlsx(filename, sheetName, headers, rows) {
 
 /* Exports always reflect the current tab and its active search / filters. */
 function exportSpec(what) {
-  var q, rows;
-  if (what === 'vrmtxns' || what === 'alltxns') {
-    q = S.q[what === 'vrmtxns' ? 'data' : 'alltxns'] || '';
-    rows = S.data.txns.filter(function (t) { return matches(t, q); })
-      .sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); })
-      .map(function (t) {
-        return [t.clientCode, t.clientName, t.vrmEmpCode, t.vrmName, num(t.sip), num(t.lumpsum), dmy(t.date), t.enteredBy];
+  /* Every export carries the twelve source columns plus the derived business
+     figures, so a spreadsheet opened offline reconciles with the dashboard. */
+  var SRC = TPL_HEADERS.concat(['VRM Emp Code', 'Gross Sales', 'Redemption', 'Net Sales',
+                                'Counted', 'Batch ID', 'Transaction ID']);
+
+  function txnRow(t) {
+    var counted = isCounted(t);
+    var g = counted && isPurchase(t) ? num(t.amount) : 0;
+    var rd = counted && t.txnType === TT.REDEMPTION ? num(t.amount) : 0;
+    return [dmy(t.date), hhmm(t.time), t.clientCode, t.clientName, t.pan,
+            t.vrm, t.rmName, t.scheme, TT_LABEL[t.txnType] || t.txnType, num(t.amount),
+            TS_LABEL[t.status] || t.status, t.reason,
+            t.vrmEmpCode, g, rd, g - rd, counted ? 'Yes' : 'No', t.batchId, t.id];
+  }
+
+  var rows;
+  if (what === 'vrmtxns' || what === 'alltxns' || what === 'clientdetail') {
+    var q = S.q[what === 'vrmtxns' ? 'data' : 'alltxns'] || '';
+    var src = S.data.txns;
+    if (what === 'clientdetail') {
+      src = src.filter(function (t) {
+        return String(t.clientCode).toUpperCase() === String(S.clientCode).toUpperCase();
       });
+      q = '';
+    } else if (what === 'alltxns') {
+      src = src.filter(function (t) {
+        if (S.fType && t.txnType !== S.fType) return false;
+        if (S.fStatus && t.status !== S.fStatus) return false;
+        if (S.fVrm && String(t.vrmEmpCode).toUpperCase() !== S.fVrm.toUpperCase()) return false;
+        return true;
+      });
+    }
+    rows = src.filter(function (t) { return matches(t, q); })
+      .sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); })
+      .map(txnRow);
     return {
-      file: 'VRM-MF_' + (what === 'vrmtxns' ? S.session.empCode + '_' : '') + 'all-txns',
-      sheet: 'Transactions',
-      headers: TPL_HEADERS.concat(['Entered By']),
-      rows: rows
+      file: 'VRM-MF_' + (what === 'clientdetail' ? 'client-' + S.clientCode :
+             (what === 'vrmtxns' ? S.session.empCode + '_transactions' : 'all-transactions')),
+      sheet: 'Transactions', headers: SRC, rows: rows
     };
   }
+
   if (what === 'clients') {
-    q = (S.q.clients || '').toLowerCase();
+    var cq = (S.q.clients || '').toLowerCase();
     rows = byClient(S.data.txns).filter(function (r) {
-      return !q || (r.clientCode + ' ' + r.clientName + ' ' + r.vrms.join(' ')).toLowerCase().indexOf(q) >= 0;
+      return !cq || (r.clientCode + ' ' + r.clientName + ' ' + (r.pan || '')).toLowerCase().indexOf(cq) >= 0;
     }).map(function (r) {
-      var base = [r.clientCode, r.clientName];
-      if (isAdmin()) base.push(r.vrms.join(' / '));
-      return base.concat([r.sip, r.lump, r.total, r.n, dmy(r.first), dmy(r.last)]);
+      return [r.clientCode, r.clientName, r.pan, r.vrms.join(' / '), r.rms.join(' / '),
+              r.sip, r.lumpsum, r.gross, r.redemption, r.net, r.n,
+              dmy(r.first), dmy(r.last)];
     });
     return {
       file: 'VRM-MF_client-consolidated', sheet: 'Client Consolidated',
-      headers: ['Client Code', 'Client Name'].concat(isAdmin() ? ['VRM(s)'] : [])
-        .concat(['SIP Total', 'Lumpsum Total', 'Combined Total', 'Transactions', 'First Investment', 'Last Investment']),
+      headers: ['Client Code', 'Client Name', 'PAN No.', 'VRM', 'RM Name',
+                'SIP Total', 'Lumpsum Total', 'Gross Sales', 'Redemption Total',
+                'Net Sales', 'Transactions', 'First Transaction', 'Latest Transaction'],
       rows: rows
     };
   }
+
   if (what === 'vrmwise') {
-    q = (S.q.vrmwise || '').toLowerCase();
+    var vq = (S.q.vrmwise || '').toLowerCase();
     rows = byVrm(S.data.txns, S.data.vrms).filter(function (r) {
-      return !q || (r.empCode + ' ' + r.name).toLowerCase().indexOf(q) >= 0;
-    }).map(function (r) { return [r.empCode, r.name, r.sip, r.lump, r.gross, r.clientCount, r.n]; });
+      return !vq || (r.empCode + ' ' + r.name).toLowerCase().indexOf(vq) >= 0;
+    }).map(function (r) {
+      return [r.empCode, r.name, r.rms.join(' / '), r.clientCount,
+              r.sip, r.lumpsum, r.gross, r.redemption, r.net, r.n];
+    });
     return {
       file: 'VRM-MF_vrm-wise-summary', sheet: 'VRM-wise',
-      headers: ['VRM Emp Code', 'VRM Name', 'SIP', 'Lumpsum', 'Gross Sales', 'Clients', 'Transactions'],
+      headers: ['VRM Emp Code', 'VRM Name', 'RM Name(s)', 'Clients', 'SIP', 'Lumpsum',
+                'Gross Sales', 'Redemption', 'Net Sales', 'Transactions'],
       rows: rows
     };
   }
+
+  if (what === 'scheme') {
+    var sq = (S.q.scheme || '').toLowerCase();
+    var scoped = S.data.txns.filter(function (t) {
+      if (S.fType && t.txnType !== S.fType) return false;
+      if (S.fStatus && t.status !== S.fStatus) return false;
+      if (S.fVrm && String(t.vrmEmpCode).toUpperCase() !== S.fVrm.toUpperCase()) return false;
+      return true;
+    });
+    rows = byScheme(scoped).filter(function (r) {
+      return !sq || r.scheme.toLowerCase().indexOf(sq) >= 0;
+    }).map(function (r) {
+      return [r.scheme, r.sip, r.lumpsum, r.gross, r.redemption, r.net, r.clientCount, r.n];
+    });
+    return {
+      file: 'VRM-MF_scheme-analysis', sheet: 'Scheme Analysis',
+      headers: ['Scheme Name', 'SIP', 'Lumpsum', 'Gross Sales', 'Redemption',
+                'Net Sales', 'Clients', 'Transactions'],
+      rows: rows
+    };
+  }
+
   if (what === 'analytics') {
     var g = GRAN[S.an.gran] || GRAN.month;
-    var met = METRICS[S.an.metric] || METRICS.gross;
     var ser = series(anRows(), S.an.gran);
-    var byK = {}; ser.forEach(function (r) { byK[r.key] = r; });
     rows = ser.slice().reverse().map(function (r) {
-      var p = byK[prevKey(r.key, S.an.gran)], y = byK[yoyKey(r.key, S.an.gran)];
-      var d1 = p ? pct(met.pick(r), met.pick(p)) : null;
-      var d2 = y ? pct(met.pick(r), met.pick(y)) : null;
-      return [g.label(r.key), r.sip, r.lump, r.gross, r.n, r.clientCount,
-              d1 === null ? '' : d1.toFixed(1) + '%', d2 === null ? '' : d2.toFixed(1) + '%'];
+      return [g.label(r.key), r.sip, r.lumpsum, r.gross, r.redemption, r.net, r.n, r.clientCount];
     });
     return {
       file: 'VRM-MF_revenue-analysis-' + S.an.gran, sheet: 'Revenue Analysis',
-      headers: ['Period', 'SIP', 'Lumpsum', 'Gross', 'Transactions', 'Clients',
-                g.delta + ' %', 'YoY %'],
+      headers: ['Period', 'SIP', 'Lumpsum', 'Gross Sales', 'Redemption', 'Net Sales',
+                'Transactions', 'Clients'],
       rows: rows
     };
   }
+
   if (what === 'activity') {
     rows = auditRows().map(function (r) {
-      return [r.timestamp, r.actor, r.role, r.action, r.details, r.affectedCount === '' ? '' : num(r.affectedCount)];
+      return [r.timestamp, r.actor, r.role, r.action, r.details,
+              r.affectedCount === '' ? '' : num(r.affectedCount)];
     });
     return {
       file: 'VRM-MF_activity-log', sheet: 'Activity Log',
@@ -2452,14 +3293,21 @@ function exportSpec(what) {
 }
 
 /* --------------------------- header matching ----------------------------- */
+/* Loose header matching: punctuation and case are ignored, and the aliases cover
+   the variations these files arrive with. */
 var HEADER_MAP = {
+  date:       ['txndate', 'transactiondate', 'date', 'dateoftransaction', 'trxndate'],
+  time:       ['txntime', 'transactiontime', 'time', 'trxntime'],
   clientCode: ['clientcode', 'code', 'clcode', 'clientid', 'clientno'],
   clientName: ['clientname', 'name', 'client', 'investorname'],
-  vrmEmpCode: ['vrmempcode', 'empcode', 'vrmcode', 'employeecode', 'vrmid', 'rmcode'],
-  vrmName:    ['vrmname', 'vrm', 'rmname', 'relationshipmanager'],
-  sip:        ['sipamount', 'sip', 'sipamt', 'sipvalue', 'monthlysip'],
-  lumpsum:    ['lumpsumamount', 'lumpsum', 'lumpsumamt', 'lumpsumvalue', 'lump', 'onetime', 'onetimeamount'],
-  date:       ['dateofinvestment', 'investmentdate', 'date', 'invdate', 'transactiondate', 'dateofinv']
+  pan:        ['panno', 'pan', 'pannumber', 'pancard', 'pannum'],
+  vrm:        ['vrm', 'vrmname', 'vrmempname'],
+  rmName:     ['rmname', 'rm', 'relationshipmanager', 'rmmanager'],
+  scheme:     ['schemename', 'scheme', 'fundname', 'schemedescription'],
+  txnType:    ['txntype', 'transactiontype', 'type', 'trxntype', 'transactioncategory'],
+  amount:     ['amount', 'amt', 'transactionamount', 'txnamount', 'grossamount'],
+  status:     ['txnstatus', 'transactionstatus', 'status', 'trxnstatus'],
+  reason:     ['reasonforrejection', 'rejectionreason', 'reason', 'remarks', 'remark']
 };
 function normHead(h) { return String(h || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
 
@@ -2476,35 +3324,56 @@ function mapColumns(headerRow) {
 }
 
 function rowsFromMatrix(matrix) {
-  /* Find the header row: the first row that maps at least a date or an amount. */
+  /* Find the header row: the first row that maps a date AND an amount. Files
+     often carry a title or blank rows above the real header. */
   var hi = -1, idx = null;
-  for (var r = 0; r < Math.min(matrix.length, 12); r++) {
+  for (var r = 0; r < Math.min(matrix.length, 15); r++) {
     var m = mapColumns(matrix[r] || []);
-    if (m.date !== undefined || m.sip !== undefined || m.lumpsum !== undefined) { hi = r; idx = m; break; }
+    if (m.date !== undefined && m.amount !== undefined) { hi = r; idx = m; break; }
   }
-  if (hi < 0) throw new Error('Could not find the expected column headers. Download the template and match the headings.');
+  if (hi < 0) {
+    throw new Error('Could not find the expected columns. Download the template — the file needs ' +
+                    'TxnDate, TXN Type and Amount at minimum.');
+  }
 
-  var out = [], skipped = 0;
+  /* Required by the CR. PAN and Reason may legitimately be blank. */
+  var required = { date: 'TxnDate', clientCode: 'Client Code', txnType: 'TXN Type',
+                   amount: 'Amount', status: 'Txn Status' };
+  var missing = Object.keys(required).filter(function (k) { return idx[k] === undefined; })
+                  .map(function (k) { return required[k]; });
+  if (missing.length) {
+    throw new Error('The file is missing these column(s): ' + missing.join(', ') +
+                    '. Download the template to see the expected layout.');
+  }
+
+  var out = [], blank = 0;
   for (var i = hi + 1; i < matrix.length; i++) {
     var row = matrix[i] || [];
     var get = function (f) { return idx[f] === undefined ? '' : row[idx[f]]; };
     var rec = {
-      clientCode: String(get('clientCode') === undefined ? '' : get('clientCode')).trim(),
-      clientName: String(get('clientName') === undefined ? '' : get('clientName')).trim(),
-      vrmEmpCode: String(get('vrmEmpCode') === undefined ? '' : get('vrmEmpCode')).trim(),
-      vrmName: String(get('vrmName') === undefined ? '' : get('vrmName')).trim(),
-      sip: num(String(get('sip')).replace(/[,\s₹]/g, '')),
-      lumpsum: num(String(get('lumpsum')).replace(/[,\s₹]/g, '')),
-      date: toIso(get('date'))
+      __line: i + 1,                       /* the row number in their file */
+      date: get('date'),
+      time: get('time'),
+      clientCode: String(get('clientCode') == null ? '' : get('clientCode')).trim(),
+      clientName: String(get('clientName') == null ? '' : get('clientName')).trim(),
+      pan: String(get('pan') == null ? '' : get('pan')).trim(),
+      vrm: String(get('vrm') == null ? '' : get('vrm')).trim(),
+      rmName: String(get('rmName') == null ? '' : get('rmName')).trim(),
+      scheme: String(get('scheme') == null ? '' : get('scheme')).trim(),
+      txnType: String(get('txnType') == null ? '' : get('txnType')).trim(),
+      amount: num(String(get('amount')).replace(/[,\s₹]/g, '')),
+      status: String(get('status') == null ? '' : get('status')).trim(),
+      reason: String(get('reason') == null ? '' : get('reason')).trim()
     };
-    var blank = !rec.clientCode && !rec.clientName && !rec.date && !rec.sip && !rec.lumpsum;
-    if (blank) continue;                                    /* silently skip empty rows */
-    if (!rec.date || (rec.sip === 0 && rec.lumpsum === 0) || (!rec.clientCode && !rec.clientName)) { skipped++; continue; }
-    if (!rec.clientCode) rec.clientCode = rec.clientName.toUpperCase().replace(/\s+/g, '-');
-    if (!rec.clientName) rec.clientName = rec.clientCode;
+    /* Normalise the date here so the preview shows what will be stored. */
+    rec.date = toIso(rec.date) || rec.date;
+
+    var empty = !rec.clientCode && !rec.clientName && !rec.amount &&
+                !rec.txnType && !String(rec.date || '').trim();
+    if (empty) { blank++; continue; }
     out.push(rec);
   }
-  return { rows: out, skipped: skipped };
+  return { rows: out, skipped: blank };
 }
 
 /* Minimal RFC-4180 CSV parser so CSV import/export works with no internet. */
@@ -2587,7 +3456,6 @@ var ACT = {
   /* ---- dialogs ---- */
   changepw: changePwDialog,
   addvrm: addVrmDialog,
-  addtxn: addTxnDialog,
   edittxn: function (btn) { editTxnDialog(btn.dataset.id); },
   resetpw: function (btn) { resetPwDialog(btn.dataset.code, btn.dataset.name); },
   upload: function () { $('fileIn').click(); },
@@ -2614,35 +3482,34 @@ var ACT = {
     S.af = { actor: '', role: '', action: '', from: '', to: '' };
     S.q.activity = ''; render();
   },
+  client: function (btn) { S.clientCode = btn.dataset.code; S.tab = 'clientdetail'; buildSidebar(); render(); },
+  back: function () { S.tab = 'clients'; buildSidebar(); render(); },
+  clearTf: function () { S.fType = ''; S.fStatus = ''; S.fVrm = ''; render(); },
+  restore: function (btn) {
+    var un = lock(btn, 'Restoring');
+    api('restoreTxn', S.session.token, btn.dataset.id).then(function (d) {
+      absorb(d); toast('Transaction restored.');
+    }).catch(function (e) { un(); fail(e); });
+  },
   anreset: function () {
-    S.an = { from: '', to: '', vrm: '', metric: 'gross', gran: 'month' };
+    S.an = { from: '', to: '', vrm: '', metric: 'net', gran: 'month' };
     render();
   },
 
   /* ---- mutations ---- */
-  doaddtxn: function (btn) {
-    var rec = {
-      clientCode: val('d_cc').trim(), clientName: val('d_cn').trim(),
-      vrmEmpCode: val('d_vrm'), vrmName: '',
-      sip: num(val('d_sip')), lumpsum: num(val('d_lump')), date: toIso(val('d_date'))
-    };
-    if (!rec.clientCode && !rec.clientName) return toast('Enter a client code or client name.', 'e');
-    if (!rec.date) return toast('Pick a valid date of investment.', 'e');
-    if (!rec.sip && !rec.lumpsum) return toast('Enter a SIP or a Lumpsum amount.', 'e');
-    var un = lock(btn, 'Saving');
-    api('addTxns', S.session.token, [rec], 'ADD').then(function (d) {
-      closeModal(); absorb(d);
-      toast('Transaction added for ' + (rec.clientCode || rec.clientName) + '.');
-    }).catch(function (e) { un(); fail(e); });
-  },
 
   doedittxn: function (btn) {
     var fields = {
+      date: val('d_date'), time: val('d_time'),
       clientCode: val('d_cc').trim(), clientName: val('d_cn').trim(),
-      sip: num(val('d_sip')), lumpsum: num(val('d_lump')), date: toIso(val('d_date'))
+      rmName: val('d_rm').trim(), scheme: val('d_scheme').trim(),
+      txnType: val('d_type'), amount: num(val('d_amount')),
+      status: val('d_status'), reason: val('d_reason').trim(),
+      vrmEmpCode: val('d_vrm')
     };
-    if ($('d_vrm')) fields.vrmEmpCode = val('d_vrm');
-    if (!fields.date) return toast('Pick a valid date of investment.', 'e');
+    if ($('d_pan')) fields.pan = val('d_pan').trim();
+    if (!fields.date) return toast('Pick a valid transaction date.', 'e');
+    if (fields.amount <= 0) return toast('Amount must be greater than zero.', 'e');
     var un = lock(btn, 'Saving');
     api('editTxn', S.session.token, val('d_id'), fields).then(function (d) {
       closeModal(); absorb(d); toast('Transaction updated.');
@@ -2651,23 +3518,25 @@ var ACT = {
 
   doimport: function (btn) {
     var rows = window._pendingImport || [];
+    var fileName = window._pendingFile || 'upload';
     if (!rows.length) return closeModal();
-    var un = lock(btn, 'Importing');
-    api('addTxns', S.session.token, rows, 'IMPORT').then(function (d) {
-      closeModal();
-      var r = d.result || {};
-      absorb(d);
-      toast(num(r.inserted) + ' rows imported' +
-        (num(r.skipped) ? ', ' + r.skipped + ' skipped' : '') +
-        ((r.createdVrms || []).length ? '. New VRM(s): ' + r.createdVrms.join(', ') : '') + '.',
-        num(r.inserted) ? '' : 'e');
-      /* Admin-only case: rows arrived with no VRM column, so they have no owner. */
-      if (num(r.noVrm)) {
-        toast(r.noVrm + ' row(s) skipped: add a "VRM Emp Code" or "VRM Name" column so each ' +
-          'row has an owner, or upload from that VRM\'s own login.', 'e');
-      }
-      window._pendingImport = null;
-    }).catch(function (e) { un(); fail(e); });
+    var un = lock(btn, 'Uploading');
+    api('addTxns', S.session.token, rows, 'IMPORT',
+        { fileName: fileName, fileType: /\.csv$/i.test(fileName) ? 'CSV' : 'Excel' })
+      .then(function (d) {
+        var r = d.result || {};
+        absorb(d);
+        if (num(r.inserted) === 0 && num(r.errorTotal)) {
+          uploadErrorDialog(r, fileName);
+          return;
+        }
+        closeModal();
+        toast(num(r.inserted) + ' row(s) uploaded' +
+          (num(r.blank) ? ', ' + r.blank + ' blank skipped' : '') +
+          ((r.createdVrms || []).length ? '. New VRM(s): ' + r.createdVrms.join(', ') : '') +
+          (r.batchId ? ' [' + r.batchId + ']' : ''));
+        window._pendingImport = null;
+      }).catch(function (e) { un(); fail(e); });
   },
 
   deltxn: function (btn) {
@@ -2791,6 +3660,23 @@ document.addEventListener('change', function (e) {
   if (!el) return;
   S.af[el.dataset.f] = el.value;
   render();
+});
+
+/* monthly-trend metric toggles */
+document.addEventListener('click', function (e) {
+  var el = e.target.closest('[data-trend]');
+  if (!el) return;
+  var k = el.dataset.trend;
+  S.trendOn[k] = !S.trendOn[k];
+  render();
+});
+
+/* transaction-table filters and the VRM-wise sort */
+document.addEventListener('change', function (e) {
+  var tf = e.target.closest('[data-tf]');
+  if (tf) { S[tf.dataset.tf] = tf.value; render(); return; }
+  var so = e.target.closest('[data-sort]');
+  if (so) { S.vrmSort = so.value; render(); }
 });
 
 /* analytics filter controls */
