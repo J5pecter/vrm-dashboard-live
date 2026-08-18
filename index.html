@@ -1,0 +1,2346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VRM Revenue Dashboard</title>
+<meta name="description" content="SIP and Lumpsum sales MIS for VRMs and Admin.">
+</head>
+<body>
+<!-- VRM Revenue Dashboard — single-file frontend served by HtmlService -->
+<style>
+/* ===========================================================================
+   VRM Revenue Dashboard — design system
+   Visual language: modern fintech / Stripe-style — deep navy ink, blurple
+   primary, an angled gradient band, tight geometric type, layered soft
+   shadows, crisp hairline borders. All hand-written; no third-party assets.
+   =========================================================================== */
+:root{
+  /* core palette */
+  --navy:#0a2540; --navy2:#0e2f50;
+  --p:#635bff; --p2:#7a73ff; --p3:#4b45c6;
+  --p-soft:#f0f0ff; --p-ink:#3f3ac9;
+  --cyan:#00d4ff; --mint:#a6ffcb; --violet:#8f6ed5;
+  --a:#09825d; --a2:#24b47e; --a-soft:#e7f7f0;
+  --warn:#bb5504; --warn-soft:#fff6e6;
+  --dan:#df1b41; --dan-soft:#fdeef1; --ok:#09825d;
+
+  /* surfaces + text */
+  --bg:#f6f9fc; --surf:#ffffff; --surf2:#fbfcfe; --line:#e6ebf1; --line2:#eff3f8;
+  --ink:#0a2540; --ink2:#425466; --ink3:#8792a2;
+
+  /* Stripe-ish layered shadows */
+  --sh:0 2px 5px -1px rgba(50,50,93,.08),0 1px 3px -1px rgba(0,0,0,.05);
+  --sh2:0 13px 27px -5px rgba(50,50,93,.14),0 8px 16px -8px rgba(0,0,0,.10);
+  --sh3:0 30px 60px -12px rgba(50,50,93,.22),0 18px 36px -18px rgba(0,0,0,.18);
+  --shb:0 4px 6px rgba(50,50,93,.11),0 1px 3px rgba(0,0,0,.08);
+
+  --r:8px; --r2:6px; --r3:4px; --topbar:64px; --side:244px;
+  --grad:linear-gradient(101deg,#635bff 0%,#00d4ff 52%,#a6ffcb 100%);
+}
+html[data-t="dark"]{
+  --navy:#061726; --navy2:#0a2540;
+  --p:#8b85ff; --p2:#a5a0ff; --p3:#635bff;
+  --p-soft:#1b1f4a; --p-ink:#c7c4ff;
+  --a:#24b47e; --a2:#3ddc9a; --a-soft:#0b2f24;
+  --warn:#f7b955; --warn-soft:#2e2109;
+  --dan:#ff6b81; --dan-soft:#331119; --ok:#3ddc9a;
+  --bg:#04101c; --surf:#0a2540; --surf2:#0d2b49; --line:#1b3a5c; --line2:#16324f;
+  --ink:#f6f9fc; --ink2:#adbdcc; --ink3:#7d90a5;
+  --sh:0 2px 5px -1px rgba(0,0,0,.45),0 1px 3px -1px rgba(0,0,0,.3);
+  --sh2:0 13px 27px -5px rgba(0,0,0,.55),0 8px 16px -8px rgba(0,0,0,.4);
+  --sh3:0 30px 60px -12px rgba(0,0,0,.7),0 18px 36px -18px rgba(0,0,0,.5);
+  --shb:0 4px 6px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  letter-spacing:-.01em; transition:background .3s,color .3s;
+}
+button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
+button{cursor:pointer;border:0;background:none}
+a{color:var(--p);text-decoration:none}
+::selection{background:var(--p);color:#fff}
+:focus-visible{outline:3px solid rgba(99,91,255,.45);outline-offset:1px;border-radius:var(--r3)}
+h1,h2,h3{letter-spacing:-.028em;line-height:1.16}
+
+/* the signature angled gradient band */
+.gband{position:absolute;inset:auto 0 0 0;height:44%;
+  background:var(--grad);transform:skewY(-9deg);transform-origin:0 100%;
+  background-size:200% 100%;animation:drift 14s ease-in-out infinite alternate}
+@keyframes drift{from{background-position:0% 50%}to{background-position:100% 50%}}
+
+/* ---------- primitives ---------- */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:var(--r3);
+  background:var(--surf);border:1px solid var(--line);color:var(--ink);font-weight:600;font-size:13.5px;
+  box-shadow:var(--sh);transition:transform .14s cubic-bezier(.2,.9,.25,1),box-shadow .18s,background .18s,border-color .18s,color .18s;
+  white-space:nowrap;letter-spacing:-.01em}
+.btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:var(--sh2);color:var(--p);border-color:var(--line)}
+.btn:active:not(:disabled){transform:translateY(0);box-shadow:var(--sh)}
+.btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+.btn.pri{background:var(--p);border-color:transparent;color:#fff;box-shadow:var(--shb)}
+.btn.pri:hover:not(:disabled){background:var(--p2);color:#fff;box-shadow:var(--sh2)}
+.btn.acc{background:var(--a);border-color:transparent;color:#fff;box-shadow:var(--shb)}
+.btn.acc:hover:not(:disabled){background:var(--a2);color:#fff;box-shadow:var(--sh2)}
+.btn.dan{background:var(--dan);border-color:transparent;color:#fff;box-shadow:var(--shb)}
+.btn.dan:hover:not(:disabled){background:#c4173a;color:#fff;box-shadow:var(--sh2)}
+.btn.gh{background:transparent;box-shadow:none;border-color:transparent;color:var(--ink2)}
+.btn.gh:hover:not(:disabled){background:var(--line2);color:var(--ink);box-shadow:none;transform:none}
+.btn.sm{padding:7px 12px;font-size:12.5px}
+.btn.xs{padding:5px 10px;font-size:12px}
+.inp{width:100%;padding:10px 12px;border-radius:var(--r3);border:1px solid var(--line);
+  background:var(--surf);color:var(--ink);box-shadow:0 1px 1px rgba(0,0,0,.02);
+  transition:border-color .16s,box-shadow .16s}
+.inp:focus{outline:0;border-color:var(--p);box-shadow:0 0 0 3px rgba(99,91,255,.18)}
+.inp::placeholder{color:var(--ink3)}
+.lbl{display:block;font-size:12px;font-weight:600;color:var(--ink2);margin:0 0 6px;letter-spacing:0}
+.card{background:var(--surf);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh)}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:11.5px;
+  font-weight:600;background:var(--p-soft);color:var(--p-ink);letter-spacing:0;white-space:nowrap}
+.pill.ok{background:var(--a-soft);color:var(--ok)}
+.pill.lock{background:var(--dan-soft);color:var(--dan)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;letter-spacing:-.02em}
+.muted{color:var(--ink3)}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.grow{flex:1 1 auto;min-width:0}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--p)}
+
+/* ---------- login ---------- */
+#login{min-height:100vh;display:grid;place-items:center;padding:24px;position:relative;
+  overflow:hidden;background:var(--navy)}
+#login::before{content:"";position:absolute;inset:0;
+  background:radial-gradient(1200px 620px at 15% -10%,rgba(99,91,255,.5),transparent 60%),
+             radial-gradient(900px 520px at 95% 8%,rgba(0,212,255,.28),transparent 62%)}
+#login .gband{height:38%;opacity:.92}
+.lbox{width:100%;max-width:430px;position:relative;z-index:2;animation:rise .55s cubic-bezier(.2,.9,.25,1)}
+.lhead{text-align:center;margin-bottom:22px}
+.lmark{width:52px;height:52px;margin:0 auto 14px;border-radius:12px;display:grid;place-items:center;
+  background:#fff;color:var(--p);font-weight:800;font-size:15px;letter-spacing:-.04em;
+  box-shadow:0 12px 30px -8px rgba(0,0,0,.4)}
+.lhead h1{margin:0;font-size:30px;color:#fff;font-weight:700}
+.lhead p{margin:8px 0 0;color:rgba(255,255,255,.72);font-size:15px}
+.lcard{padding:26px;border-radius:12px;background:var(--surf);border:1px solid transparent;
+  box-shadow:var(--sh3)}
+.seg{display:flex;gap:4px;padding:4px;background:var(--bg);border:1px solid var(--line);
+  border-radius:var(--r2);margin-bottom:20px}
+.seg button{flex:1;padding:9px;border-radius:var(--r3);font-weight:600;font-size:13.5px;
+  color:var(--ink2);transition:.18s}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-selected="true"]{background:var(--surf);color:var(--p);box-shadow:var(--sh)}
+.err{margin-top:16px;padding:11px 13px;border-radius:var(--r3);background:var(--dan-soft);
+  color:var(--dan);font-size:13px;font-weight:500;border-left:3px solid var(--dan);animation:shake .35s}
+.lfoot{margin-top:20px;text-align:center;font-size:12.5px;color:rgba(255,255,255,.6);line-height:1.75}
+.demobox{margin-top:14px;padding:11px 13px;border-radius:var(--r3);background:var(--p-soft);
+  color:var(--p-ink);font-size:12.5px;line-height:1.7}
+
+/* ---------- shell ---------- */
+#app{display:none}
+.topbar{position:fixed;inset:0 0 auto 0;height:var(--topbar);z-index:40;display:flex;align-items:center;
+  gap:12px;padding:0 20px;background:var(--surf);border-bottom:1px solid var(--line)}
+.topbar::after{content:"";position:absolute;inset:auto 0 -3px 0;height:3px;background:var(--grad)}
+.brand{display:flex;align-items:center;gap:11px;min-width:0}
+.bmark{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;flex:0 0 auto;
+  background:var(--navy);color:#fff;font-weight:800;font-size:11.5px;letter-spacing:-.03em}
+.btitle{font-weight:700;font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  letter-spacing:-.025em}
+.btitle span{display:block;font-size:11.5px;font-weight:600;color:var(--p);letter-spacing:.06em;
+  text-transform:uppercase}
+.iconbtn{width:36px;height:36px;border-radius:var(--r3);display:grid;place-items:center;
+  border:1px solid transparent;color:var(--ink2);transition:.16s}
+.iconbtn:hover{background:var(--line2);color:var(--p)}
+#burger{display:none}
+.acct{position:relative}
+.acctbtn{display:flex;align-items:center;gap:9px;padding:5px 11px 5px 5px;border-radius:999px;
+  border:1px solid var(--line);background:var(--surf);box-shadow:var(--sh);transition:.16s}
+.acctbtn:hover{box-shadow:var(--sh2);transform:translateY(-1px)}
+.av{width:28px;height:28px;border-radius:999px;display:grid;place-items:center;font-size:11px;
+  font-weight:700;color:#fff;background:var(--grad);flex:0 0 auto}
+.acctname{font-size:13.5px;font-weight:600;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu{position:absolute;right:0;top:calc(100% + 10px);min-width:230px;padding:6px;border-radius:var(--r);
+  background:var(--surf);border:1px solid var(--line);box-shadow:var(--sh3);display:none;animation:rise .16s}
+.menu.open{display:block}
+.menu .mh{padding:10px 12px 11px;border-bottom:1px solid var(--line);margin-bottom:5px}
+.menu .mh b{display:block;font-size:14px}
+.menu .mh small{color:var(--ink3);font-size:12px}
+.menu button{display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;border-radius:var(--r3);
+  font-size:13.5px;font-weight:500;text-align:left;color:var(--ink2);transition:.14s}
+.menu button:hover{background:var(--p-soft);color:var(--p)}
+.menu button.d:hover{background:var(--dan-soft);color:var(--dan)}
+
+.side{position:fixed;top:var(--topbar);bottom:0;left:0;width:var(--side);z-index:35;padding:18px 14px;
+  background:var(--surf);border-right:1px solid var(--line);overflow-y:auto;
+  transition:transform .28s cubic-bezier(.2,.9,.25,1)}
+.snav{display:flex;flex-direction:column;gap:2px}
+.snav button{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:var(--r2);
+  font-size:14px;font-weight:500;color:var(--ink2);text-align:left;transition:.16s;position:relative}
+.snav button:hover{background:var(--line2);color:var(--ink)}
+.snav button[aria-current="true"]{background:var(--p-soft);color:var(--p);font-weight:600}
+.snav .ic{width:18px;flex:0 0 18px;display:grid;place-items:center;opacity:.95}
+.sgroup{font-size:11px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink3);
+  padding:12px 12px 8px}
+.sfoot{margin-top:20px;padding:14px;border-radius:var(--r2);background:var(--bg);
+  border:1px solid var(--line);font-size:12px;color:var(--ink2);line-height:1.7}
+.sfoot b{color:var(--ink)}
+#backdrop{position:fixed;inset:0;background:rgba(10,37,64,.55);z-index:34;display:none;backdrop-filter:blur(3px)}
+#backdrop.on{display:block;animation:fade .2s}
+
+main{margin:var(--topbar) 0 0 var(--side);padding:28px;min-height:calc(100vh - var(--topbar))}
+.phead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.phead h2{margin:0;font-size:27px;font-weight:700}
+.phead p{margin:7px 0 0;color:var(--ink2);font-size:14px;max-width:76ch}
+.view{animation:rise .32s cubic-bezier(.2,.9,.25,1)}
+
+/* ---------- KPI ---------- */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(224px,1fr));gap:16px;margin-bottom:22px}
+.kpi{padding:20px;border-radius:var(--r);background:var(--surf);border:1px solid var(--line);
+  box-shadow:var(--sh);transition:transform .2s cubic-bezier(.2,.9,.25,1),box-shadow .2s;
+  position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--grad);
+  opacity:0;transition:opacity .22s}
+.kpi:hover{transform:translateY(-3px);box-shadow:var(--sh2)}
+.kpi:hover::before{opacity:1}
+.kpi .kt{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;color:var(--ink2);
+  margin-bottom:12px}
+.kpi .ki{width:28px;height:28px;border-radius:var(--r2);display:grid;place-items:center;flex:0 0 auto;
+  background:var(--p-soft);color:var(--p)}
+.kpi.g2 .ki{background:var(--a-soft);color:var(--a)}
+.kpi .kv{font-size:29px;font-weight:700;letter-spacing:-.04em;line-height:1.1;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.kpi .ks{margin-top:7px;font-size:12.5px;color:var(--ink3)}
+
+/* ---------- panels / tables ---------- */
+.panel{background:var(--surf);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--sh);overflow:hidden;margin-bottom:22px}
+.ptop{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  padding:17px 20px;border-bottom:1px solid var(--line);background:var(--surf)}
+.ptop h3{margin:0;font-size:16px;font-weight:600}
+.ptop p{margin:4px 0 0;font-size:12.5px;color:var(--ink3)}
+.tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.search{position:relative;min-width:210px}
+.search .inp{padding-left:36px}
+.search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--ink3);pointer-events:none}
+.twrap{overflow:auto;max-height:min(66vh,740px)}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:14px}
+thead th{position:sticky;top:0;z-index:2;background:var(--surf2);text-align:left;padding:11px 20px;
+  font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);
+  border-bottom:1px solid var(--line);white-space:nowrap}
+tbody td{padding:13px 20px;border-bottom:1px solid var(--line2);vertical-align:middle;color:var(--ink2)}
+tbody td b,tbody td .mono b{color:var(--ink)}
+tbody tr{transition:background .13s}
+tbody tr:hover{background:var(--surf2)}
+tbody tr.sel{background:var(--p-soft)}
+tbody tr:last-child td{border-bottom:0}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tot{font-weight:700;color:var(--ink)}
+tfoot td{padding:14px 20px;background:var(--surf2);border-top:2px solid var(--line);font-weight:700;
+  color:var(--ink);position:sticky;bottom:0;z-index:2}
+.empty{padding:60px 24px;text-align:center;color:var(--ink3)}
+.empty .eic{width:52px;height:52px;margin:0 auto 14px;border-radius:12px;display:grid;place-items:center;
+  background:var(--bg);border:1px solid var(--line);color:var(--ink3)}
+.empty b{display:block;color:var(--ink);margin-bottom:5px;font-size:15px}
+.selbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  padding:12px 20px;background:var(--p-soft);border-bottom:1px solid var(--line);animation:fade .2s}
+.selbar b{color:var(--p-ink)}
+.conf{display:inline-flex;gap:6px;align-items:center;animation:rise .18s}
+.cx{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom}
+input[type=checkbox]{width:16px;height:16px;accent-color:var(--p);cursor:pointer}
+
+/* ---------- chart ---------- */
+.chartbox{padding:20px;height:330px;position:relative}
+.legend{display:flex;gap:18px;padding:0 20px 18px;font-size:13px;color:var(--ink2);flex-wrap:wrap}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block;margin-right:7px}
+.bars{display:flex;align-items:flex-end;gap:10px;height:236px;padding:0 4px}
+.bcol{flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;min-width:0}
+.bstack{width:100%;max-width:54px;display:flex;flex-direction:column-reverse;justify-content:flex-start;
+  height:200px;gap:2px;position:relative}
+.bseg{width:100%;border-radius:3px;height:0;transition:height .8s cubic-bezier(.2,.9,.25,1)}
+.blab{font-size:11px;color:var(--ink3);font-weight:600;white-space:nowrap}
+.bcol:hover .bseg{filter:brightness(1.1)}
+
+/* ---------- modal / toast ---------- */
+#modal{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;padding:20px;
+  background:rgba(10,37,64,.6);backdrop-filter:blur(4px)}
+#modal.on{display:flex;animation:fade .18s}
+.mbox{width:100%;max-width:470px;max-height:92vh;overflow:auto;padding:26px;border-radius:12px;
+  background:var(--surf);border:1px solid var(--line);box-shadow:var(--sh3);
+  animation:rise .26s cubic-bezier(.2,.9,.25,1)}
+.mbox h3{margin:0 0 6px;font-size:20px;font-weight:700}
+.mbox .msub{margin:0 0 20px;font-size:13.5px;color:var(--ink2);line-height:1.6}
+.f{margin-bottom:15px}
+.mact{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap}
+#toasts{position:fixed;right:20px;bottom:20px;z-index:80;display:flex;flex-direction:column;gap:10px;
+  max-width:min(400px,calc(100vw - 40px))}
+.toast{display:flex;gap:11px;padding:14px 16px;border-radius:var(--r);background:var(--surf);
+  border:1px solid var(--line);box-shadow:var(--sh3);font-size:13.5px;font-weight:500;color:var(--ink);
+  animation:tin .32s cubic-bezier(.2,.9,.25,1);border-left:3px solid var(--ok);line-height:1.5}
+.toast.e{border-left-color:var(--dan)}
+.toast.i{border-left-color:var(--p)}
+.toast.out{animation:tout .25s forwards}
+.toast .tic{flex:0 0 auto;color:var(--ok);margin-top:1px}
+.toast.e .tic{color:var(--dan)} .toast.i .tic{color:var(--p)}
+#bar{position:fixed;top:0;left:0;height:3px;width:0;z-index:90;background:var(--grad);
+  transition:width .3s ease,opacity .3s;opacity:0}
+#bar.on{opacity:1}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-top-color:transparent;
+  display:inline-block;animation:spin .7s linear infinite;vertical-align:-2px}
+
+/* demo banner (GitHub Pages build only) */
+#demobar{position:fixed;top:0;left:0;right:0;z-index:95;padding:7px 16px;text-align:center;
+  background:var(--navy);color:#fff;font-size:12.5px;font-weight:600;letter-spacing:.01em}
+#demobar a{color:var(--mint)}
+body.hasdemo .topbar{top:32px}
+body.hasdemo .side{top:calc(var(--topbar) + 32px)}
+body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
+
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes tin{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
+@keyframes tout{to{opacity:0;transform:translateX(30px)}}
+@keyframes shake{10%,90%{transform:translateX(-1px)}30%,70%{transform:translateX(3px)}50%{transform:translateX(-3px)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+@media (max-width:900px){
+  #burger{display:grid}
+  .side{transform:translateX(-100%);box-shadow:var(--sh3)}
+  .side.open{transform:none}
+  main{margin-left:0;padding:18px}
+  .acctname{display:none}
+  .btitle span{display:none}
+  .phead h2{font-size:23px}
+  .kpi .kv{font-size:25px}
+  thead th,tbody td,tfoot td{padding-left:14px;padding-right:14px}
+  .lhead h1{font-size:25px}
+}
+</style>
+
+<div id="login">
+  <div class="gband" aria-hidden="true"></div>
+  <div class="lbox">
+    <div class="lhead">
+      <div class="lmark">VRM</div>
+      <h1>VRM Revenue Dashboard</h1>
+      <p>SIP &amp; Lumpsum sales MIS</p>
+    </div>
+    <div class="lcard card">
+      <div class="seg" role="tablist">
+        <button id="tabVrm" role="tab" aria-selected="true">VRM Login</button>
+        <button id="tabAdm" role="tab" aria-selected="false">Admin Login</button>
+      </div>
+      <form id="lform" autocomplete="off">
+        <div class="f" id="vrmPick">
+          <label class="lbl" for="lvrm">Select your name</label>
+          <select id="lvrm" class="inp"><option value="">Loading…</option></select>
+        </div>
+        <div class="f">
+          <label class="lbl" for="lpw">Password</label>
+          <input id="lpw" class="inp" type="password" placeholder="Enter password" autocomplete="current-password">
+        </div>
+        <button class="btn pri" id="lgo" type="submit" style="width:100%;justify-content:center;padding:11px">Sign in</button>
+      </form>
+      <div id="lforgotwrap" style="margin-top:14px;text-align:center">
+        <button class="btn gh sm" id="lforgot" type="button">Forgot password?</button>
+      </div>
+      <div id="lerr" class="err" style="display:none"></div>
+      <div id="ldemo" class="demobox" style="display:none"></div>
+    </div>
+
+  </div>
+</div>
+
+<div id="app">
+  <div class="topbar">
+    <button class="iconbtn" id="burger" title="Menu" aria-label="Open menu">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+    </button>
+    <div class="brand">
+      <div class="bmark">VRM</div>
+      <div class="btitle">Revenue Dashboard<span id="roleBadge">—</span></div>
+    </div>
+    <div class="grow"></div>
+    <button class="iconbtn" id="themeBtn" title="Toggle dark mode" aria-label="Toggle dark mode"></button>
+    <button class="iconbtn" id="refreshBtn" title="Reload data from the sheet" aria-label="Reload data">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg>
+    </button>
+    <div class="acct">
+      <button class="acctbtn" id="acctBtn" aria-haspopup="true" aria-expanded="false">
+        <span class="av" id="acctAv">--</span>
+        <span class="acctname" id="acctName">—</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="menu" id="acctMenu" role="menu">
+        <div class="mh"><b id="mhName">—</b><small id="mhSub">—</small></div>
+        <button id="mChangePw" role="menuitem">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          Change password</button>
+        <button id="mRefresh" role="menuitem">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg>
+          Refresh data</button>
+        <button id="mOut" class="d" role="menuitem">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 17l5-5-5-5M20 12H9M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5"/></svg>
+          Sign out</button>
+      </div>
+    </div>
+  </div>
+
+  <aside class="side" id="side"><nav class="snav" id="snav"></nav></aside>
+  <div id="backdrop"></div>
+  <main id="main"></main>
+</div>
+
+<div id="modal"><div class="mbox" id="mbox"></div></div>
+<div id="toasts" aria-live="polite"></div>
+<div id="bar"></div>
+<input type="file" id="fileIn" accept=".csv,.xlsx,.xls" style="display:none">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+/* ===========================================================================
+   VRM Revenue Dashboard - frontend
+   Talks to Code.gs ONLY via google.script.run. No fetch, no CORS, no browser
+   storage: the sheet is the single source of truth and the session lives in
+   memory only (closing the tab signs you out).
+   =========================================================================== */
+
+/* How "New client transactions" is counted. Change this one constant (and the
+   matching NEW_CLIENT_BASIS row in the Config tab) to switch the rule later. */
+var NEW_CLIENT_BASIS = 'FIRST_EVER_IN_REF_MONTH';
+
+var SHEETJS_URLS = [
+  'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+];
+
+var S = {
+  session: null,          /* {role, empCode, name, token} - memory only */
+  data: null,             /* last payload from the server */
+  creds: null,            /* admin-only: getVrmCredentials() */
+  audit: null,            /* admin-only: getAuditLog() */
+  tab: null,
+  loginRole: 'VRM',
+  dark: false,
+  busy: 0,
+  q: {},                  /* per-tab search text */
+  sel: {},                /* selected txn ids (admin) */
+  confirm: null,          /* key of the control awaiting its 2nd click */
+  af: { actor: '', role: '', action: '', from: '', to: '' }
+};
+
+/* ------------------------------- helpers ---------------------------------- */
+function $(id) { return document.getElementById(id); }
+function esc(v) {
+  return String(v === null || v === undefined ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function num(v) { var n = Number(v); return isNaN(n) || !isFinite(n) ? 0 : n; }
+function inr(v) { return num(v).toLocaleString('en-IN', { maximumFractionDigits: 0 }); }
+function rupee(v) { return '₹' + inr(v); }
+function shortInr(v) {
+  v = num(v);
+  if (Math.abs(v) >= 1e7) return '₹' + (v / 1e7).toFixed(2) + ' Cr';
+  if (Math.abs(v) >= 1e5) return '₹' + (v / 1e5).toFixed(2) + ' L';
+  return rupee(v);
+}
+var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+/* yyyy-mm-dd  ->  DD-MM-YY  (the display format used everywhere) */
+function dmy(iso) {
+  var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? m[3] + '-' + m[2] + '-' + m[1].slice(2) : (iso || '');
+}
+function monLabel(ym) {                       /* '2026-08' -> 'Aug-26' */
+  var p = String(ym || '').split('-');
+  return p.length < 2 ? ym : MON[num(p[1]) - 1] + '-' + p[0].slice(2);
+}
+function stamp(iso) {                         /* ISO -> '17-08-26 14:32' */
+  var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  return m ? m[3] + '-' + m[2] + '-' + m[1].slice(2) + ' ' + m[4] + ':' + m[5] : (iso || '');
+}
+function initials(name) {
+  var p = String(name || '?').trim().split(/\s+/);
+  return ((p[0] || '?')[0] + (p[1] ? p[1][0] : '')).toUpperCase();
+}
+function uniq(a) { return a.filter(function (v, i, x) { return x.indexOf(v) === i; }); }
+function today() {
+  var d = new Date();
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+
+/* Accepts DD-MM-YYYY, DD/MM/YYYY, yyyy-mm-dd, DD-MM-YY, Date, Excel serial. */
+function toIso(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (v instanceof Date && !isNaN(v)) {
+    return v.getFullYear() + '-' + ('0' + (v.getMonth() + 1)).slice(-2) + '-' + ('0' + v.getDate()).slice(-2);
+  }
+  if (typeof v === 'number' && v > 0 && v < 100000) {              /* Excel serial */
+    return toIso(new Date(Math.round((v - 25569) * 86400000)));
+  }
+  var s = String(v).trim(), m;
+  if ((m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/))) return mk(m[1], m[2], m[3]);
+  /* 4-digit year first, and anchored — see the matching note in Code.gs. */
+  if ((m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4}|\d{2})$/))) {
+    return mk(m[3].length === 2 ? '20' + m[3] : m[3], m[2], m[1]);
+  }
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? '' : toIso(d);
+  function mk(y, mo, dd) {
+    y = num(y); mo = num(mo); dd = num(dd);
+    if (!y || y < 1900 || y > 2200 || mo < 1 || mo > 12 || dd < 1) return '';
+    var dim = [31, (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0 ? 29 : 28,
+               31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1];
+    if (dd > dim) return '';
+    return y + '-' + ('0' + mo).slice(-2) + '-' + ('0' + dd).slice(-2);
+  }
+}
+
+/* --------------------------- server bridge -------------------------------- *
+ * Two transports, same call signature everywhere else in the app:
+ *
+ *   google.script.run — when Apps Script itself serves this page (HtmlService)
+ *   fetch to API_URL  — when the page is hosted elsewhere, e.g. GitHub Pages
+ *
+ * API_URL is empty in the HtmlService build and filled in by tools/build-pages.py
+ * for the hosted build, so this one file works either way.
+ */
+var API_URL = 'https://script.google.com/macros/s/AKfycbxo83b02zM-CetZJVjE0UCUxr8o1uMhW5nU5zUZbEIJA3bmleSrwPc9zgt-fwT8s5ULYg/exec';        /* set by the Pages build */
+
+function useFetch() {
+  return !!API_URL || typeof google === 'undefined' || !google.script || !google.script.run;
+}
+
+function api(fn) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  busy(1);
+  return (useFetch() ? apiFetch_(fn, args) : apiGsr_(fn, args))
+    .then(function (out) {
+      busy(-1);
+      if (out && out.ok) return out.data;
+      throw new Error((out && out.error) || 'Unexpected response from the server.');
+    })
+    .catch(function (e) {
+      busy(-1);
+      throw (e instanceof Error) ? e : new Error(String(e));
+    });
+}
+
+function apiGsr_(fn, args) {
+  return new Promise(function (res, rej) {
+    var r = google.script.run
+      .withSuccessHandler(res)
+      .withFailureHandler(function (e) {
+        rej(new Error(e && e.message ? String(e.message).replace(/^Error:\s*/, '') : 'Server error.'));
+      });
+    r[fn].apply(r, args);
+  });
+}
+
+function apiFetch_(fn, args) {
+  /* text/plain keeps this a CORS "simple request" — an application/json body
+     would trigger an OPTIONS preflight, which Apps Script cannot answer. */
+  return fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ fn: fn, args: args }),
+    redirect: 'follow'
+  }).then(function (r) {
+    if (!r.ok) throw new Error('Server returned ' + r.status + '. Check the deployment is live and set to "Anyone".');
+    return r.text();
+  }).then(function (txt) {
+    try { return JSON.parse(txt); }
+    catch (e) {
+      /* Almost always a sign-in page HTML instead of JSON. */
+      throw new Error('The server did not return data. Re-deploy with "Who has access: Anyone".');
+    }
+  }).catch(function (e) {
+    if (e instanceof TypeError) throw new Error('Cannot reach the server. Check your connection.');
+    throw e;
+  });
+}
+function busy(delta) {
+  S.busy = Math.max(0, S.busy + delta);
+  var b = $('bar');
+  if (S.busy > 0) { b.classList.add('on'); b.style.width = '72%'; }
+  else { b.style.width = '100%'; setTimeout(function () { b.classList.remove('on'); b.style.width = '0'; }, 260); }
+}
+
+/* Disables the triggering control while its call is in flight. */
+function lock(el, label) {
+  if (!el) return function () {};
+  var html = el.innerHTML;
+  el.disabled = true;
+  el.innerHTML = '<span class="spin"></span>' + (label ? ' ' + esc(label) : '');
+  return function () { el.disabled = false; el.innerHTML = html; };
+}
+
+/* ------------------------------ toasts ----------------------------------- */
+var ICONS = {
+  ok: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>',
+  e:  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>',
+  i:  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>'
+};
+function toast(msg, kind) {
+  var k = kind === 'e' ? 'e' : kind === 'i' ? 'i' : '';
+  var el = document.createElement('div');
+  el.className = 'toast' + (k ? ' ' + k : '');
+  el.innerHTML = '<span class="tic">' + ICONS[k || 'ok'] + '</span><span>' + esc(msg) + '</span>';
+  $('toasts').appendChild(el);
+  setTimeout(function () {
+    el.classList.add('out');
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 260);
+  }, k === 'e' ? 5200 : 3400);
+}
+function fail(err) { toast(err && err.message ? err.message : String(err), 'e'); }
+
+/* ------------------------------ modal ------------------------------------ */
+function modal(title, sub, bodyHtml, actions) {
+  $('mbox').innerHTML = '<h3>' + esc(title) + '</h3>' +
+    (sub ? '<p class="msub">' + sub + '</p>' : '') + bodyHtml +
+    '<div class="mact">' + actions + '</div>';
+  $('modal').classList.add('on');
+  setTimeout(function () {
+    var f = $('mbox').querySelector('input:not([type=hidden]),select,textarea');
+    if (f) f.focus();
+  }, 60);
+}
+function closeModal() { $('modal').classList.remove('on'); $('mbox').innerHTML = ''; }
+$('modal').addEventListener('click', function (e) { if (e.target === $('modal')) closeModal(); });
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') { closeModal(); $('acctMenu').classList.remove('open'); }
+});
+
+/* ------------------------------- theme ----------------------------------- */
+var SUN = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>';
+var MOON = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"/></svg>';
+function applyTheme() {
+  document.documentElement.setAttribute('data-t', S.dark ? 'dark' : 'light');
+  $('themeBtn').innerHTML = S.dark ? SUN : MOON;
+  if (S.session) render();
+}
+$('themeBtn').onclick = function () { S.dark = !S.dark; applyTheme(); };
+document.documentElement.setAttribute('data-t', 'light');
+$('themeBtn').innerHTML = MOON;
+
+/* ------------------------------- login ----------------------------------- */
+function setLoginRole(role) {
+  S.loginRole = role;
+  $('tabVrm').setAttribute('aria-selected', role === 'VRM' ? 'true' : 'false');
+  $('tabAdm').setAttribute('aria-selected', role === 'ADMIN' ? 'true' : 'false');
+  $('vrmPick').style.display = role === 'VRM' ? '' : 'none';
+  $('lforgotwrap').style.display = role === 'VRM' ? '' : 'none';
+  $('ldemo').style.display = 'none';
+  $('lerr').style.display = 'none';
+  $('lpw').value = '';
+  setTimeout(function () { (role === 'VRM' ? $('lvrm') : $('lpw')).focus(); }, 40);
+}
+$('tabVrm').onclick = function () { setLoginRole('VRM'); };
+$('tabAdm').onclick = function () { setLoginRole('ADMIN'); };
+
+/*
+ * "Forgot password?" records a request for the admin — it never changes a
+ * password. This endpoint is reachable without signing in, so resetting a
+ * credential here would hand any account to anyone who knows an emp code.
+ */
+$('lforgot').onclick = function () {
+  var code = $('lvrm').value;
+  if (!code) return loginErr('Pick your name first, then tap Forgot password.');
+  var un = lock($('lforgot'), 'Sending');
+  api('requestPasswordReset', code).then(function (d) {
+    un();
+    $('lerr').style.display = 'none';
+    var box = $('ldemo');
+    box.style.display = '';
+    box.innerHTML = '<b>Request sent</b><br>' + esc(d.message);
+  }).catch(function (e) { un(); loginErr(e.message); });
+};
+function loginErr(msg) { var b = $('lerr'); b.textContent = msg; b.style.display = ''; }
+
+function loadVrmList() {
+  api('bootstrap').then(function (d) {
+    var sel = $('lvrm'), list = d.vrms || [];
+    if (!list.length) { sel.innerHTML = '<option value="">No VRMs found in the sheet</option>'; return; }
+    /* Duplicate names are disambiguated by emp code, e.g. "Pavan Soni (VRM002)". */
+    sel.innerHTML = '<option value="">- choose your name -</option>' + list.map(function (v) {
+      return '<option value="' + esc(v.empCode) + '">' + esc(v.name) + ' (' + esc(v.empCode) + ')' +
+             (v.locked ? ' - LOCKED' : '') + '</option>';
+    }).join('');
+  }).catch(function (e) {
+    $('lvrm').innerHTML = '<option value="">Could not load VRM list</option>';
+    loginErr(e.message);
+  });
+}
+
+$('lform').onsubmit = function (ev) {
+  ev.preventDefault();
+  var pw = $('lpw').value;
+  var code = S.loginRole === 'VRM' ? $('lvrm').value : null;
+  $('lerr').style.display = 'none';
+  if (S.loginRole === 'VRM' && !code) return loginErr('Please select your name from the list.');
+  if (!pw) return loginErr('Please enter your password.');
+
+  var un = lock($('lgo'), 'Signing in');
+  api('login', S.loginRole, code, pw).then(function (out) {
+    S.session = out.session; S.data = out.data;
+    $('lpw').value = '';
+    un();
+    enterApp();
+  }).catch(function (e) {
+    un(); loginErr(e.message);
+    $('lpw').select();
+    if (/locked/i.test(e.message)) loadVrmList();
+  });
+};
+loadVrmList();
+
+/* =========================== APP SHELL ==================================== */
+
+var IC = {
+  trend:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/></svg>',
+  chart:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
+  table:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>',
+  users:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M17 11.2A3.2 3.2 0 0 0 17 5M18.5 20a6.2 6.2 0 0 0-3-5.3"/></svg>',
+  layers:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5"/></svg>',
+  shield:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg>',
+  clock:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>',
+  rupee:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M7 4h10M7 9h10M15 4c0 5-3.6 5-8 5l7 10"/></svg>',
+  cal:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  repeat:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"/></svg>',
+  user:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>',
+  spark:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3zM18 16l.9 2.1L21 19l-2.1.9L18 22l-.9-2.1L15 19l2.1-.9L18 16z"/></svg>',
+  search:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.3-4.3"/></svg>',
+  down:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v13M7 12l5 5 5-5M4 21h16"/></svg>',
+  up:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 17V4M7 9l5-5 5 5M4 21h16"/></svg>',
+  plus:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  eye:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>',
+  eyeoff:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l18 18M10.6 6.1A9.6 9.6 0 0 1 12 5.5c6.4 0 10 6.5 10 6.5a17 17 0 0 1-2.7 3.6M6.2 8A17 17 0 0 0 2 12s3.6 6.5 10 6.5c1.2 0 2.3-.2 3.3-.6"/></svg>',
+  send:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12h13M12 6l6 6-6 6"/></svg>',
+  trash:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
+  pen:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15.5 4.5l4 4L8 20H4v-4L15.5 4.5z"/></svg>',
+  key:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="8" r="4.5"/><path d="M11.5 11.5L20 20M17 17l2-2M14 14l2-2"/></svg>',
+  unlock:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg>'
+};
+
+var VRM_TABS = [
+  { id: 'summary',   label: 'Summary',             ic: IC.chart },
+  { id: 'analytics', label: 'Revenue Analysis',    ic: IC.trend },
+  { id: 'data',      label: 'VRM Data',            ic: IC.table },
+  { id: 'clients',   label: 'Client Consolidated', ic: IC.layers }
+];
+var ADMIN_TABS = [
+  { id: 'overview',  label: 'Consolidated Overview', ic: IC.chart },
+  { id: 'analytics', label: 'Revenue Analysis',      ic: IC.trend },
+  { id: 'vrmwise',   label: 'VRM-wise Summary',      ic: IC.users },
+  { id: 'alltxns',  label: 'All Transactions',      ic: IC.table },
+  { id: 'clients',  label: 'Client Consolidated',   ic: IC.layers },
+  { id: 'access',   label: 'VRMs & Access',         ic: IC.shield },
+  { id: 'activity', label: 'Activity Log',          ic: IC.clock }
+];
+function tabs() { return isAdmin() ? ADMIN_TABS : VRM_TABS; }
+function isAdmin() { return S.session && S.session.role === 'ADMIN'; }
+
+function enterApp() {
+  $('login').style.display = 'none';
+  $('app').style.display = 'block';
+  S.tab = tabs()[0].id;
+  $('roleBadge').textContent = isAdmin() ? 'Admin portal' : 'VRM portal';
+  $('acctAv').textContent = isAdmin() ? 'AD' : initials(S.session.name);
+  $('acctName').textContent = S.session.name;
+  $('mhName').textContent = S.session.name;
+  $('mhSub').textContent = isAdmin() ? 'Administrator - full access' : S.session.empCode + ' - VRM';
+  buildSidebar();
+  render();
+  toast('Welcome back, ' + S.session.name.split(' ')[0] + '.', 'i');
+}
+
+function buildSidebar() {
+  $('snav').innerHTML =
+    '<div class="sgroup">' + (isAdmin() ? 'Administration' : 'My dashboard') + '</div>' +
+    tabs().map(function (t) {
+      return '<button data-tab="' + t.id + '" aria-current="' + (S.tab === t.id ? 'true' : 'false') + '">' +
+             '<span class="ic">' + t.ic + '</span>' + esc(t.label) + '</button>';
+    }).join('');
+}
+
+$('snav').addEventListener('click', function (e) {
+  var b = e.target.closest('button[data-tab]');
+  if (!b) return;
+  S.tab = b.dataset.tab; S.confirm = null;
+  buildSidebar(); render(); closeSide();
+});
+
+function openSide() { $('side').classList.add('open'); $('backdrop').classList.add('on'); }
+function closeSide() { $('side').classList.remove('open'); $('backdrop').classList.remove('on'); }
+$('burger').onclick = function () {
+  $('side').classList.contains('open') ? closeSide() : openSide();
+};
+$('backdrop').onclick = closeSide;
+
+$('acctBtn').onclick = function (e) {
+  e.stopPropagation();
+  var m = $('acctMenu');
+  m.classList.toggle('open');
+  $('acctBtn').setAttribute('aria-expanded', m.classList.contains('open') ? 'true' : 'false');
+};
+document.addEventListener('click', function () { $('acctMenu').classList.remove('open'); });
+$('acctMenu').addEventListener('click', function (e) { e.stopPropagation(); });
+
+$('mChangePw').onclick = function () { $('acctMenu').classList.remove('open'); changePwDialog(); };
+$('mRefresh').onclick = function () { $('acctMenu').classList.remove('open'); refresh(true); };
+$('refreshBtn').onclick = function () { refresh(true); };
+$('mOut').onclick = function () { signOut(); };
+
+function signOut() {
+  var tk = S.session ? S.session.token : null;
+  S.session = null; S.data = null; S.creds = null; S.audit = null;
+  S.q = {}; S.sel = {}; S.confirm = null;
+  if (tk) api('logout', tk).catch(function () {});      /* best-effort */
+  $('app').style.display = 'none';
+  $('login').style.display = '';
+  $('main').innerHTML = '';
+  closeSide(); closeModal();
+  setLoginRole('VRM');
+  loadVrmList();
+  toast('Signed out.', 'i');
+}
+
+function refresh(announce) {
+  return api('getData', S.session.token).then(function (d) {
+    S.data = d; S.creds = null; S.audit = null;
+    render(); buildSidebar();
+    if (announce) toast('Data reloaded from the sheet.', 'i');
+  }).catch(function (e) {
+    fail(e);
+    if (/session has expired|no longer exists/i.test(e.message)) signOut();
+  });
+}
+
+/* Applies a fresh server payload after any mutating call. */
+function absorb(d) {
+  S.data = d; S.confirm = null; S.creds = null; S.audit = null;
+  render(); buildSidebar();
+  return d;
+}
+
+/* ======================= SHARED CALCULATIONS ============================== */
+/*
+ *  Gross sales            = SIP + Lumpsum
+ *  Reference month/year   = derived from the LATEST InvestmentDate in scope
+ *  New client txn count   = clients whose FIRST-EVER investment falls in the
+ *                           reference month (see NEW_CLIENT_BASIS)
+ *  Client count           = distinct client codes in scope
+ */
+function kpis(txns) {
+  var dated = txns.filter(function (t) { return t.date; });
+  var latest = '';
+  dated.forEach(function (t) { if (t.date > latest) latest = t.date; });
+
+  var refMonth = latest ? latest.slice(0, 7) : '';
+  var refYear = latest ? latest.slice(0, 4) : '';
+
+  var gm = 0, gy = 0, sm = 0, sy = 0, lm = 0, ly = 0, txM = 0;
+  var first = {};                                        /* clientCode -> first date */
+  dated.forEach(function (t) {
+    var g = num(t.sip) + num(t.lumpsum);
+    if (t.date.slice(0, 4) === refYear) { gy += g; sy += num(t.sip); ly += num(t.lumpsum); }
+    if (t.date.slice(0, 7) === refMonth) { gm += g; sm += num(t.sip); lm += num(t.lumpsum); txM++; }
+    var c = t.clientCode.toUpperCase();
+    if (!first[c] || t.date < first[c]) first[c] = t.date;
+  });
+
+  var newClients = 0;
+  Object.keys(first).forEach(function (c) {
+    if (NEW_CLIENT_BASIS === 'FIRST_EVER_IN_REF_MONTH' && first[c].slice(0, 7) === refMonth) newClients++;
+  });
+
+  return {
+    latest: latest, refMonth: refMonth, refYear: refYear,
+    refLabel: refMonth ? monLabel(refMonth) : '-',
+    grossMonth: gm, grossYear: gy, sipMonth: sm, sipYear: sy,
+    lumpMonth: lm, lumpYear: ly, txnsMonth: txM,
+    clients: uniq(txns.map(function (t) { return t.clientCode.toUpperCase(); }).filter(Boolean)).length,
+    newClients: newClients, txns: txns.length
+  };
+}
+
+/* One row per month present in the data (most recent 12). */
+function monthly(txns) {
+  var m = {};
+  txns.forEach(function (t) {
+    if (!t.date) return;
+    var k = t.date.slice(0, 7);
+    if (!m[k]) m[k] = { key: k, sip: 0, lump: 0, n: 0 };
+    m[k].sip += num(t.sip); m[k].lump += num(t.lumpsum); m[k].n++;
+  });
+  return Object.keys(m).sort().slice(-12).map(function (k) { return m[k]; });
+}
+
+/* One row per client code, across the whole scope. */
+function byClient(txns) {
+  var m = {};
+  txns.forEach(function (t) {
+    var k = t.clientCode.toUpperCase();
+    if (!k) return;
+    if (!m[k]) m[k] = { clientCode: t.clientCode, clientName: t.clientName, sip: 0, lump: 0, n: 0, vrms: [], first: t.date, last: t.date };
+    var r = m[k];
+    r.sip += num(t.sip); r.lump += num(t.lumpsum); r.n++;
+    if (t.clientName && !r.clientName) r.clientName = t.clientName;
+    if (t.vrmEmpCode && r.vrms.indexOf(t.vrmEmpCode) < 0) r.vrms.push(t.vrmEmpCode);
+    if (t.date && (!r.first || t.date < r.first)) r.first = t.date;
+    if (t.date && (!r.last || t.date > r.last)) r.last = t.date;
+  });
+  return Object.keys(m).map(function (k) {
+    m[k].total = m[k].sip + m[k].lump; return m[k];
+  }).sort(function (a, b) { return b.total - a.total; });
+}
+
+/* One row per VRM (admin). */
+function byVrm(txns, vrms) {
+  var m = {};
+  (vrms || []).forEach(function (v) {
+    m[v.empCode.toUpperCase()] = { empCode: v.empCode, name: v.name, sip: 0, lump: 0, n: 0, clients: {} };
+  });
+  txns.forEach(function (t) {
+    var k = (t.vrmEmpCode || '-').toUpperCase();
+    if (!m[k]) m[k] = { empCode: t.vrmEmpCode || '-', name: t.vrmName || '(unassigned)', sip: 0, lump: 0, n: 0, clients: {} };
+    m[k].sip += num(t.sip); m[k].lump += num(t.lumpsum); m[k].n++;
+    if (t.clientCode) m[k].clients[t.clientCode.toUpperCase()] = 1;
+  });
+  return Object.keys(m).map(function (k) {
+    var r = m[k];
+    r.gross = r.sip + r.lump;
+    r.clientCount = Object.keys(r.clients).length;
+    return r;
+  }).sort(function (a, b) { return b.gross - a.gross; });
+}
+
+function matches(t, q) {
+  if (!q) return true;
+  q = q.toLowerCase();
+  return [t.clientCode, t.clientName, t.vrmEmpCode, t.vrmName, dmy(t.date), t.date,
+          String(t.sip), String(t.lumpsum), t.enteredBy]
+    .some(function (f) { return String(f || '').toLowerCase().indexOf(q) >= 0; });
+}
+
+/* ============================== KPI CARDS ================================= */
+function kpiCards(k) {
+  var cards = [
+    { t: 'Gross sales - month', v: k.grossMonth, s: k.refLabel + ' - SIP + Lumpsum', ic: IC.rupee, g: '' },
+    { t: 'Gross sales - year',  v: k.grossYear,  s: (k.refYear || '-') + ' calendar year', ic: IC.cal, g: '' },
+    { t: 'SIP - month',         v: k.sipMonth,   s: k.refLabel + ' SIP only', ic: IC.repeat, g: 'g2' },
+    { t: 'SIP - year',          v: k.sipYear,    s: (k.refYear || '-') + ' SIP only', ic: IC.repeat, g: 'g2' },
+    { t: 'Client count',        v: k.clients,    s: 'distinct client codes', ic: IC.user, g: '', plain: true },
+    { t: 'New client txns',     v: k.newClients, s: 'first-ever investment in ' + k.refLabel, ic: IC.spark, g: 'g2', plain: true }
+  ];
+  return '<div class="kpis">' + cards.map(function (c, i) {
+    return '<div class="kpi ' + c.g + '">' +
+      '<div class="kt"><span class="ki">' + c.ic + '</span>' + esc(c.t) + '</div>' +
+      '<div class="kv" data-count="' + num(c.v) + '" data-plain="' + (c.plain ? 1 : 0) + '" data-i="' + i + '">' +
+      (c.plain ? '0' : rupee(0)) + '</div>' +
+      '<div class="ks">' + esc(c.s) + '</div></div>';
+  }).join('') + '</div>';
+}
+
+/* Count-up animation on load / refresh. */
+function animateCounts() {
+  var els = document.querySelectorAll('.kv[data-count]');
+  Array.prototype.forEach.call(els, function (el) {
+    var target = num(el.dataset.count), plain = el.dataset.plain === '1';
+    var dur = 780, t0 = 0, done = false;
+    function fmt(v) { return plain ? inr(Math.round(v)) : rupee(Math.round(v)); }
+    if (!target) { el.textContent = fmt(0); return; }
+    function step(ts) {
+      if (done) return;
+      if (!t0) t0 = ts;
+      var p = Math.min(1, (ts - t0) / dur);
+      el.textContent = fmt(target * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) requestAnimationFrame(step); else done = true;
+    }
+    requestAnimationFrame(step);
+    /* Safety net: requestAnimationFrame is paused in background tabs, so make
+       sure the real number is on screen either way. */
+    setTimeout(function () {
+      if (!done) { done = true; el.textContent = fmt(target); }
+    }, dur + 220);
+  });
+}
+
+/* ================================ CHARTS ================================= */
+/* Chart.js when the CDN is reachable, hand-drawn CSS bars when it is not. */
+function chartPanel(id, title, sub, rows, mode) {
+  var legend = mode === 'vrm'
+    ? '<i style="background:var(--p)"></i>SIP<i style="background:var(--a);margin-left:16px"></i>Lumpsum'
+    : '<i style="background:var(--p)"></i>SIP<i style="background:var(--a);margin-left:16px"></i>Lumpsum';
+  return '<div class="panel">' +
+    '<div class="ptop"><div><h3>' + esc(title) + '</h3>' + (sub ? '<p>' + esc(sub) + '</p>' : '') + '</div></div>' +
+    (rows.length
+      ? '<div class="chartbox" id="' + id + '_box"><canvas id="' + id + '"></canvas></div>' +
+        '<div class="legend">' + legend + '</div>'
+      : emptyState('Nothing to chart yet', 'Upload or add transactions to see the SIP vs Lumpsum split.')) +
+    '</div>';
+}
+
+function drawChart(id, labels, sip, lump) {
+  var box = $(id + '_box');
+  if (!box) return;
+  var ink = getComputedStyle(document.documentElement).getPropertyValue('--ink2').trim() || '#4b5164';
+  var line = getComputedStyle(document.documentElement).getPropertyValue('--line').trim() || '#e6e8f0';
+  var p = getComputedStyle(document.documentElement).getPropertyValue('--p').trim() || '#4f46e5';
+  var a = getComputedStyle(document.documentElement).getPropertyValue('--a').trim() || '#0d9488';
+  var surf = getComputedStyle(document.documentElement).getPropertyValue('--surf').trim() || '#fff';
+
+  if (!window.Chart) return fallbackBars(box, labels, sip, lump, p, a);
+
+  var cv = $(id);
+  if (!cv) return;
+  if (window._charts && window._charts[id]) { try { window._charts[id].destroy(); } catch (e) {} }
+  window._charts = window._charts || {};
+  window._charts[id] = new Chart(cv.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'SIP', data: sip, backgroundColor: p, borderRadius: 5, maxBarThickness: 42 },
+        { label: 'Lumpsum', data: lump, backgroundColor: a, borderRadius: 5, maxBarThickness: 42 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 850, easing: 'easeOutQuart' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: surf, titleColor: ink, bodyColor: ink, borderColor: line, borderWidth: 1,
+          padding: 10, cornerRadius: 8, displayColors: true,
+          callbacks: { label: function (c) { return c.dataset.label + ': ' + rupee(c.parsed.y); } }
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: ink, font: { size: 11 } }, border: { color: line } },
+        y: {
+          grid: { color: line }, border: { display: false },
+          ticks: { color: ink, font: { size: 11 }, callback: function (v) { return shortInr(v); } }
+        }
+      }
+    }
+  });
+}
+
+function fallbackBars(box, labels, sip, lump, p, a) {
+  var max = 1;
+  labels.forEach(function (_, i) { max = Math.max(max, num(sip[i]) + num(lump[i])); });
+  box.innerHTML = '<div class="bars">' + labels.map(function (l, i) {
+    var hs = Math.round(num(sip[i]) / max * 190), hl = Math.round(num(lump[i]) / max * 190);
+    return '<div class="bcol" title="' + esc(l) + ' - SIP ' + rupee(sip[i]) + ' / Lumpsum ' + rupee(lump[i]) + '">' +
+      '<div class="bstack">' +
+        '<div class="bseg" style="background:' + p + '" data-h="' + hs + '"></div>' +
+        '<div class="bseg" style="background:' + a + '" data-h="' + hl + '"></div>' +
+      '</div><div class="blab">' + esc(l) + '</div></div>';
+  }).join('') + '</div>';
+  setTimeout(function () {
+    Array.prototype.forEach.call(box.querySelectorAll('.bseg'), function (s) {
+      s.style.height = s.dataset.h + 'px';
+    });
+  }, 40);
+}
+
+function emptyState(title, sub) {
+  return '<div class="empty"><div class="eic">' + IC.layers + '</div><b>' + esc(title) + '</b>' +
+         '<span>' + esc(sub) + '</span></div>';
+}
+
+/* ============================== RENDER =================================== */
+
+var VIEWS = {
+  summary: viewSummary, data: viewData, clients: viewClients,
+  overview: viewOverview, vrmwise: viewVrmwise, alltxns: viewAllTxns,
+  access: viewAccess, activity: viewActivity, analytics: viewAnalytics
+};
+
+function render() {
+  if (!S.session || !S.data) return;
+  var fn = VIEWS[S.tab] || VIEWS[tabs()[0].id];
+  $('main').innerHTML = '<div class="view">' + fn() + '</div>';
+  animateCounts();
+  flushAfter_();
+}
+
+/*
+ * Post-render hooks. This is a QUEUE, not a single slot: one view can register
+ * several (the analytics page draws a trend chart AND a league chart), and a
+ * single slot would silently drop all but the last.
+ */
+function after(fn) {
+  (window._afterQ = window._afterQ || []).push(fn);
+  setTimeout(flushAfter_, 0);
+}
+function flushAfter_() {
+  var q = window._afterQ || [];
+  window._afterQ = [];
+  q.forEach(function (f) { try { f(); } catch (e) {} });
+}
+
+function pageHead(title, sub, right) {
+  return '<div class="phead"><div><h2>' + esc(title) + '</h2>' + (sub ? '<p>' + esc(sub) + '</p>' : '') + '</div>' +
+         '<div class="tools">' + (right || '') + '</div></div>';
+}
+function searchBox(key, ph) {
+  return '<div class="search">' + IC.search +
+    '<input class="inp" type="search" data-q="' + key + '" placeholder="' + esc(ph) + '" value="' + esc(S.q[key] || '') + '">' +
+    '</div>';
+}
+function expBtns(what) {
+  return '<button class="btn sm" data-act="csv" data-what="' + what + '">' + IC.down + ' CSV</button>' +
+         '<button class="btn sm" data-act="xlsx" data-what="' + what + '">' + IC.down + ' Excel</button>';
+}
+/* Two-click guard: first click arms, second click acts. */
+function guard(key, armedHtml, idleHtml) {
+  return S.confirm === key
+    ? '<span class="conf">' + armedHtml +
+      '<button class="btn xs gh" data-act="disarm">Cancel</button></span>'
+    : idleHtml.replace('data-act="', 'data-arm="' + key + '" data-act="');
+}
+
+/* ------------------------------ VRM: Summary ------------------------------ */
+function viewSummary() {
+  var t = S.data.txns, k = kpis(t), m = monthly(t);
+  after(function () { drawChart('c1', m.map(function (r) { return monLabel(r.key); }), m.map(function (r) { return r.sip; }), m.map(function (r) { return r.lump; })); });
+
+  return pageHead('My summary', S.session.name + ' (' + S.session.empCode + ') - ' + k.refLabel, '') +
+    kpiCards(k) +
+    chartPanel('c1', 'Monthly SIP vs Lumpsum', '', m, 'month') +
+    '<div class="panel"><div class="ptop"><div><h3>Month at a glance</h3></div></div>' +
+    '<div class="twrap"><table><thead><tr><th>Month</th><th class="num">SIP</th><th class="num">Lumpsum</th>' +
+    '<th class="num">Gross</th><th class="num">Txns</th></tr></thead><tbody>' +
+    (m.length ? m.slice().reverse().map(function (r) {
+      return '<tr><td><b>' + esc(monLabel(r.key)) + '</b></td>' +
+        '<td class="num">' + rupee(r.sip) + '</td><td class="num">' + rupee(r.lump) + '</td>' +
+        '<td class="num tot">' + rupee(r.sip + r.lump) + '</td><td class="num">' + r.n + '</td></tr>';
+    }).join('') : '<tr><td colspan="5" class="empty">No transactions yet.</td></tr>') +
+    '</tbody></table></div></div>';
+}
+
+/* ------------------------------ VRM: Data -------------------------------- */
+function viewData() {
+  var q = S.q.data || '';
+  var rows = S.data.txns.filter(function (t) { return matches(t, q); })
+    .sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''); });
+  var sip = 0, lump = 0;
+  rows.forEach(function (r) { sip += num(r.sip); lump += num(r.lumpsum); });
+
+  return pageHead('My data', rows.length + ' of ' + S.data.txns.length + ' rows',
+      '<button class="btn sm pri" data-act="addtxn">' + IC.plus + ' Add entry</button>' +
+      '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload CSV/Excel</button>' +
+      '<button class="btn sm" data-act="tplcsv">' + IC.down + ' Template CSV</button>' +
+      '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Template Excel</button>') +
+    '<div class="panel"><div class="ptop"><div><h3>Transactions</h3></div>' +
+    '<div class="tools">' + searchBox('data', 'Search client, amount, date...') + expBtns('vrmtxns') + '</div></div>' +
+    (rows.length
+      ? '<div class="twrap"><table><thead><tr>' +
+        '<th>Client Code</th><th>Client Name</th><th>VRM Emp Code</th><th>VRM Name</th>' +
+        '<th class="num">SIP Amount</th><th class="num">Lumpsum Amount</th><th>Date of Investment</th><th></th>' +
+        '</tr></thead><tbody>' +
+        rows.map(function (t) {
+          return '<tr><td class="mono"><b>' + esc(t.clientCode) + '</b></td><td>' + esc(t.clientName) + '</td>' +
+            '<td class="mono">' + esc(t.vrmEmpCode) + '</td><td>' + esc(t.vrmName) + '</td>' +
+            '<td class="num">' + rupee(t.sip) + '</td><td class="num">' + rupee(t.lumpsum) + '</td>' +
+            '<td class="mono">' + esc(dmy(t.date)) + '</td>' +
+            '<td style="text-align:right">' + guard('dt:' + t.id,
+              '<button class="btn xs dan" data-act="deltxn" data-id="' + esc(t.id) + '">Confirm delete</button>',
+              '<button class="btn xs" data-act="arm">' + IC.trash + ' Delete</button>') + '</td></tr>';
+        }).join('') +
+        '</tbody><tfoot><tr><td colspan="4">Total (' + rows.length + ' rows)</td>' +
+        '<td class="num">' + rupee(sip) + '</td><td class="num">' + rupee(lump) + '</td>' +
+        '<td class="num" colspan="2">' + rupee(sip + lump) + '</td></tr></tfoot></table></div>'
+      : emptyState(q ? 'No matching transactions' : 'No transactions yet',
+          q ? 'Try a different search term.' : 'Use "Add entry" or upload a CSV/Excel file to get started.')) +
+    '</div>';
+}
+
+/* ------------------------- Client Consolidated ---------------------------- */
+function viewClients() {
+  var admin = isAdmin();
+  var q = S.q.clients || '';
+  var all = byClient(S.data.txns);
+  var rows = all.filter(function (r) {
+    if (!q) return true;
+    var s = q.toLowerCase();
+    return (r.clientCode + ' ' + r.clientName + ' ' + r.vrms.join(' ')).toLowerCase().indexOf(s) >= 0;
+  });
+  var sip = 0, lump = 0;
+  rows.forEach(function (r) { sip += r.sip; lump += r.lump; });
+  var vrmOpts = (S.data.vrms || []).map(function (v) {
+    return '<option value="' + esc(v.empCode) + '">' + esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
+  }).join('');
+
+  return pageHead('Client consolidated', rows.length + ' clients', '') +
+    '<div class="panel"><div class="ptop">' +
+    '<div><h3>Per-client totals</h3></div>' +
+    '<div class="tools">' + searchBox('clients', 'Search client code or name...') + expBtns('clients') + '</div></div>' +
+    (rows.length
+      ? '<div class="twrap"><table><thead><tr>' +
+        '<th>Client Code</th><th>Client Name</th>' + (admin ? '<th>VRM(s)</th>' : '') +
+        '<th class="num">SIP Total</th><th class="num">Lumpsum Total</th><th class="num">Combined</th>' +
+        '<th class="num">Txns</th><th>First</th><th>Last</th><th></th></tr></thead><tbody>' +
+        rows.map(function (r) {
+          var actions = admin
+            ? '<div class="row" style="justify-content:flex-end;gap:6px">' +
+              '<select class="inp sm" data-dest="' + esc(r.clientCode) + '" style="width:auto;padding:4px 8px;font-size:11.5px">' +
+              '<option value="">Transfer to...</option>' + vrmOpts + '</select>' +
+              '<button class="btn xs acc" data-act="transfer" data-code="' + esc(r.clientCode) + '">' + IC.send + ' Move</button>' +
+              guard('dc:' + r.clientCode,
+                '<button class="btn xs dan" data-act="delclient" data-code="' + esc(r.clientCode) + '">Confirm delete all</button>',
+                '<button class="btn xs" data-act="arm">' + IC.trash + '</button>') + '</div>'
+            : guard('dc:' + r.clientCode,
+                '<button class="btn xs dan" data-act="delclient" data-code="' + esc(r.clientCode) + '">Confirm delete all</button>',
+                '<button class="btn xs" data-act="arm">' + IC.trash + ' Delete all</button>');
+          return '<tr><td class="mono"><b>' + esc(r.clientCode) + '</b></td><td>' + esc(r.clientName) + '</td>' +
+            (admin ? '<td class="mono" style="font-size:11.5px">' + esc(r.vrms.join(', ') || '-') + '</td>' : '') +
+            '<td class="num">' + rupee(r.sip) + '</td><td class="num">' + rupee(r.lump) + '</td>' +
+            '<td class="num tot">' + rupee(r.total) + '</td><td class="num">' + r.n + '</td>' +
+            '<td class="mono">' + esc(dmy(r.first)) + '</td><td class="mono">' + esc(dmy(r.last)) + '</td>' +
+            '<td style="text-align:right">' + actions + '</td></tr>';
+        }).join('') +
+        '</tbody><tfoot><tr><td colspan="' + (admin ? 3 : 2) + '">Total (' + rows.length + ' clients)</td>' +
+        '<td class="num">' + rupee(sip) + '</td><td class="num">' + rupee(lump) + '</td>' +
+        '<td class="num">' + rupee(sip + lump) + '</td><td colspan="4"></td></tr></tfoot></table></div>'
+      : emptyState('No clients yet', 'Client rows appear here as soon as transactions exist.')) +
+    '</div>';
+}
+
+/* --------------------------- ADMIN: Overview ------------------------------ */
+function viewOverview() {
+  var t = S.data.txns, k = kpis(t), m = monthly(t);
+  after(function () { drawChart('c1', m.map(function (r) { return monLabel(r.key); }), m.map(function (r) { return r.sip; }), m.map(function (r) { return r.lump; })); });
+  var vw = byVrm(t, S.data.vrms);
+  var active = vw.filter(function (v) { return v.n > 0; }).length;
+
+  return pageHead('Consolidated overview',
+      k.refLabel + ' - ' + t.length + ' transactions - ' + active + ' of ' + (S.data.vrms || []).length + ' VRMs active',
+      '<button class="btn sm" data-act="csv" data-what="alltxns">' + IC.down + ' Export all (CSV)</button>' +
+      '<button class="btn sm" data-act="xlsx" data-what="alltxns">' + IC.down + ' Export all (Excel)</button>') +
+    kpiCards(k) +
+    chartPanel('c1', 'Overall SIP vs Lumpsum by month', '', m, 'month') +
+    '<div class="panel"><div class="ptop"><div><h3>Month-by-month roll-up</h3></div></div>' +
+    '<div class="twrap"><table><thead><tr><th>Month</th><th class="num">SIP</th><th class="num">Lumpsum</th>' +
+    '<th class="num">Gross</th><th class="num">Txns</th></tr></thead><tbody>' +
+    (m.length ? m.slice().reverse().map(function (r) {
+      return '<tr><td><b>' + esc(monLabel(r.key)) + '</b></td><td class="num">' + rupee(r.sip) + '</td>' +
+        '<td class="num">' + rupee(r.lump) + '</td><td class="num tot">' + rupee(r.sip + r.lump) + '</td>' +
+        '<td class="num">' + r.n + '</td></tr>';
+    }).join('') : '<tr><td colspan="5" class="empty">No data yet.</td></tr>') +
+    '</tbody></table></div></div>';
+}
+
+/* --------------------------- ADMIN: VRM-wise ------------------------------ */
+function viewVrmwise() {
+  var rows = byVrm(S.data.txns, S.data.vrms);
+  var q = (S.q.vrmwise || '').toLowerCase();
+  var shown = rows.filter(function (r) {
+    return !q || (r.empCode + ' ' + r.name).toLowerCase().indexOf(q) >= 0;
+  });
+  var top = shown.filter(function (r) { return r.gross > 0; }).slice(0, 12);
+  after(function () {
+    drawChart('c2', top.map(function (r) { return r.empCode; }), top.map(function (r) { return r.sip; }), top.map(function (r) { return r.lump; }));
+  });
+  var tS = 0, tL = 0, tN = 0;
+  shown.forEach(function (r) { tS += r.sip; tL += r.lump; tN += r.n; });
+
+  return pageHead('VRM-wise summary', shown.length + ' VRMs', '') +
+    chartPanel('c2', 'VRM comparison', 'Top ' + top.length + ' by gross sales', top, 'vrm') +
+    '<div class="panel"><div class="ptop"><div><h3>Per-VRM performance</h3></div>' +
+    '<div class="tools">' + searchBox('vrmwise', 'Search VRM...') + expBtns('vrmwise') + '</div></div>' +
+    '<div class="twrap"><table><thead><tr><th>#</th><th>Emp Code</th><th>VRM Name</th>' +
+    '<th class="num">SIP</th><th class="num">Lumpsum</th><th class="num">Gross</th>' +
+    '<th class="num">Clients</th><th class="num">Txns</th><th class="num">Share</th></tr></thead><tbody>' +
+    (shown.length ? shown.map(function (r, i) {
+      var share = (tS + tL) > 0 ? (r.gross / (tS + tL) * 100) : 0;
+      return '<tr><td class="muted">' + (i + 1) + '</td><td class="mono"><b>' + esc(r.empCode) + '</b></td>' +
+        '<td>' + esc(r.name) + '</td><td class="num">' + rupee(r.sip) + '</td>' +
+        '<td class="num">' + rupee(r.lump) + '</td><td class="num tot">' + rupee(r.gross) + '</td>' +
+        '<td class="num">' + r.clientCount + '</td><td class="num">' + r.n + '</td>' +
+        '<td class="num">' + share.toFixed(1) + '%</td></tr>';
+    }).join('') : '<tr><td colspan="9" class="empty">No VRMs match that search.</td></tr>') +
+    '</tbody><tfoot><tr><td colspan="3">Total</td><td class="num">' + rupee(tS) + '</td>' +
+    '<td class="num">' + rupee(tL) + '</td><td class="num">' + rupee(tS + tL) + '</td>' +
+    '<td class="num">' + byClient(S.data.txns).length + '</td><td class="num">' + tN + '</td><td class="num">100%</td>' +
+    '</tr></tfoot></table></div></div>';
+}
+
+/* ------------------------- ADMIN: All transactions ------------------------ */
+function viewAllTxns() {
+  var q = S.q.alltxns || '';
+  var rows = S.data.txns.filter(function (t) { return matches(t, q); })
+    .sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''); });
+  var selIds = Object.keys(S.sel).filter(function (k) { return S.sel[k]; });
+  var shownSel = rows.filter(function (r) { return S.sel[r.id]; }).length;
+  var allShown = rows.length > 0 && shownSel === rows.length;
+  var sip = 0, lump = 0;
+  rows.forEach(function (r) { sip += num(r.sip); lump += num(r.lumpsum); });
+  var vrmOpts = (S.data.vrms || []).map(function (v) {
+    return '<option value="' + esc(v.empCode) + '">' + esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
+  }).join('');
+
+  return pageHead('All transactions', rows.length + ' of ' + S.data.txns.length + ' rows',
+      '<button class="btn sm pri" data-act="addtxn">' + IC.plus + ' Add entry</button>' +
+      '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload CSV/Excel</button>' +
+      '<button class="btn sm" data-act="tplcsv">' + IC.down + ' Template CSV</button>' +
+      '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Template Excel</button>' +
+      guard('all',
+        '<button class="btn xs dan" data-act="delall">Confirm - delete ALL data</button>',
+        '<button class="btn sm dan" data-act="arm">' + IC.trash + ' Delete ALL data</button>')) +
+    '<div class="panel"><div class="ptop"><div><h3>Line-level data</h3></div>' +
+    '<div class="tools">' + searchBox('alltxns', 'Search client, VRM, amount, date...') + expBtns('alltxns') + '</div></div>' +
+    (selIds.length
+      ? '<div class="selbar"><div class="row"><b>' + selIds.length + ' row(s) selected</b>' +
+        '<button class="btn xs gh" data-act="selall">' + (allShown ? 'Unselect all shown' : 'Select all shown (' + rows.length + ')') + '</button>' +
+        '<button class="btn xs gh" data-act="selnone">Clear selection</button></div>' +
+        guard('bulk',
+          '<button class="btn xs dan" data-act="bulkdel">Confirm - delete ' + selIds.length + '</button>',
+          '<button class="btn sm dan" data-act="arm">' + IC.trash + ' Delete selected (' + selIds.length + ')</button>') +
+        '</div>'
+      : '') +
+    (rows.length
+      ? '<div class="twrap"><table><thead><tr>' +
+        '<th style="width:34px"><input type="checkbox" data-act="selall" ' + (allShown ? 'checked' : '') + ' title="Select all shown"></th>' +
+        '<th>Client Code</th><th>Client Name</th><th>VRM Emp Code</th><th>VRM Name</th>' +
+        '<th class="num">SIP</th><th class="num">Lumpsum</th><th>Date</th><th>Entered By</th><th></th>' +
+        '</tr></thead><tbody>' +
+        rows.map(function (t) {
+          return '<tr class="' + (S.sel[t.id] ? 'sel' : '') + '">' +
+            '<td><input type="checkbox" data-act="togsel" data-id="' + esc(t.id) + '" ' + (S.sel[t.id] ? 'checked' : '') + '></td>' +
+            '<td class="mono"><b>' + esc(t.clientCode) + '</b></td><td>' + esc(t.clientName) + '</td>' +
+            '<td class="mono">' + esc(t.vrmEmpCode) + '</td><td>' + esc(t.vrmName) + '</td>' +
+            '<td class="num">' + rupee(t.sip) + '</td><td class="num">' + rupee(t.lumpsum) + '</td>' +
+            '<td class="mono">' + esc(dmy(t.date)) + '</td>' +
+            '<td class="mono muted" style="font-size:11.5px">' + esc(t.enteredBy) + '</td>' +
+            '<td style="text-align:right"><div class="row" style="justify-content:flex-end;gap:6px">' +
+            '<button class="btn xs" data-act="edittxn" data-id="' + esc(t.id) + '">' + IC.pen + ' Edit</button>' +
+            guard('dt:' + t.id,
+              '<button class="btn xs dan" data-act="deltxn" data-id="' + esc(t.id) + '">Confirm</button>',
+              '<button class="btn xs" data-act="arm">' + IC.trash + '</button>') +
+            '</div></td></tr>';
+        }).join('') +
+        '</tbody><tfoot><tr><td colspan="5">Total (' + rows.length + ' rows)</td>' +
+        '<td class="num">' + rupee(sip) + '</td><td class="num">' + rupee(lump) + '</td>' +
+        '<td class="num" colspan="3">' + rupee(sip + lump) + '</td></tr></tfoot></table></div>' +
+        '<input type="hidden" id="vrmOptsCache" value="1">'
+      : emptyState(q ? 'No matching transactions' : 'No transactions yet',
+          q ? 'Try a different search term.' : 'Add an entry or upload a file - VRM uploads appear here automatically.')) +
+    '</div>';
+}
+
+/* ------------------------- ADMIN: VRMs & Access -------------------------- */
+
+/* The `loading` flags stop a re-render (e.g. typing in the search box while the
+   fetch is still in flight) from firing the same call over and over. */
+function loadCreds() {
+  if (S.loadingCreds) return;
+  S.loadingCreds = true;
+  api('getVrmCredentials', S.session.token).then(function (d) {
+    S.loadingCreds = false; S.creds = d.vrms || []; render();
+  }).catch(function (e) { S.loadingCreds = false; fail(e); });
+}
+
+function viewAccess() {
+  if (!S.creds) { after(loadCreds); return loadingPanel('VRMs & Access', 'Reading credentials from the sheet...'); }
+  var q = (S.q.access || '').toLowerCase();
+  var rows = S.creds.filter(function (v) {
+    return !q || (v.empCode + ' ' + v.name).toLowerCase().indexOf(q) >= 0;
+  });
+  var lockedCount = S.creds.filter(function (v) { return v.locked; }).length;
+  var c = S.data.config || {};
+
+  return pageHead('VRMs & access', S.creds.length + ' VRM(s)' +
+      (lockedCount ? ' - ' + lockedCount + ' currently locked' : ''),
+      '<button class="btn sm pri" data-act="addvrm">' + IC.plus + ' Add VRM</button>') +
+    '<div class="panel"><div class="ptop">' +
+    '<div><h3>Accounts &amp; access</h3></div>' +
+    '<div class="tools">' + searchBox('access', 'Search VRM...') + '</div></div>' +
+    '<div class="twrap"><table><thead><tr><th>Emp Code</th><th>Name</th>' +
+    '<th class="num">Entries</th><th>Status</th><th></th></tr></thead><tbody>' +
+    (rows.length ? rows.map(function (v) {
+      var status = v.locked
+        ? '<span class="pill lock">LOCKED until ' + esc(stamp(v.lockedUntil)) + '</span>'
+        : (v.failedAttempts > 0
+            ? '<span class="pill warn">' + v.failedAttempts + ' failed attempt(s)</span>'
+            : '<span class="pill ok">Active</span>');
+      return '<tr><td class="mono"><b>' + esc(v.empCode) + '</b></td><td>' + esc(v.name) + '</td>' +
+        '<td class="num">' + num(v.entries) + '</td><td>' + status + '</td>' +
+        '<td style="text-align:right"><div class="row" style="justify-content:flex-end;gap:6px">' +
+          '<button class="btn xs" data-act="resetpw" data-code="' + esc(v.empCode) + '" data-name="' + esc(v.name) + '">' + IC.key + ' Reset password</button>' +
+          (v.locked || v.failedAttempts > 0
+            ? guard('un:' + v.empCode,
+                '<button class="btn xs acc" data-act="unlock" data-code="' + esc(v.empCode) + '">Confirm unlock</button>',
+                '<button class="btn xs acc" data-act="arm">' + IC.unlock + ' Unlock</button>')
+            : '') +
+          guard('dv:' + v.empCode,
+            '<button class="btn xs dan" data-act="delvrm" data-code="' + esc(v.empCode) + '">Confirm - delete VRM + data</button>',
+            '<button class="btn xs" data-act="arm">' + IC.trash + '</button>') +
+        '</div></td></tr>';
+    }).join('') : '<tr><td colspan="5" class="empty">No VRMs match that search.</td></tr>') +
+    '</tbody></table></div></div>';
+}
+
+function loadingPanel(title, sub) {
+  return pageHead(title, sub, '') +
+    '<div class="panel"><div class="empty"><div class="eic"><span class="spin"></span></div>' +
+    '<b>Loading</b><span>' + esc(sub) + '</span></div></div>';
+}
+
+/* --------------------------- ADMIN: Activity log ------------------------- */
+var PRESETS = {
+  P_LOGINS: { label: 'Logins only', acts: ['LOGIN_SUCCESS'] },
+  P_FAILED: { label: 'Failed logins', acts: ['LOGIN_FAILED', 'LOGIN_LOCKED'] },
+  P_PW:     { label: 'Password changes', acts: ['CHANGE_PASSWORD', 'CHANGE_ADMIN_PASSWORD', 'RESET_VRM_PASSWORD'] },
+  P_LOCK:   { label: 'Lockouts', acts: ['ACCOUNT_LOCKED', 'LOGIN_LOCKED', 'UNLOCK_VRM'] },
+  P_DATA:   { label: 'Data changes', acts: ['ADD_TXN', 'IMPORT', 'EDIT_TXN', 'DELETE_TXN', 'DELETE_CLIENT', 'BULK_DELETE', 'DELETE_ALL', 'TRANSFER_CLIENT'] }
+};
+
+function loadAudit() {
+  if (S.loadingAudit) return;
+  S.loadingAudit = true;
+  api('getAuditLog', S.session.token, 5000).then(function (d) {
+    S.loadingAudit = false; S.audit = d.log || []; render();
+  }).catch(function (e) { S.loadingAudit = false; fail(e); });
+}
+
+function auditRows() {
+  var f = S.af, q = (S.q.activity || '').toLowerCase();
+  var acts = PRESETS[f.action] ? PRESETS[f.action].acts : (f.action ? [f.action] : null);
+  return (S.audit || []).filter(function (r) {
+    if (f.actor && r.actor !== f.actor) return false;
+    if (f.role && r.role !== f.role) return false;
+    if (acts && acts.indexOf(r.action) < 0) return false;
+    var d = String(r.timestamp || '').slice(0, 10);
+    if (f.from && d < f.from) return false;
+    if (f.to && d > f.to) return false;
+    if (q && (r.actor + ' ' + r.role + ' ' + r.action + ' ' + r.details).toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+}
+
+function viewActivity() {
+  if (!S.audit) { after(loadAudit); return loadingPanel('Activity log', 'Reading the AuditLog tab...'); }
+  var rows = auditRows();
+  var actors = uniq((S.audit || []).map(function (r) { return r.actor; }).filter(Boolean)).sort();
+  var actions = uniq((S.audit || []).map(function (r) { return r.action; }).filter(Boolean)).sort();
+  var f = S.af;
+
+  var presetBtns = Object.keys(PRESETS).map(function (k) {
+    return '<button class="btn xs' + (f.action === k ? ' pri' : '') + '" data-act="preset" data-p="' + k + '">' +
+           esc(PRESETS[k].label) + '</button>';
+  }).join('');
+
+  return pageHead('Activity log', rows.length + ' of ' + (S.audit || []).length +
+      ' entries', expBtns('activity')) +
+    '<div class="panel"><div class="ptop"><div><h3>Filters</h3></div>' +
+    '<div class="tools">' + searchBox('activity', 'Search details...') +
+    '<button class="btn sm" data-act="clearfilters">Clear all</button></div></div>' +
+    '<div style="padding:14px 16px;display:grid;gap:12px">' +
+      '<div class="row">' + presetBtns +
+      '<button class="btn xs' + (!f.action ? ' pri' : '') + '" data-act="preset" data-p="">All actions</button></div>' +
+      '<div class="row" style="gap:12px">' +
+        '<div style="min-width:170px"><label class="lbl">Actor</label><select class="inp" data-f="actor">' +
+          '<option value="">All actors</option>' + actors.map(function (a) {
+            return '<option value="' + esc(a) + '"' + (f.actor === a ? ' selected' : '') + '>' + esc(a) + '</option>';
+          }).join('') + '</select></div>' +
+        '<div style="min-width:140px"><label class="lbl">Role</label><select class="inp" data-f="role">' +
+          '<option value="">Both roles</option>' +
+          '<option value="ADMIN"' + (f.role === 'ADMIN' ? ' selected' : '') + '>ADMIN</option>' +
+          '<option value="VRM"' + (f.role === 'VRM' ? ' selected' : '') + '>VRM</option></select></div>' +
+        '<div style="min-width:200px"><label class="lbl">Action</label><select class="inp" data-f="action">' +
+          '<option value="">All actions</option>' +
+          Object.keys(PRESETS).map(function (k) {
+            return '<option value="' + k + '"' + (f.action === k ? ' selected' : '') + '>* ' + esc(PRESETS[k].label) + '</option>';
+          }).join('') +
+          actions.map(function (a) {
+            return '<option value="' + esc(a) + '"' + (f.action === a ? ' selected' : '') + '>' + esc(a) + '</option>';
+          }).join('') + '</select></div>' +
+        '<div><label class="lbl">From</label><input class="inp" type="date" data-f="from" value="' + esc(f.from) + '"></div>' +
+        '<div><label class="lbl">To</label><input class="inp" type="date" data-f="to" value="' + esc(f.to) + '"></div>' +
+      '</div></div></div>' +
+    '<div class="panel"><div class="ptop"><div><h3>Entries</h3></div></div>' +
+    (rows.length
+      ? '<div class="twrap"><table><thead><tr><th>Timestamp</th><th>Actor</th><th>Role</th><th>Action</th>' +
+        '<th>Details</th><th class="num">Count</th></tr></thead><tbody>' +
+        rows.map(function (r) {
+          var cls = /FAILED|LOCKED|DELETE/.test(r.action) ? 'lock' : (/SUCCESS|UNLOCK|ADD|IMPORT/.test(r.action) ? 'ok' : '');
+          return '<tr><td class="mono" style="white-space:nowrap">' + esc(stamp(r.timestamp)) + '</td>' +
+            '<td class="mono"><b>' + esc(r.actor) + '</b></td><td>' + esc(r.role) + '</td>' +
+            '<td><span class="pill ' + cls + '">' + esc(r.action) + '</span></td>' +
+            '<td>' + esc(r.details) + '</td>' +
+            '<td class="num">' + (r.affectedCount === '' ? '-' : num(r.affectedCount)) + '</td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : emptyState('No entries match these filters', 'Clear the filters to see the full trail.')) +
+    '</div>';
+}
+
+
+/* ============================== ANALYTICS ================================= *
+ * Revenue analysis: trend over time at day / month / year granularity, growth
+ * against both the previous period (DoD / MoM / YoY) and the same period a year
+ * earlier, plus a per-VRM performance league table for the admin.
+ * ========================================================================== */
+
+S.an = { from: '', to: '', vrm: '', metric: 'gross', gran: 'month' };
+
+var GRAN = {
+  day:   { key: function (d) { return d; },              label: function (k) { return dmy(k); },
+           name: 'Daily',   delta: 'DoD' },
+  month: { key: function (d) { return d.slice(0, 7); },  label: function (k) { return monLabel(k); },
+           name: 'Monthly', delta: 'MoM' },
+  year:  { key: function (d) { return d.slice(0, 4); },  label: function (k) { return k; },
+           name: 'Yearly',  delta: 'YoY' }
+};
+
+var METRICS = {
+  gross:   { label: 'Gross sales', pick: function (r) { return r.sip + r.lump; } },
+  sip:     { label: 'SIP',         pick: function (r) { return r.sip; } },
+  lumpsum: { label: 'Lumpsum',     pick: function (r) { return r.lump; } }
+};
+
+/** Transactions passing the analytics filters (date range + VRM). */
+function anRows() {
+  var f = S.an;
+  return S.data.txns.filter(function (t) {
+    if (!t.date) return false;
+    if (f.from && t.date < f.from) return false;
+    if (f.to && t.date > f.to) return false;
+    if (f.vrm && t.vrmEmpCode.toUpperCase() !== f.vrm.toUpperCase()) return false;
+    return true;
+  });
+}
+
+/** Bucket transactions into periods at the chosen granularity. */
+function series(rows, gran) {
+  var g = GRAN[gran] || GRAN.month, m = {};
+  rows.forEach(function (t) {
+    var k = g.key(t.date);
+    if (!m[k]) m[k] = { key: k, sip: 0, lump: 0, n: 0, clients: {} };
+    m[k].sip += num(t.sip);
+    m[k].lump += num(t.lumpsum);
+    m[k].n++;
+    if (t.clientCode) m[k].clients[t.clientCode.toUpperCase()] = 1;
+  });
+  return Object.keys(m).sort().map(function (k) {
+    var r = m[k];
+    r.gross = r.sip + r.lump;
+    r.clientCount = Object.keys(r.clients).length;
+    return r;
+  });
+}
+
+/** The key one period earlier — a day back, a month back, or a year back. */
+function prevKey(key, gran) {
+  if (gran === 'year') return String(num(key) - 1);
+  if (gran === 'month') {
+    var y = num(key.slice(0, 4)), mo = num(key.slice(5, 7)) - 1;
+    if (mo < 1) { mo = 12; y--; }
+    return y + '-' + ('0' + mo).slice(-2);
+  }
+  var d = new Date(key + 'T00:00:00');
+  d.setDate(d.getDate() - 1);
+  return toIso(d);
+}
+
+/** The key one YEAR earlier, for a like-for-like comparison. */
+function yoyKey(key, gran) {
+  if (gran === 'year') return String(num(key) - 1);
+  if (gran === 'month') return (num(key.slice(0, 4)) - 1) + key.slice(4);
+  return (num(key.slice(0, 4)) - 1) + key.slice(4);
+}
+
+function pct(now, before) {
+  if (!before) return now ? null : 0;      /* null = no baseline to compare against */
+  return ((now - before) / Math.abs(before)) * 100;
+}
+
+function deltaCell(p) {
+  if (p === null || p === undefined) return '<span class="muted">—</span>';
+  var up = p >= 0;
+  var arrow = up
+    ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 19V6M6 12l6-6 6 6"/></svg>'
+    : '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v13M6 12l6 6 6-6"/></svg>';
+  return '<span class="pill ' + (up ? 'ok' : 'lock') + '">' + arrow + ' ' +
+         (up ? '+' : '') + p.toFixed(1) + '%</span>';
+}
+
+function viewAnalytics() {
+  var f = S.an;
+  var g = GRAN[f.gran] || GRAN.month;
+  var met = METRICS[f.metric] || METRICS.gross;
+  var rows = anRows();
+  var ser = series(rows, f.gran);
+  var byKey = {};
+  ser.forEach(function (r) { byKey[r.key] = r; });
+
+  /* Headline: latest period vs the one before, and vs the same period last year. */
+  var last = ser[ser.length - 1] || null;
+  var prev = last ? byKey[prevKey(last.key, f.gran)] : null;
+  var yoy = last ? byKey[yoyKey(last.key, f.gran)] : null;
+  var totGross = 0, totSip = 0, totLump = 0, totTxns = 0, cl = {};
+  rows.forEach(function (t) {
+    totSip += num(t.sip); totLump += num(t.lumpsum); totTxns++;
+    if (t.clientCode) cl[t.clientCode.toUpperCase()] = 1;
+  });
+  totGross = totSip + totLump;
+
+  var vrmOpts = (S.data.vrms || []).map(function (v) {
+    return '<option value="' + esc(v.empCode) + '"' + (f.vrm === v.empCode ? ' selected' : '') + '>' +
+           esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
+  }).join('');
+
+  /* Chart of the last 24 periods. */
+  var show = ser.slice(-24);
+  after(function () {
+    drawChart('cAn', show.map(function (r) { return g.label(r.key); }),
+      show.map(function (r) { return r.sip; }), show.map(function (r) { return r.lump; }));
+  });
+
+  var head =
+    pageHead('Revenue analysis',
+      met.label + ' · ' + g.name.toLowerCase() + ' · ' + rows.length + ' transactions',
+      expBtns('analytics'));
+
+  var filters =
+    '<div class="panel"><div class="ptop"><div><h3>Filters</h3></div>' +
+    '<div class="tools"><button class="btn sm" data-act="anreset">Reset</button></div></div>' +
+    '<div style="padding:16px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">' +
+      '<div><label class="lbl">View by</label><select class="inp" data-an="gran">' +
+        Object.keys(GRAN).map(function (k) {
+          return '<option value="' + k + '"' + (f.gran === k ? ' selected' : '') + '>' + GRAN[k].name + '</option>';
+        }).join('') + '</select></div>' +
+      '<div><label class="lbl">Metric</label><select class="inp" data-an="metric">' +
+        Object.keys(METRICS).map(function (k) {
+          return '<option value="' + k + '"' + (f.metric === k ? ' selected' : '') + '>' + METRICS[k].label + '</option>';
+        }).join('') + '</select></div>' +
+      (isAdmin()
+        ? '<div style="min-width:200px"><label class="lbl">VRM</label><select class="inp" data-an="vrm">' +
+          '<option value="">All VRMs</option>' + vrmOpts + '</select></div>'
+        : '') +
+      '<div><label class="lbl">From</label><input class="inp" type="date" data-an="from" value="' + esc(f.from) + '"></div>' +
+      '<div><label class="lbl">To</label><input class="inp" type="date" data-an="to" value="' + esc(f.to) + '"></div>' +
+    '</div></div>';
+
+  var cards = [
+    { t: met.label + ' — ' + (last ? g.label(last.key) : '—'), v: last ? met.pick(last) : 0,
+      s: g.delta + ' vs ' + (prev ? g.label(prev.key) : 'no prior period'),
+      d: last && prev ? pct(met.pick(last), met.pick(prev)) : null, ic: IC.rupee },
+    { t: 'Same period last year', v: yoy ? met.pick(yoy) : 0,
+      s: yoy ? 'YoY vs ' + g.label(yoy.key) : 'no data a year earlier',
+      d: last && yoy ? pct(met.pick(last), met.pick(yoy)) : null, ic: IC.cal },
+    { t: 'Total in range', v: met.pick({ sip: totSip, lump: totLump }),
+      s: totTxns + ' transactions', d: null, ic: IC.chart },
+    { t: 'Average per ' + f.gran, v: ser.length ? met.pick({ sip: totSip, lump: totLump }) / ser.length : 0,
+      s: 'across ' + ser.length + ' ' + f.gran + '(s)', d: null, ic: IC.repeat }
+  ];
+
+  var kpiHtml = '<div class="kpis">' + cards.map(function (c, i) {
+    return '<div class="kpi' + (i % 2 ? ' g2' : '') + '">' +
+      '<div class="kt"><span class="ki">' + c.ic + '</span>' + esc(c.t) + '</div>' +
+      '<div class="kv" data-count="' + num(c.v) + '" data-plain="0">' + rupee(0) + '</div>' +
+      '<div class="ks">' + (c.d !== null ? deltaCell(c.d) + ' ' : '') + esc(c.s) + '</div></div>';
+  }).join('') + '</div>';
+
+  var chart = ser.length
+    ? '<div class="panel"><div class="ptop"><div><h3>' + esc(g.name) + ' trend</h3></div></div>' +
+      '<div class="chartbox" id="cAn_box"><canvas id="cAn"></canvas></div>' +
+      '<div class="legend"><i style="background:var(--p)"></i>SIP' +
+      '<i style="background:var(--a);margin-left:16px"></i>Lumpsum</div></div>'
+    : '<div class="panel">' + emptyState('Nothing in this range', 'Widen the dates or clear the filters.') + '</div>';
+
+  /* Period-by-period table, newest first, with both growth columns. */
+  var table =
+    '<div class="panel"><div class="ptop"><div><h3>' + esc(g.name) + ' breakdown</h3></div></div>' +
+    (ser.length
+      ? '<div class="twrap"><table><thead><tr><th>Period</th>' +
+        '<th class="num">SIP</th><th class="num">Lumpsum</th><th class="num">Gross</th>' +
+        '<th class="num">Txns</th><th class="num">Clients</th>' +
+        '<th class="num">' + g.delta + '</th><th class="num">YoY</th></tr></thead><tbody>' +
+        ser.slice().reverse().map(function (r) {
+          var p = byKey[prevKey(r.key, f.gran)], y = byKey[yoyKey(r.key, f.gran)];
+          return '<tr><td><b>' + esc(g.label(r.key)) + '</b></td>' +
+            '<td class="num">' + rupee(r.sip) + '</td><td class="num">' + rupee(r.lump) + '</td>' +
+            '<td class="num tot">' + rupee(r.gross) + '</td>' +
+            '<td class="num">' + r.n + '</td><td class="num">' + r.clientCount + '</td>' +
+            '<td class="num">' + deltaCell(p ? pct(met.pick(r), met.pick(p)) : null) + '</td>' +
+            '<td class="num">' + deltaCell(y ? pct(met.pick(r), met.pick(y)) : null) + '</td></tr>';
+        }).join('') +
+        '</tbody><tfoot><tr><td>Total</td><td class="num">' + rupee(totSip) + '</td>' +
+        '<td class="num">' + rupee(totLump) + '</td><td class="num">' + rupee(totGross) + '</td>' +
+        '<td class="num">' + totTxns + '</td><td class="num">' + Object.keys(cl).length + '</td>' +
+        '<td colspan="2"></td></tr></tfoot></table></div>'
+      : emptyState('No periods to show', 'Adjust the filters above.')) +
+    '</div>';
+
+  return head + filters + kpiHtml + chart + table + (isAdmin() ? leagueTable(rows, met, f) : '');
+}
+
+/** Admin: who actually brought in the business, and which way they are trending. */
+function leagueTable(rows, met, f) {
+  var per = {};
+  (S.data.vrms || []).forEach(function (v) {
+    per[v.empCode.toUpperCase()] = { empCode: v.empCode, name: v.name, sip: 0, lump: 0, n: 0, clients: {}, cur: 0, prv: 0 };
+  });
+
+  /* Split the filtered range in half so "trend" compares like with like. */
+  var dates = rows.map(function (t) { return t.date; }).sort();
+  var mid = dates.length ? dates[Math.floor(dates.length / 2)] : '';
+
+  rows.forEach(function (t) {
+    var k = (t.vrmEmpCode || '-').toUpperCase();
+    if (!per[k]) per[k] = { empCode: t.vrmEmpCode || '-', name: t.vrmName || '(unassigned)', sip: 0, lump: 0, n: 0, clients: {}, cur: 0, prv: 0 };
+    var r = per[k];
+    r.sip += num(t.sip); r.lump += num(t.lumpsum); r.n++;
+    if (t.clientCode) r.clients[t.clientCode.toUpperCase()] = 1;
+    var val = met.pick({ sip: num(t.sip), lump: num(t.lumpsum) });
+    if (t.date >= mid) r.cur += val; else r.prv += val;
+  });
+
+  var list = Object.keys(per).map(function (k) {
+    var r = per[k];
+    r.gross = r.sip + r.lump;
+    r.value = met.pick(r);
+    r.clientCount = Object.keys(r.clients).length;
+    r.trend = pct(r.cur, r.prv);
+    return r;
+  }).filter(function (r) { return r.n > 0; })
+    .sort(function (a, b) { return b.value - a.value; });
+
+  var total = list.reduce(function (a, r) { return a + r.value; }, 0);
+  var best = list.length ? list[0].value : 0;
+
+  after(function () {
+    drawChart('cLeague', list.slice(0, 12).map(function (r) { return r.empCode; }),
+      list.slice(0, 12).map(function (r) { return r.sip; }),
+      list.slice(0, 12).map(function (r) { return r.lump; }));
+  });
+
+  return '<div class="panel"><div class="ptop"><div><h3>VRM performance</h3></div></div>' +
+    (list.length
+      ? '<div class="chartbox" id="cLeague_box"><canvas id="cLeague"></canvas></div>' +
+        '<div class="legend"><i style="background:var(--p)"></i>SIP' +
+        '<i style="background:var(--a);margin-left:16px"></i>Lumpsum</div>' +
+        '<div class="twrap"><table><thead><tr><th>#</th><th>VRM</th>' +
+        '<th class="num">' + esc(met.label) + '</th><th>Share</th>' +
+        '<th class="num">Clients</th><th class="num">Txns</th>' +
+        '<th class="num">Avg / txn</th><th class="num">Trend</th></tr></thead><tbody>' +
+        list.map(function (r, i) {
+          var share = total ? (r.value / total * 100) : 0;
+          var barW = best ? Math.max(3, r.value / best * 100) : 0;
+          return '<tr><td class="muted">' + (i + 1) + '</td>' +
+            '<td><b>' + esc(r.name) + '</b><div class="mono muted" style="font-size:11.5px">' + esc(r.empCode) + '</div></td>' +
+            '<td class="num tot">' + rupee(r.value) + '</td>' +
+            '<td style="min-width:130px"><div style="display:flex;align-items:center;gap:8px">' +
+              '<div style="flex:1;height:6px;border-radius:3px;background:var(--line2);overflow:hidden">' +
+                '<div style="width:' + barW.toFixed(1) + '%;height:100%;background:var(--grad)"></div></div>' +
+              '<span class="mono" style="font-size:11.5px">' + share.toFixed(1) + '%</span></div></td>' +
+            '<td class="num">' + r.clientCount + '</td><td class="num">' + r.n + '</td>' +
+            '<td class="num">' + rupee(r.n ? r.value / r.n : 0) + '</td>' +
+            '<td class="num">' + deltaCell(r.trend) + '</td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : emptyState('No VRM activity in this range', 'Adjust the filters above.')) +
+    '</div>';
+}
+
+/* ============================== DIALOGS ================================== */
+
+function changePwDialog() {
+  var minLen = num((S.data.config || {}).minPasswordLen) || 6;
+  modal(isAdmin() ? 'Change admin password' : 'Change my password',
+    'Stored in the ' + (isAdmin() ? 'Config' : 'VRMs') + ' tab. Minimum ' + minLen +
+    ' characters. The change is logged, the password itself never is.',
+    '<div class="f"><label class="lbl">Current password</label><input class="inp" type="password" id="d_old" autocomplete="current-password"></div>' +
+    '<div class="f"><label class="lbl">New password</label><input class="inp" type="password" id="d_new" autocomplete="new-password"></div>' +
+    '<div class="f"><label class="lbl">Confirm new password</label><input class="inp" type="password" id="d_new2" autocomplete="new-password"></div>',
+    '<button class="btn gh" data-act="close">Cancel</button>' +
+    '<button class="btn pri" data-act="dochangepw">Update password</button>');
+}
+
+function addVrmDialog() {
+  var minLen = num((S.data.config || {}).minPasswordLen) || 6;
+  modal('Add a VRM', 'The employee code is assigned automatically (VRM001, VRM002, ...). Minimum password length is ' + minLen + '.',
+    '<div class="f"><label class="lbl">VRM name</label><input class="inp" id="d_name" placeholder="e.g. Neha Kulkarni"></div>' +
+    '<div class="f"><label class="lbl">Initial password</label><input class="inp" id="d_pw" placeholder="At least ' + minLen + ' characters"></div>',
+    '<button class="btn gh" data-act="close">Cancel</button>' +
+    '<button class="btn pri" data-act="doaddvrm">Create VRM</button>');
+}
+
+function resetPwDialog(code, name) {
+  var minLen = num((S.data.config || {}).minPasswordLen) || 6;
+  modal('Reset password for ' + code,
+    'This overwrites the password for <b>' + esc(name) + ' (' + esc(code) + ')</b> and clears any lockout. Minimum ' + minLen + ' characters.',
+    '<div class="f"><label class="lbl">New password</label><input class="inp" id="d_pw" placeholder="At least ' + minLen + ' characters"></div>' +
+    '<input type="hidden" id="d_code" value="' + esc(code) + '">',
+    '<button class="btn gh" data-act="close">Cancel</button>' +
+    '<button class="btn dan" data-act="doresetpw">Reset password</button>');
+}
+
+function addTxnDialog() {
+  var vrmSel = isAdmin()
+    ? '<div class="f"><label class="lbl">VRM</label><select class="inp" id="d_vrm">' +
+      (S.data.vrms || []).map(function (v) {
+        return '<option value="' + esc(v.empCode) + '">' + esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
+      }).join('') + '</select></div>'
+    : '<input type="hidden" id="d_vrm" value="' + esc(S.session.empCode) + '">';
+
+  modal('Add a transaction',
+    isAdmin() ? 'Recorded against the VRM you pick.' : 'Recorded against your book (' + esc(S.session.empCode) + ').',
+    '<div class="f"><label class="lbl">Client code</label><input class="inp" id="d_cc" placeholder="e.g. CL10234"></div>' +
+    '<div class="f"><label class="lbl">Client name</label><input class="inp" id="d_cn" placeholder="e.g. Rakesh Patel"></div>' +
+    vrmSel +
+    '<div class="row" style="gap:12px">' +
+      '<div class="f grow"><label class="lbl">SIP amount</label><input class="inp" id="d_sip" type="number" min="0" step="1" value="0"></div>' +
+      '<div class="f grow"><label class="lbl">Lumpsum amount</label><input class="inp" id="d_lump" type="number" min="0" step="1" value="0"></div>' +
+    '</div>' +
+    '<div class="f"><label class="lbl">Date of investment</label><input class="inp" id="d_date" type="date" value="' + today() + '"></div>',
+    '<button class="btn gh" data-act="close">Cancel</button>' +
+    '<button class="btn pri" data-act="doaddtxn">Save transaction</button>');
+}
+
+function editTxnDialog(id) {
+  var t = null;
+  S.data.txns.forEach(function (x) { if (x.id === id) t = x; });
+  if (!t) return toast('That row is no longer here - refresh.', 'e');
+  var vrmSel = isAdmin()
+    ? '<div class="f"><label class="lbl">VRM</label><select class="inp" id="d_vrm">' +
+      (S.data.vrms || []).map(function (v) {
+        return '<option value="' + esc(v.empCode) + '"' + (v.empCode === t.vrmEmpCode ? ' selected' : '') + '>' +
+               esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
+      }).join('') + '</select></div>'
+    : '';
+
+  modal('Edit transaction', 'ID <span class="mono">' + esc(t.id) + '</span> - entered by ' + esc(t.enteredBy) +
+    '. Changing the VRM keeps the emp code and name in step.',
+    '<input type="hidden" id="d_id" value="' + esc(t.id) + '">' +
+    '<div class="f"><label class="lbl">Client code</label><input class="inp" id="d_cc" value="' + esc(t.clientCode) + '"></div>' +
+    '<div class="f"><label class="lbl">Client name</label><input class="inp" id="d_cn" value="' + esc(t.clientName) + '"></div>' +
+    vrmSel +
+    '<div class="row" style="gap:12px">' +
+      '<div class="f grow"><label class="lbl">SIP amount</label><input class="inp" id="d_sip" type="number" min="0" step="1" value="' + num(t.sip) + '"></div>' +
+      '<div class="f grow"><label class="lbl">Lumpsum amount</label><input class="inp" id="d_lump" type="number" min="0" step="1" value="' + num(t.lumpsum) + '"></div>' +
+    '</div>' +
+    '<div class="f"><label class="lbl">Date of investment</label><input class="inp" id="d_date" type="date" value="' + esc(t.date) + '"></div>',
+    '<button class="btn gh" data-act="close">Cancel</button>' +
+    '<button class="btn pri" data-act="doedittxn">Save changes</button>');
+}
+
+function importPreviewDialog(rows, skipped, fileName) {
+  var head = rows.slice(0, 6);
+  modal('Import ' + rows.length + ' row(s)',
+    'From <b>' + esc(fileName) + '</b>' + (skipped ? ' - ' + skipped + ' blank/unusable row(s) will be skipped' : '') +
+    '. ' + (isAdmin() ? 'VRM columns are respected; an unknown VRM name is created automatically.'
+                      : 'Rows are recorded against your book.'),
+    '<div class="twrap" style="max-height:240px;border:1px solid var(--line);border-radius:10px">' +
+    '<table><thead><tr><th>Client</th><th>VRM</th><th class="num">SIP</th><th class="num">Lumpsum</th><th>Date</th></tr></thead><tbody>' +
+    head.map(function (r) {
+      return '<tr><td class="mono">' + esc(r.clientCode) + '<div class="muted" style="font-size:11px">' + esc(r.clientName) + '</div></td>' +
+        '<td class="mono" style="font-size:11.5px">' + esc(r.vrmEmpCode || r.vrmName || (isAdmin() ? '-' : S.session.empCode)) + '</td>' +
+        '<td class="num">' + rupee(r.sip) + '</td><td class="num">' + rupee(r.lumpsum) + '</td>' +
+        '<td class="mono">' + esc(dmy(r.date)) + '</td></tr>';
+    }).join('') +
+    (rows.length > head.length ? '<tr><td colspan="5" class="muted">... and ' + (rows.length - head.length) + ' more</td></tr>' : '') +
+    '</tbody></table></div>',
+    '<button class="btn gh" data-act="close">Cancel</button>' +
+    '<button class="btn pri" data-act="doimport">Import ' + rows.length + ' row(s)</button>');
+  window._pendingImport = rows;
+}
+
+/* ======================= IMPORT / EXPORT / TEMPLATE ====================== */
+
+var TPL_HEADERS = ['Client Code', 'Client Name', 'VRM Emp Code', 'VRM Name',
+                   'SIP Amount', 'Lumpsum Amount', 'Date of Investment'];
+var TPL_SAMPLE = ['CL10234', 'Rakesh Patel', 'VRM001', 'Riddhi Mistry', 5000, 100000, '17-08-2026'];
+
+/* SheetJS is only needed for Excel import/export and the Excel template. */
+function loadSheetJs() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (window._xlsxLoading) return window._xlsxLoading;
+  window._xlsxLoading = new Promise(function (res, rej) {
+    var i = 0;
+    (function next() {
+      if (i >= SHEETJS_URLS.length) {
+        return rej(new Error('Could not load the Excel library. Check your internet connection, or use CSV instead.'));
+      }
+      var s = document.createElement('script');
+      s.src = SHEETJS_URLS[i++];
+      s.onload = function () { window.XLSX ? res(window.XLSX) : next(); };
+      s.onerror = next;
+      document.head.appendChild(s);
+    })();
+  });
+  return window._xlsxLoading;
+}
+
+function download(filename, blob) {
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename; a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);
+}
+
+function csvCell(v) {
+  var s = v === null || v === undefined ? '' : String(v);
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function saveCsv(filename, headers, rows) {
+  var body = [headers].concat(rows).map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');
+  download(filename + '.csv', new Blob(['﻿' + body], { type: 'text/csv;charset=utf-8;' }));
+  toast('Downloaded ' + filename + '.csv');
+}
+function saveXlsx(filename, sheetName, headers, rows) {
+  return loadSheetJs().then(function (X) {
+    var ws = X.utils.aoa_to_sheet([headers].concat(rows));
+    ws['!cols'] = headers.map(function (h) { return { wch: Math.max(12, String(h).length + 4) }; });
+    var wb = X.utils.book_new();
+    X.utils.book_append_sheet(wb, ws, (sheetName || 'Sheet1').slice(0, 31));
+    X.writeFile(wb, filename + '.xlsx');
+    toast('Downloaded ' + filename + '.xlsx');
+  }).catch(fail);
+}
+
+/* Exports always reflect the current tab and its active search / filters. */
+function exportSpec(what) {
+  var q, rows;
+  if (what === 'vrmtxns' || what === 'alltxns') {
+    q = S.q[what === 'vrmtxns' ? 'data' : 'alltxns'] || '';
+    rows = S.data.txns.filter(function (t) { return matches(t, q); })
+      .sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); })
+      .map(function (t) {
+        return [t.clientCode, t.clientName, t.vrmEmpCode, t.vrmName, num(t.sip), num(t.lumpsum), dmy(t.date), t.enteredBy];
+      });
+    return {
+      file: 'VRM-MF_' + (what === 'vrmtxns' ? S.session.empCode + '_' : '') + 'all-txns',
+      sheet: 'Transactions',
+      headers: TPL_HEADERS.concat(['Entered By']),
+      rows: rows
+    };
+  }
+  if (what === 'clients') {
+    q = (S.q.clients || '').toLowerCase();
+    rows = byClient(S.data.txns).filter(function (r) {
+      return !q || (r.clientCode + ' ' + r.clientName + ' ' + r.vrms.join(' ')).toLowerCase().indexOf(q) >= 0;
+    }).map(function (r) {
+      var base = [r.clientCode, r.clientName];
+      if (isAdmin()) base.push(r.vrms.join(' / '));
+      return base.concat([r.sip, r.lump, r.total, r.n, dmy(r.first), dmy(r.last)]);
+    });
+    return {
+      file: 'VRM-MF_client-consolidated', sheet: 'Client Consolidated',
+      headers: ['Client Code', 'Client Name'].concat(isAdmin() ? ['VRM(s)'] : [])
+        .concat(['SIP Total', 'Lumpsum Total', 'Combined Total', 'Transactions', 'First Investment', 'Last Investment']),
+      rows: rows
+    };
+  }
+  if (what === 'vrmwise') {
+    q = (S.q.vrmwise || '').toLowerCase();
+    rows = byVrm(S.data.txns, S.data.vrms).filter(function (r) {
+      return !q || (r.empCode + ' ' + r.name).toLowerCase().indexOf(q) >= 0;
+    }).map(function (r) { return [r.empCode, r.name, r.sip, r.lump, r.gross, r.clientCount, r.n]; });
+    return {
+      file: 'VRM-MF_vrm-wise-summary', sheet: 'VRM-wise',
+      headers: ['VRM Emp Code', 'VRM Name', 'SIP', 'Lumpsum', 'Gross Sales', 'Clients', 'Transactions'],
+      rows: rows
+    };
+  }
+  if (what === 'analytics') {
+    var g = GRAN[S.an.gran] || GRAN.month;
+    var met = METRICS[S.an.metric] || METRICS.gross;
+    var ser = series(anRows(), S.an.gran);
+    var byK = {}; ser.forEach(function (r) { byK[r.key] = r; });
+    rows = ser.slice().reverse().map(function (r) {
+      var p = byK[prevKey(r.key, S.an.gran)], y = byK[yoyKey(r.key, S.an.gran)];
+      var d1 = p ? pct(met.pick(r), met.pick(p)) : null;
+      var d2 = y ? pct(met.pick(r), met.pick(y)) : null;
+      return [g.label(r.key), r.sip, r.lump, r.gross, r.n, r.clientCount,
+              d1 === null ? '' : d1.toFixed(1) + '%', d2 === null ? '' : d2.toFixed(1) + '%'];
+    });
+    return {
+      file: 'VRM-MF_revenue-analysis-' + S.an.gran, sheet: 'Revenue Analysis',
+      headers: ['Period', 'SIP', 'Lumpsum', 'Gross', 'Transactions', 'Clients',
+                g.delta + ' %', 'YoY %'],
+      rows: rows
+    };
+  }
+  if (what === 'activity') {
+    rows = auditRows().map(function (r) {
+      return [r.timestamp, r.actor, r.role, r.action, r.details, r.affectedCount === '' ? '' : num(r.affectedCount)];
+    });
+    return {
+      file: 'VRM-MF_activity-log', sheet: 'Activity Log',
+      headers: ['Timestamp', 'Actor', 'Role', 'Action', 'Details', 'Affected Count'],
+      rows: rows
+    };
+  }
+  return null;
+}
+
+/* --------------------------- header matching ----------------------------- */
+var HEADER_MAP = {
+  clientCode: ['clientcode', 'code', 'clcode', 'clientid', 'clientno'],
+  clientName: ['clientname', 'name', 'client', 'investorname'],
+  vrmEmpCode: ['vrmempcode', 'empcode', 'vrmcode', 'employeecode', 'vrmid', 'rmcode'],
+  vrmName:    ['vrmname', 'vrm', 'rmname', 'relationshipmanager'],
+  sip:        ['sipamount', 'sip', 'sipamt', 'sipvalue', 'monthlysip'],
+  lumpsum:    ['lumpsumamount', 'lumpsum', 'lumpsumamt', 'lumpsumvalue', 'lump', 'onetime', 'onetimeamount'],
+  date:       ['dateofinvestment', 'investmentdate', 'date', 'invdate', 'transactiondate', 'dateofinv']
+};
+function normHead(h) { return String(h || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+function mapColumns(headerRow) {
+  var idx = {};
+  var norm = headerRow.map(normHead);
+  Object.keys(HEADER_MAP).forEach(function (field) {
+    for (var i = 0; i < HEADER_MAP[field].length; i++) {
+      var pos = norm.indexOf(HEADER_MAP[field][i]);
+      if (pos >= 0) { idx[field] = pos; return; }
+    }
+  });
+  return idx;
+}
+
+function rowsFromMatrix(matrix) {
+  /* Find the header row: the first row that maps at least a date or an amount. */
+  var hi = -1, idx = null;
+  for (var r = 0; r < Math.min(matrix.length, 12); r++) {
+    var m = mapColumns(matrix[r] || []);
+    if (m.date !== undefined || m.sip !== undefined || m.lumpsum !== undefined) { hi = r; idx = m; break; }
+  }
+  if (hi < 0) throw new Error('Could not find the expected column headers. Download the template and match the headings.');
+
+  var out = [], skipped = 0;
+  for (var i = hi + 1; i < matrix.length; i++) {
+    var row = matrix[i] || [];
+    var get = function (f) { return idx[f] === undefined ? '' : row[idx[f]]; };
+    var rec = {
+      clientCode: String(get('clientCode') === undefined ? '' : get('clientCode')).trim(),
+      clientName: String(get('clientName') === undefined ? '' : get('clientName')).trim(),
+      vrmEmpCode: String(get('vrmEmpCode') === undefined ? '' : get('vrmEmpCode')).trim(),
+      vrmName: String(get('vrmName') === undefined ? '' : get('vrmName')).trim(),
+      sip: num(String(get('sip')).replace(/[,\s₹]/g, '')),
+      lumpsum: num(String(get('lumpsum')).replace(/[,\s₹]/g, '')),
+      date: toIso(get('date'))
+    };
+    var blank = !rec.clientCode && !rec.clientName && !rec.date && !rec.sip && !rec.lumpsum;
+    if (blank) continue;                                    /* silently skip empty rows */
+    if (!rec.date || (rec.sip === 0 && rec.lumpsum === 0) || (!rec.clientCode && !rec.clientName)) { skipped++; continue; }
+    if (!rec.clientCode) rec.clientCode = rec.clientName.toUpperCase().replace(/\s+/g, '-');
+    if (!rec.clientName) rec.clientName = rec.clientCode;
+    out.push(rec);
+  }
+  return { rows: out, skipped: skipped };
+}
+
+/* Minimal RFC-4180 CSV parser so CSV import/export works with no internet. */
+function parseCsv(text) {
+  var rows = [], row = [], cell = '', q = false;
+  text = String(text).replace(/^﻿/, '');
+  for (var i = 0; i < text.length; i++) {
+    var c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { row.push(cell); cell = ''; }
+    else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+    else if (c !== '\r') cell += c;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
+function handleFile(file) {
+  var isCsv = /\.csv$/i.test(file.name);
+  var reader = new FileReader();
+  reader.onerror = function () { toast('Could not read that file.', 'e'); };
+  reader.onload = function (e) {
+    try {
+      if (isCsv) {
+        finish(parseCsv(e.target.result));
+      } else {
+        loadSheetJs().then(function (X) {
+          var wb = X.read(new Uint8Array(e.target.result), { type: 'array', cellDates: true });
+          var ws = wb.Sheets[wb.SheetNames[0]];
+          finish(X.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' }));
+        }).catch(fail);
+      }
+    } catch (err) { fail(err); }
+  };
+  function finish(matrix) {
+    try {
+      var res = rowsFromMatrix(matrix);
+      if (!res.rows.length) {
+        return toast('No usable rows found' + (res.skipped ? ' (' + res.skipped + ' row(s) had no date or no amount)' : '') + '.', 'e');
+      }
+      importPreviewDialog(res.rows, res.skipped, file.name);
+    } catch (err) { fail(err); }
+  }
+  isCsv ? reader.readAsText(file) : reader.readAsArrayBuffer(file);
+}
+
+$('fileIn').onchange = function (e) {
+  var f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (f) handleFile(f);
+};
+
+/* ============================== ACTIONS ================================== */
+
+function val(id) { var e = $(id); return e ? e.value : ''; }
+
+var ACT = {
+  close: closeModal,
+  disarm: function () { S.confirm = null; render(); },
+  arm: function (btn) { S.confirm = btn.dataset.arm || null; render(); },
+
+  /* ---- selection ---- */
+  togsel: function (btn) {
+    S.sel[btn.dataset.id] = !S.sel[btn.dataset.id];
+    if (!S.sel[btn.dataset.id]) delete S.sel[btn.dataset.id];
+    S.confirm = null; render();
+  },
+  selall: function () {
+    var q = S.q.alltxns || '';
+    var rows = S.data.txns.filter(function (t) { return matches(t, q); });
+    var all = rows.length && rows.every(function (r) { return S.sel[r.id]; });
+    rows.forEach(function (r) { if (all) delete S.sel[r.id]; else S.sel[r.id] = true; });
+    S.confirm = null; render();
+  },
+  selnone: function () { S.sel = {}; S.confirm = null; render(); },
+
+  /* ---- dialogs ---- */
+  changepw: changePwDialog,
+  addvrm: addVrmDialog,
+  addtxn: addTxnDialog,
+  edittxn: function (btn) { editTxnDialog(btn.dataset.id); },
+  resetpw: function (btn) { resetPwDialog(btn.dataset.code, btn.dataset.name); },
+  upload: function () { $('fileIn').click(); },
+
+  /* ---- exports & templates ---- */
+  csv: function (btn) {
+    var s = exportSpec(btn.dataset.what);
+    if (!s) return;
+    if (!s.rows.length) return toast('Nothing to export in the current view.', 'e');
+    saveCsv(s.file, s.headers, s.rows);
+  },
+  xlsx: function (btn) {
+    var s = exportSpec(btn.dataset.what);
+    if (!s) return;
+    if (!s.rows.length) return toast('Nothing to export in the current view.', 'e');
+    saveXlsx(s.file, s.sheet, s.headers, s.rows);
+  },
+  tplcsv: function () { saveCsv('VRM-MF_upload-template', TPL_HEADERS, [TPL_SAMPLE]); },
+  tplxlsx: function () { saveXlsx('VRM-MF_upload-template', 'Template', TPL_HEADERS, [TPL_SAMPLE]); },
+
+  /* ---- activity filters ---- */
+  preset: function (btn) { S.af.action = btn.dataset.p || ''; render(); },
+  clearfilters: function () {
+    S.af = { actor: '', role: '', action: '', from: '', to: '' };
+    S.q.activity = ''; render();
+  },
+  anreset: function () {
+    S.an = { from: '', to: '', vrm: '', metric: 'gross', gran: 'month' };
+    render();
+  },
+
+  /* ---- mutations ---- */
+  doaddtxn: function (btn) {
+    var rec = {
+      clientCode: val('d_cc').trim(), clientName: val('d_cn').trim(),
+      vrmEmpCode: val('d_vrm'), vrmName: '',
+      sip: num(val('d_sip')), lumpsum: num(val('d_lump')), date: toIso(val('d_date'))
+    };
+    if (!rec.clientCode && !rec.clientName) return toast('Enter a client code or client name.', 'e');
+    if (!rec.date) return toast('Pick a valid date of investment.', 'e');
+    if (!rec.sip && !rec.lumpsum) return toast('Enter a SIP or a Lumpsum amount.', 'e');
+    var un = lock(btn, 'Saving');
+    api('addTxns', S.session.token, [rec], 'ADD').then(function (d) {
+      closeModal(); absorb(d);
+      toast('Transaction added for ' + (rec.clientCode || rec.clientName) + '.');
+    }).catch(function (e) { un(); fail(e); });
+  },
+
+  doedittxn: function (btn) {
+    var fields = {
+      clientCode: val('d_cc').trim(), clientName: val('d_cn').trim(),
+      sip: num(val('d_sip')), lumpsum: num(val('d_lump')), date: toIso(val('d_date'))
+    };
+    if ($('d_vrm')) fields.vrmEmpCode = val('d_vrm');
+    if (!fields.date) return toast('Pick a valid date of investment.', 'e');
+    var un = lock(btn, 'Saving');
+    api('editTxn', S.session.token, val('d_id'), fields).then(function (d) {
+      closeModal(); absorb(d); toast('Transaction updated.');
+    }).catch(function (e) { un(); fail(e); });
+  },
+
+  doimport: function (btn) {
+    var rows = window._pendingImport || [];
+    if (!rows.length) return closeModal();
+    var un = lock(btn, 'Importing');
+    api('addTxns', S.session.token, rows, 'IMPORT').then(function (d) {
+      closeModal();
+      var r = d.result || {};
+      absorb(d);
+      toast(num(r.inserted) + ' rows imported' +
+        (num(r.skipped) ? ', ' + r.skipped + ' skipped' : '') +
+        ((r.createdVrms || []).length ? '. New VRM(s): ' + r.createdVrms.join(', ') : '') + '.',
+        num(r.inserted) ? '' : 'e');
+      /* Admin-only case: rows arrived with no VRM column, so they have no owner. */
+      if (num(r.noVrm)) {
+        toast(r.noVrm + ' row(s) skipped: add a "VRM Emp Code" or "VRM Name" column so each ' +
+          'row has an owner, or upload from that VRM\'s own login.', 'e');
+      }
+      window._pendingImport = null;
+    }).catch(function (e) { un(); fail(e); });
+  },
+
+  deltxn: function (btn) {
+    var un = lock(btn, 'Deleting');
+    api('deleteTxn', S.session.token, btn.dataset.id).then(function (d) {
+      absorb(d); toast('Transaction deleted.');
+    }).catch(function (e) { un(); fail(e); });
+  },
+
+  delclient: function (btn) {
+    var code = btn.dataset.code, un = lock(btn, 'Deleting');
+    api('deleteClient', S.session.token, code).then(function (d) {
+      var n = (d.result || {}).deleted || 0;
+      absorb(d); toast(n + ' transaction(s) deleted for client ' + code + '.');
+    }).catch(function (e) { un(); fail(e); });
+  },
+
+  bulkdel: function (btn) {
+    var ids = Object.keys(S.sel).filter(function (k) { return S.sel[k]; });
+    var un = lock(btn, 'Deleting');
+    api('bulkDeleteTxns', S.session.token, ids).then(function (d) {
+      var n = (d.result || {}).deleted || 0;
+      S.sel = {}; absorb(d); toast(n + ' transaction(s) deleted.');
+    }).catch(function (e) { un(); fail(e); });
+  },
+
+  delall: function (btn) {
+    var un = lock(btn, 'Deleting');
+    api('deleteAllData', S.session.token).then(function (d) {
+      var n = (d.result || {}).deleted || 0;
+      S.sel = {}; absorb(d);
+      toast('All transaction data deleted (' + n + ' row(s)). VRMs and the Activity Log are untouched.');
+    }).catch(function (e) { un(); fail(e); });
+  },
+
+  transfer: function (btn) {
+    var code = btn.dataset.code;
+    var sel = document.querySelector('[data-dest="' + code.replace(/"/g, '\\"') + '"]');
+    var dest = sel ? sel.value : '';
+    if (!dest) return toast('Pick a destination VRM first.', 'e');
+    var un = lock(btn, 'Moving');
+    api('transferClient', S.session.token, code, dest).then(function (d) {
+      var r = d.result || {};
+      absorb(d);
+      toast('Client ' + code + ' transferred to ' + r.toName + ' (' + r.to + ') - ' + r.moved + ' txn(s).');
+    }).catch(function (e) { un(); fail(e); });
+  },
+
+  doaddvrm: function (btn) {
+    var name = val('d_name').trim(), pw = val('d_pw');
+    if (!name) return toast('Enter the VRM name.', 'e');
+    var un = lock(btn, 'Creating');
+    api('addVRM', S.session.token, name, pw).then(function (d) {
+      var r = d.result || {};
+      closeModal(); absorb(d);
+      toast('VRM created: ' + r.name + ' (' + r.empCode + ').');
+    }).catch(function (e) { un(); fail(e); });
+  },
+
+  delvrm: function (btn) {
+    var code = btn.dataset.code, un = lock(btn, 'Deleting');
+    api('deleteVRM', S.session.token, code).then(function (d) {
+      var n = (d.result || {}).deletedTxns || 0;
+      absorb(d); toast('VRM ' + code + ' deleted along with ' + n + ' transaction(s).');
+    }).catch(function (e) { un(); fail(e); });
+  },
+
+  unlock: function (btn) {
+    var code = btn.dataset.code, un = lock(btn, 'Unlocking');
+    api('unlockVrm', S.session.token, code).then(function (d) {
+      absorb(d); toast(code + ' unlocked.');
+    }).catch(function (e) { un(); fail(e); });
+  },
+
+  doresetpw: function (btn) {
+    var code = val('d_code'), pw = val('d_pw');
+    var un = lock(btn, 'Resetting');
+    api('resetVrmPassword', S.session.token, code, pw).then(function (d) {
+      closeModal(); absorb(d);
+      toast('Password reset for ' + code + '; lockout cleared.');
+    }).catch(function (e) { un(); fail(e); });
+  },
+
+  dochangepw: function (btn) {
+    var o = val('d_old'), n = val('d_new'), n2 = val('d_new2');
+    if (!o) return toast('Enter your current password.', 'e');
+    if (n !== n2) return toast('The two new passwords do not match.', 'e');
+    var fn = isAdmin() ? 'changeAdminPassword' : 'changeVrmPassword';
+    var un = lock(btn, 'Updating');
+    api(fn, S.session.token, o, n).then(function (d) {
+      closeModal(); absorb(d);
+      toast('Password updated. Use the new password next time you sign in.');
+    }).catch(function (e) { un(); fail(e); });
+  }
+};
+
+document.addEventListener('click', function (e) {
+  var el = e.target.closest('[data-act]');
+  if (!el) return;
+  var fn = ACT[el.dataset.act];
+  if (!fn) return;
+  e.preventDefault();
+  fn(el);
+});
+
+/* search boxes */
+document.addEventListener('input', function (e) {
+  var el = e.target.closest('[data-q]');
+  if (!el) return;
+  S.q[el.dataset.q] = el.value;
+  S.confirm = null;
+  var key = el.dataset.q, pos = el.selectionStart;
+  render();
+  var again = document.querySelector('[data-q="' + key + '"]');
+  if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (err) {} }
+});
+
+/* activity-log filter controls */
+document.addEventListener('change', function (e) {
+  var el = e.target.closest('[data-f]');
+  if (!el) return;
+  S.af[el.dataset.f] = el.value;
+  render();
+});
+
+/* analytics filter controls */
+document.addEventListener('change', function (e) {
+  var el = e.target.closest('[data-an]');
+  if (!el) return;
+  S.an[el.dataset.an] = el.value;
+  render();
+});
+
+/* Enter submits the open dialog. */
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter') return;
+  if (!$('modal').classList.contains('on')) return;
+  if (e.target.tagName === 'TEXTAREA') return;
+  var go = $('mbox').querySelector('.mact .btn.pri, .mact .btn.dan');
+  if (go) { e.preventDefault(); go.click(); }
+});
+</script>
+
+</body>
+</html>
