@@ -489,6 +489,18 @@ function esc(v) {
 function num(v) { var n = Number(v); return isNaN(n) || !isFinite(n) ? 0 : n; }
 function inr(v) { return num(v).toLocaleString('en-IN', { maximumFractionDigits: 0 }); }
 function rupee(v) { return '₹' + inr(v); }
+/*
+ * Roll-ups round to whole rupees, but a single transaction is shown to the paisa
+ * when it has any: the redemption report carries amounts like 3000.03, and a row
+ * that does not tie back to the source file exactly is a row nobody trusts.
+ */
+function rupeeExact(v) {
+  v = num(v);
+  var paise = Math.abs(v * 100 - Math.round(v) * 100) > 0.5;
+  return '₹' + v.toLocaleString('en-IN', paise
+    ? { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+    : { maximumFractionDigits: 0 });
+}
 function shortInr(v) {
   v = num(v);
   if (Math.abs(v) >= 1e7) return '₹' + (v / 1e7).toFixed(2) + ' Cr';
@@ -1228,7 +1240,7 @@ function amountCell(t) {
   var neg = t.txnType === TT.REDEMPTION;
   var dim = !isCounted(t) ? ';opacity:.55' : '';
   return '<span style="color:' + (neg ? 'var(--dan)' : 'var(--ink)') + dim + '">' +
-         (neg ? '-' : '') + rupee(t.amount) + '</span>';
+         (neg ? '-' : '') + rupeeExact(t.amount) + '</span>';
 }
 
 function panCell(t) {
@@ -1541,7 +1553,8 @@ function expBtns(what) {
 var TXN_COLS =
   '<th>Txn Date</th><th>Txn Time</th><th>Client Code</th><th>Client Name</th>' +
   '<th>PAN No.</th><th>VRM</th><th>RM Name</th><th>Scheme Name</th>' +
-  '<th>TXN Type</th><th class="num">Amount</th><th>Txn Status</th><th>Reason for Rejection</th>';
+  '<th>TXN Type</th><th class="num">Amount</th><th>Txn Status</th>' +
+  '<th>Folio</th><th>Reason for Rejection</th>';
 
 function txnCells(t) {
   return '<td class="mono" style="white-space:nowrap">' + esc(dmy(t.date)) + '</td>' +
@@ -1555,6 +1568,8 @@ function txnCells(t) {
     '<td>' + typePill(t.txnType) + '</td>' +
     '<td class="num">' + amountCell(t) + '</td>' +
     '<td>' + statusPill(t.status) + '</td>' +
+    '<td class="mono" style="font-size:11.5px">' +
+      (t.folio ? esc(t.folio) : '<span class="muted">—</span>') + '</td>' +
     '<td>' + (t.reason
       ? (t.status === TS.REJECTED
           ? '<span style="color:var(--dan);font-weight:600">' + esc(t.reason) + '</span>'
@@ -1568,7 +1583,7 @@ function txnFoot(rows, extraCols) {
   return '<tfoot><tr><td colspan="9">Counted totals (' + rows.length + ' rows)</td>' +
     '<td class="num">SIP ' + rupee(m.sip) + ' · Lump ' + rupee(m.lumpsum) +
     ' · Red ' + rupee(m.redemption) + '</td>' +
-    '<td colspan="' + (2 + (extraCols || 0)) + '">Gross <b>' + rupee(m.gross) +
+    '<td colspan="' + (3 + (extraCols || 0)) + '">Gross <b>' + rupee(m.gross) +
     '</b> · Net <b style="color:var(--a)">' + rupee(m.net) + '</b></td></tr></tfoot>';
 }
 
@@ -1594,7 +1609,8 @@ function viewData() {
 
   return pageHead('My data', rows.length + ' of ' + S.data.txns.length + ' rows',
       '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload CSV/Excel</button>' +
-      '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Upload template</button>') +
+      '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Upload template</button>' +
+      '<button class="btn sm" data-act="tplred">' + IC.down + ' Redemption template</button>') +
     /* CR: a VRM cannot amend or remove anything after upload. */
     (can('canDelete') ? '' :
       '<div class="panel" style="border-left:3px solid var(--p)"><div style="padding:14px 18px;' +
@@ -1837,6 +1853,7 @@ function viewAllTxns() {
   return pageHead('All transactions', rows.length + ' of ' + S.data.txns.length + ' rows',
       '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload CSV/Excel</button>' +
       '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Template</button>' +
+      '<button class="btn sm" data-act="tplred">' + IC.down + ' Redemption template</button>' +
       guard('all',
         '<button class="btn xs dan" data-act="delall">Confirm — delete ALL</button>',
         '<button class="btn sm dan" data-act="arm">' + IC.trash + ' Delete ALL data</button>')) +
@@ -2691,9 +2708,13 @@ function importPreviewDialog(rows, skipped, fileName) {
 
   var ord = window.__dateOrder === 'MDY'
     ? 'month-first (MM-DD-YYYY)' : 'day-first (DD-MM-YYYY)';
+  var shape = window.__typeFromStatus
+    ? '<br>Read as a <b>redemption report</b> — the "Status" column holds the transaction type.'
+    : '';
   modal('Upload ' + rows.length + ' row(s)',
     'From <b>' + esc(fileName) + '</b>' + (skipped ? ' — ' + skipped + ' blank row(s) ignored' : '') +
-    '.<br>Dates read as <b>' + ord + '</b> — check the first row below looks right.<br>' + esc(mix) +
+    '.<br>Dates read as <b>' + ord + '</b> — check the first row below looks right.' + shape +
+    '<br>' + esc(mix) +
     (isAdmin()
       ? '<br><span class="muted">VRM columns are respected; an unknown VRM name is created.</span>'
       : '<br><span class="muted">Rows must belong to you — a different VRM in the file will be reported.</span>'),
@@ -2724,7 +2745,14 @@ function uploadErrorDialog(res, fileName) {
   modal('Upload refused',
     'Nothing was saved from <b>' + esc(fileName) + '</b>.<br>' +
     '<span class="muted">The whole file is rejected rather than part of it — a partly-loaded ' +
-    'file leaves you unsure what landed, and re-uploading the corrected file would duplicate it.</span>',
+    'file leaves you unsure what landed, and re-uploading the corrected file would duplicate it.</span>' +
+    (num(res.duplicates)
+      ? '<br><br><b>' + num(res.duplicates) + ' duplicate row(s).</b> ' +
+        '<span class="muted">A transaction is identified by every field the file supplies — ' +
+        'client, date, time, VRM, scheme, type, amount, status and folio together. The same ' +
+        'client on the same day is fine; the same client, same day, same scheme AND same amount ' +
+        'is the same transaction twice.</span>'
+      : ''),
     '<div class="uperr"><b>' + num(res.errorTotal || errs.length) + ' row(s) need fixing</b>' +
     '<ol>' + errs.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ol>' +
     (num(res.errorTotal) > errs.length
@@ -2752,6 +2780,20 @@ var TPL_SAMPLE = [
   ['18-08-2026', '2:30 PM', 'S70812', 'EXAMPLE CLIENT THREE', 'AAAAA3333A',
    'Khushi Mahesh Dodiya', 'Rajashri Alkesh Mohandas',
    'ICICI PRUDENTIAL BLUECHIP FUND GROWTH', 'Redemption', 20000, 'Completed', '']
+];
+
+/*
+ * The redemption report arrives in its own shape: no VRM, no time, the type sits
+ * in a column headed "Status", and the PAN comes pre-masked by the source system.
+ * It is a separate template because it is a separate export, not a variant.
+ */
+var RED_HEADERS = ['Client Code', 'Client Name', 'PAN', 'RM Name', 'Scheme Name',
+                   'Status', 'Transaction Date', 'Folio Number', 'Trans Amount'];
+var RED_SAMPLE = [
+  ['A41685', 'EXAMPLE CLIENT ONE', 'AA****111A', 'Khushi Mahesh Dodiya',
+   'NIPPON INDIA MULTI CAP FUND (G)', 'RED', '10-08-2026', '440453792466', 3000.03],
+  ['A24554', 'EXAMPLE CLIENT TWO', 'AA****222A', 'Mukesh Malpani - Khushi',
+   'TATA DIGITAL INDIA FUND (G)', 'RED', '17-08-2026', '7250387/22', 30088.80]
 ];
 
 /* SheetJS is only needed for Excel import/export and the Excel template. */
@@ -2943,10 +2985,54 @@ var HEADER_MAP = {
   rmName:     ['rmname', 'rm', 'relationshipmanager', 'rmmanager'],
   scheme:     ['schemename', 'scheme', 'fundname', 'schemedescription'],
   txnType:    ['txntype', 'transactiontype', 'type', 'trxntype', 'transactioncategory'],
-  amount:     ['amount', 'amt', 'transactionamount', 'txnamount', 'grossamount'],
+  amount:     ['amount', 'amt', 'transactionamount', 'txnamount', 'grossamount',
+               'transamount', 'transactionamt'],
   status:     ['txnstatus', 'transactionstatus', 'status', 'trxnstatus'],
-  reason:     ['reasonforrejection', 'rejectionreason', 'reason', 'remarks', 'remark']
+  reason:     ['reasonforrejection', 'rejectionreason', 'reason', 'remarks', 'remark'],
+  folio:      ['folionumber', 'folio', 'foliono', 'foliono.']
 };
+
+/*
+ * The redemption report is a different export with a different shape: no TXN Type
+ * column at all, and a column headed "Status" that holds RED — the transaction
+ * TYPE, not its status. Detected rather than assumed: if the status column's
+ * values normalise to known transaction types instead of known statuses, that
+ * column is the type, and the rows are treated as completed transactions.
+ */
+function detectTypeInStatusColumn(matrix, hi, idx) {
+  if (idx.txnType !== undefined) return false;      /* a real TXN Type column exists */
+  if (idx.status === undefined) return false;
+  var asType = 0, asStatus = 0, seen = 0;
+  for (var i = hi + 1; i < Math.min(matrix.length, hi + 60); i++) {
+    var v = (matrix[i] || [])[idx.status];
+    if (v === undefined || v === null || String(v).trim() === '') continue;
+    seen++;
+    if (normTxnTypeC(v)) asType++;
+    else if (normTxnStatusC(v)) asStatus++;
+  }
+  return seen > 0 && asType > 0 && asType >= asStatus;
+}
+
+/* Client-side mirrors of the server's normalisers, for shape detection only. */
+function keyC(v) { return String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+var TYPE_ALIAS_C = {
+  SIP: 'SIP', SIPPURCHASE: 'SIP', SYSTEMATICINVESTMENTPLAN: 'SIP',
+  LUMPSUM: 'LUMPSUM', LUMPSOM: 'LUMPSUM', LUMP: 'LUMPSUM', PURCHASE: 'LUMPSUM',
+  FRESHPURCHASE: 'LUMPSUM', ADDITIONALPURCHASE: 'LUMPSUM', ONETIME: 'LUMPSUM',
+  REDEMPTION: 'REDEMPTION', REDEEM: 'REDEMPTION', REDMPTION: 'REDEMPTION',
+  SELL: 'REDEMPTION', WITHDRAWAL: 'REDEMPTION', SWP: 'REDEMPTION',
+  RED: 'REDEMPTION', REDM: 'REDEMPTION', REDEMP: 'REDEMPTION'
+};
+var STATUS_ALIAS_C = {
+  COMPLETED: 'COMPLETED', COMPLETE: 'COMPLETED', SUCCESS: 'COMPLETED',
+  ALLOTMENTDONE: 'COMPLETED', PROCESSED: 'COMPLETED', CONFIRMED: 'COMPLETED',
+  INPROCESS: 'IN_PROCESS', PENDING: 'IN_PROCESS', UNDERPROCESS: 'IN_PROCESS',
+  INPROGRESS: 'IN_PROCESS', SUBMITTED: 'IN_PROCESS',
+  REJECTED: 'REJECTED', REJECT: 'REJECTED', FAILED: 'REJECTED',
+  CANCELLED: 'REJECTED', CANCELED: 'REJECTED', REVERSED: 'REJECTED'
+};
+function normTxnTypeC(v) { return TYPE_ALIAS_C[keyC(v)] || ''; }
+function normTxnStatusC(v) { return STATUS_ALIAS_C[keyC(v)] || ''; }
 function normHead(h) { return String(h || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
 
 function mapColumns(headerRow) {
@@ -2974,9 +3060,15 @@ function rowsFromMatrix(matrix) {
                     'TxnDate, TXN Type and Amount at minimum.');
   }
 
-  /* Required by the CR. PAN and Reason may legitimately be blank. */
-  var required = { date: 'TxnDate', clientCode: 'Client Code', txnType: 'TXN Type',
-                   amount: 'Amount', status: 'Txn Status' };
+  /* A redemption report carries the type in its "Status" column. */
+  var typeFromStatus = detectTypeInStatusColumn(matrix, hi, idx);
+  window.__typeFromStatus = typeFromStatus;
+
+  var required = { date: 'TxnDate', clientCode: 'Client Code', amount: 'Amount' };
+  if (!typeFromStatus) {
+    required.txnType = 'TXN Type';
+    required.status = 'Txn Status';
+  }
   var missing = Object.keys(required).filter(function (k) { return idx[k] === undefined; })
                   .map(function (k) { return required[k]; });
   if (missing.length) {
@@ -3012,16 +3104,21 @@ function rowsFromMatrix(matrix) {
       vrm: String(get('vrm') == null ? '' : get('vrm')).trim(),
       rmName: String(get('rmName') == null ? '' : get('rmName')).trim(),
       scheme: String(get('scheme') == null ? '' : get('scheme')).trim(),
-      txnType: String(get('txnType') == null ? '' : get('txnType')).trim(),
+      txnType: String((typeFromStatus ? get('status') : get('txnType')) == null
+                      ? '' : (typeFromStatus ? get('status') : get('txnType'))).trim(),
       amount: num(String(get('amount')).replace(/[,\s₹]/g, '')),
-      status: String(get('status') == null ? '' : get('status')).trim(),
-      reason: String(get('reason') == null ? '' : get('reason')).trim()
+      /* A redemption report has no status column of its own — these are settled
+         transactions by the time they appear in it. */
+      status: typeFromStatus ? 'Completed'
+              : String(get('status') == null ? '' : get('status')).trim(),
+      reason: String(get('reason') == null ? '' : get('reason')).trim(),
+      folio: String(get('folio') == null ? '' : get('folio')).trim()
     };
     /* Normalise here so the preview shows exactly what will be stored. */
     rec.date = toIsoOrdered(rec.date, order) || '';
 
     var empty = !rec.clientCode && !rec.clientName && !rec.amount &&
-                !rec.txnType && !String(rec.date || '').trim();
+                !rec.txnType && !String(rec.date || '').trim() && !rec.folio;
     if (empty) { blank++; continue; }
     out.push(rec);
   }
@@ -3125,8 +3222,11 @@ var ACT = {
     if (!s.rows.length) return toast('Nothing to export in the current view.', 'e');
     saveXlsx(s.file, s.sheet, s.headers, s.rows);
   },
-  tplcsv: function () { saveCsv('VRM-MF_upload-template', TPL_HEADERS, [TPL_SAMPLE]); },
-  tplxlsx: function () { saveXlsx('VRM-MF_upload-template', 'Template', TPL_HEADERS, [TPL_SAMPLE]); },
+  /* TPL_SAMPLE is already a list of rows — wrapping it again produced one
+     garbled line instead of three example rows. */
+  tplcsv: function () { saveCsv('VRM-MF_upload-template', TPL_HEADERS, TPL_SAMPLE); },
+  tplxlsx: function () { saveXlsx('VRM-MF_upload-template', 'Template', TPL_HEADERS, TPL_SAMPLE); },
+  tplred: function () { saveCsv('VRM-MF_redemption-template', RED_HEADERS, RED_SAMPLE); },
 
   /* ---- activity filters ---- */
   preset: function (btn) { S.af.action = btn.dataset.p || ''; render(); },
