@@ -2715,10 +2715,22 @@ function importPreviewDialog(rows, skipped, fileName) {
   var shape = window.__typeFromStatus
     ? '<br>Read as a <b>redemption report</b> — the "Status" column holds the transaction type.'
     : '';
+  /*
+   * A file with no VRM column is attributed from RM Name where that RM is also a
+   * VRM. Say so, because the preview cannot show an owner the server has not
+   * resolved yet, and a silent attribution is the kind of thing that surprises
+   * people at month end.
+   */
+  var noVrmCol = !rows.some(function (r) { return String(r.vrm || '').trim(); });
+  var attribution = noVrmCol
+    ? '<br>No VRM column — each row is attributed to the <b>RM Name</b> where that person ' +
+      'is also a VRM. Names are matched on words, so "Dodiya Khushi" and "Khushi Mahesh ' +
+      'Dodiya" are the same person. A row whose RM is not a VRM is reported, never guessed.'
+    : '';
   modal('Upload ' + rows.length + ' row(s)',
     'From <b>' + esc(fileName) + '</b>' + (skipped ? ' — ' + skipped + ' blank row(s) ignored' : '') +
     '.<br>Dates read as <b>' + ord + '</b> — check the first row below looks right.' + shape +
-    '<br>' + esc(mix) +
+    attribution + '<br>' + esc(mix) +
     (isAdmin()
       ? '<br><span class="muted">VRM columns are respected; an unknown VRM name is created.</span>'
       : '<br><span class="muted">Rows must belong to you — a different VRM in the file will be ' +
@@ -3334,6 +3346,9 @@ var ACT = {
         closeModal();
         toast(num(r.inserted) + ' row(s) uploaded' +
           (num(r.blank) ? ', ' + r.blank + ' blank skipped' : '') +
+          /* Say when ownership came from the RM column rather than a VRM column. */
+          (num(r.attributedFromRm)
+            ? ', ' + r.attributedFromRm + ' attributed from RM Name' : '') +
           ((r.createdVrms || []).length ? '. New VRM(s): ' + r.createdVrms.join(', ') : '') +
           (r.batchId ? ' [' + r.batchId + ']' : ''));
         window._pendingImport = null;

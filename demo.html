@@ -589,9 +589,11 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
     return o.lockedUntil;
   }
   function clearLock(o) { o.failed = 0; o.lockedUntil = ''; o.lockedUntilMs = 0; }
-  function nextCode() {
+  function nextCode(extra) {
     var max = 0;
-    VRMS.forEach(function (v) { var m = v.empCode.match(/^VRM(\d+)$/); if (m) max = Math.max(max, +m[1]); });
+    VRMS.concat(extra || []).forEach(function (v) {
+      var m = v.empCode.match(/^VRM(\d+)$/); if (m) max = Math.max(max, +m[1]);
+    });
     return 'VRM' + ('00' + (max + 1)).slice(-3);
   }
   function maskPan(p) {
@@ -601,6 +603,241 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
     if (p.length < 7) return p.charAt(0) + '****';
     return p.slice(0, 5) + '****' + p.slice(-1);
   }
+/* The name-matching engine below is copied verbatim from Code.gs so the demo
+     cannot drift from the server; it needs the server's string helper. */
+  function s_(v) { return v === null || v === undefined ? '' : String(v).trim(); }
+
+  /* ======================== PERSON-NAME MATCHING ==============================
+   *
+   * The same person is written many ways across the exports and the roster:
+   *
+   *     Khushi Dodiya   Dodiya Khushi   Khushi Mahesh Dodiya   KHUSHI  M  DODIYA
+   *
+   * Word order varies (these exports often put the surname first), middle names
+   * come and go, spacing is inconsistent, and initials are sometimes abbreviated.
+   * Matching on the literal string means one person becomes several VRM records
+   * and their book silently splits, so names are compared as SETS OF WORDS.
+   *
+   * The rules run strongest-first and every one is symmetric:
+   *
+   *   EXACT    identical once normalised
+   *   ORDER    same words, any order        Dodiya Khushi = Khushi Dodiya
+   *   SUBSET   one name's words inside the other, sharing 2+ identifying words
+   *                                         Khushi Dodiya in Khushi Mahesh Dodiya
+   *   INITIAL  as SUBSET, but a single letter may stand for a word starting with it
+   *                                         Khushi M Dodiya = Khushi Mahesh Dodiya
+   *   SPELLING as SUBSET, allowing ONE word to differ by a single character
+   *                                         Aakansha Baranwal = Aakanksha Baranwal
+   *
+   * Two hard limits, because a wrong match misfiles revenue onto the wrong person
+   * and that is worse than refusing to guess:
+   *
+   *   - a single shared word is never a match. "Khushi" alone must not pick between
+   *     Khushi Dodiya and Khushi Patel.
+   *   - if a name matches two or more different people it matches NOBODY, and the
+   *     caller is told which candidates collided.
+   */
+  
+  /* Honorifics and noise that carry no identity. */
+  var NAME_NOISE = { 'MR': 1, 'MRS': 1, 'MS': 1, 'MISS': 1, 'DR': 1, 'SHRI': 1,
+                     'SMT': 1, 'KUM': 1, 'THE': 1 };
+  
+  /* Uppercase, strip anything that is not a letter or digit, collapse spaces. */
+  function nameNorm_(n) {
+    return s_(n).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  
+  function nameWords_(n) {
+    return nameNorm_(n).split(' ').filter(function (w) { return w && !NAME_NOISE[w]; });
+  }
+  
+  /* Words of two or more letters — the ones that actually identify a person.
+     The "K" in "Khushi K Dodiya" is an initial, not evidence of who this is. */
+  function realWords_(words) {
+    return words.filter(function (w) { return w.length > 1; });
+  }
+  
+  /* True when a and b differ by a single insertion, deletion or substitution.
+     Bounded at one edit: AAKANSHA/AAKANKSHA is a typo, SONI/SHAH is not. */
+  function withinOneEdit_(a, b) {
+    if (a === b) return true;
+    if (Math.abs(a.length - b.length) > 1) return false;
+    if (a.length > b.length) { var t = a; a = b; b = t; }
+    var la = a.length, lb = b.length, i = 0, j = 0, edits = 0;
+    while (i < la && j < lb) {
+      if (a.charAt(i) === b.charAt(j)) { i++; j++; continue; }
+      if (++edits > 1) return false;
+      if (la === lb) { i++; j++; } else { j++; }
+    }
+    return true;
+  }
+  
+  /*
+   * How well do two names describe the same person? Returns a confidence label,
+   * or '' for no match. Swapping the arguments never changes the answer.
+   */
+  function nameMatch_(a, b) {
+    var wa = nameWords_(a), wb = nameWords_(b);
+    if (!wa.length || !wb.length) return '';
+  
+    if (wa.join(' ') === wb.join(' ')) return 'EXACT';
+    if (wa.slice().sort().join(' ') === wb.slice().sort().join(' ')) return 'ORDER';
+  
+    var ra = realWords_(wa), rb = realWords_(wb);
+    var aIsShort = ra.length <= rb.length;
+    var shortR = aIsShort ? ra : rb;
+    var longR  = aIsShort ? rb : ra;
+    /* One identifying word in common is never enough to name a person. */
+    if (shortR.length < 2) return '';
+  
+    var pool, k, x;
+  
+    /* SUBSET — every identifying word of the shorter name is in the longer. */
+    pool = longR.slice();
+    var used = 0;
+    for (k = 0; k < shortR.length; k++) {
+      var at = pool.indexOf(shortR[k]);
+      if (at >= 0) { pool.splice(at, 1); used++; }
+    }
+    if (used === shortR.length) return 'SUBSET';
+  
+    /* INITIAL — a single letter may stand for a word beginning with it. */
+    var shortAll = aIsShort ? wa : wb;
+    var longAll  = aIsShort ? wb : wa;
+    pool = longAll.slice();
+    var hit = 0;
+    for (k = 0; k < shortAll.length; k++) {
+      var w = shortAll[k], found = -1;
+      for (x = 0; x < pool.length; x++) { if (pool[x] === w) { found = x; break; } }
+      if (found < 0 && w.length === 1) {
+        for (x = 0; x < pool.length; x++) { if (pool[x].charAt(0) === w) { found = x; break; } }
+      }
+      if (found < 0) {
+        for (x = 0; x < pool.length; x++) {
+          if (pool[x].length === 1 && pool[x] === w.charAt(0)) { found = x; break; }
+        }
+      }
+      if (found >= 0) { pool.splice(found, 1); hit++; }
+    }
+    if (hit === shortAll.length) return 'INITIAL';
+  
+    /* SPELLING — as SUBSET, but ONE word may be off by a single character. */
+    pool = longR.slice();
+    var exact = 0, fuzzy = 0;
+    for (k = 0; k < shortR.length; k++) {
+      var w2 = shortR[k], idx = pool.indexOf(w2);
+      if (idx >= 0) { pool.splice(idx, 1); exact++; continue; }
+      var near = -1;
+      for (var y = 0; y < pool.length; y++) {
+        /*
+         * Only where one edit is clearly a typo rather than a different name.
+         * Short surnames are the trap: SONI/SONU, SHAH/SHAW and JAIN/JAIL are all
+         * one edit apart and all plausibly different people, whereas
+         * AAKANSHA/AAKANKSHA is obviously one person spelled two ways. So both
+         * words must be six characters or longer AND agree on their first three —
+         * a typo rarely rewrites the start of a name.
+         */
+        if (w2.length >= 6 && pool[y].length >= 6 &&
+            w2.slice(0, 3) === pool[y].slice(0, 3) &&
+            withinOneEdit_(w2, pool[y])) { near = y; break; }
+      }
+      if (near >= 0 && !fuzzy) { pool.splice(near, 1); fuzzy++; }
+    }
+    if (exact + fuzzy === shortR.length && exact >= 1 && fuzzy === 1) return 'SPELLING';
+  
+    return '';
+  }
+  
+  var NAME_MATCH_RANK = { EXACT: 5, ORDER: 4, SUBSET: 3, INITIAL: 2, SPELLING: 1 };
+  
+  /*
+   * Resolve a written name to one VRM. Returns:
+   *   { vrm: <record>, how: 'EXACT'|... }         one confident match
+   *   { ambiguous: [<record>, ...], how: ... }    two or more equally good
+   *   null                                        nothing resembling it
+   *
+   * Only the strongest tier that matched counts, so an EXACT hit is never outvoted
+   * by two SPELLING hits — but two EXACT hits are a real collision the caller must
+   * hear about, which is exactly the duplicate-roster case.
+   */
+  function resolveVrmName_(name, vrms) {
+    if (!s_(name)) return null;
+    var list = vrms || [];
+  
+    /*
+     * The RM column sometimes carries a compound: "Mukesh  Malpani - Khushi" is an
+     * RM, then the VRM they report to. Each side is tried on its own as well as the
+     * whole string, strongest result winning.
+     */
+    var tries = [s_(name)];
+    s_(name).split(/\s*[-\/,;|]\s*|\s+&\s+/).forEach(function (part) {
+      if (s_(part) && tries.indexOf(s_(part)) < 0) tries.push(s_(part));
+    });
+  
+    var best = 0, hits = [];
+    tries.forEach(function (q) {
+      list.forEach(function (v) {
+        var how = nameMatch_(q, v.name);
+        if (!how) return;
+        var rank = NAME_MATCH_RANK[how] || 0;
+        if (rank > best) { best = rank; hits = [{ vrm: v, how: how }]; }
+        else if (rank === best) hits.push({ vrm: v, how: how });
+      });
+    });
+  
+    var settle = function (found, how) {
+      /* One person listed twice under the SAME empCode is not a collision. */
+      var codes = {}, unique = [];
+      found.forEach(function (h) {
+        var c = s_(h.vrm.empCode).toUpperCase();
+        if (!codes[c]) { codes[c] = 1; unique.push(h); }
+      });
+      if (unique.length > 1) {
+        return { ambiguous: unique.map(function (h) { return h.vrm; }), how: unique[0].how };
+      }
+      return { vrm: unique[0].vrm, how: unique[0].how || how };
+    };
+  
+    if (hits.length) return settle(hits);
+  
+    /*
+     * Last resort: a single word that belongs to exactly ONE person on the roster.
+     * This is how "Mukesh  Malpani - Khushi" reaches Khushi Mahesh Dodiya — nothing
+     * else in that string is a VRM, and only one VRM is called Khushi.
+     *
+     * A single word is normally never enough (nameMatch_ refuses it outright,
+     * pairwise, because it cannot see the rest of the roster). It is safe only
+     * BECAUSE uniqueness is checked across every VRM: the moment a second Khushi
+     * exists, this returns an ambiguity instead of a guess. Kept deliberately at
+     * the bottom, so it can never override a real name match.
+     */
+    var byWord = {};
+    list.forEach(function (v) {
+      realWords_(nameWords_(v.name)).forEach(function (w) {
+        if (w.length < 3) return;
+        if (!byWord[w]) byWord[w] = [];
+        var seen = false;
+        byWord[w].forEach(function (x) {
+          if (s_(x.empCode).toUpperCase() === s_(v.empCode).toUpperCase()) seen = true;
+        });
+        if (!seen) byWord[w].push(v);
+      });
+    });
+  
+    var candidates = [], codesSeen = {};
+    realWords_(nameWords_(name)).forEach(function (w) {
+      if (w.length < 3 || !byWord[w]) return;
+      byWord[w].forEach(function (v) {
+        var c = s_(v.empCode).toUpperCase();
+        if (!codesSeen[c]) { codesSeen[c] = 1; candidates.push(v); }
+      });
+    });
+  
+    if (!candidates.length) return null;
+    if (candidates.length > 1) return { ambiguous: candidates, how: 'UNIQUEWORD' };
+    return { vrm: candidates[0], how: 'UNIQUEWORD' };
+  }
+
   function panOk(p) {
     var v = String(p || '').toUpperCase();
     if (!v) return true;
@@ -782,7 +1019,11 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
         }
       }
 
-      var made = [], errors = [], blank = 0, created = [], dupes = 0;
+      var made = [], errors = [], blank = 0, created = [], dupes = 0, fromRm = 0;
+      /* Includes VRMs created earlier in this same file, so a second row naming
+         the same new person matches it instead of creating another record. */
+      var pendingVrms = [];
+      var roster = function () { return VRMS.concat(pendingVrms); };
       var batchId = 'B' + Date.now().toString(36).toUpperCase();
       var seen = {}, existing = {};
       TX.forEach(function (t) {
@@ -811,20 +1052,51 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
         }
 
         var owner = null;
-        var wantName = String(r.vrm || '').toUpperCase().replace(/\s+/g, ' ');
-        VRMS.forEach(function (v) {
-          if (!owner && v.name.toUpperCase().replace(/\s+/g, ' ') === wantName) owner = v;
-        });
+        var wantName = String(r.vrm || '').trim();
+        var rmRaw = String(r.rmName || '').trim();
+        if (wantName) {
+          var hit = resolveVrmName_(wantName, roster());
+          if (hit && hit.ambiguous) {
+            errors.push('Row ' + line + ': VRM "' + wantName + '" matches ' + hit.ambiguous.length +
+              ' different VRM records (' + hit.ambiguous.map(function (v) {
+                return v.empCode + ' "' + v.name + '"'; }).join(', ') +
+              '). Merge or rename them in VRMs & Access, then upload again.');
+            return;
+          }
+          if (hit) owner = hit.vrm;
+        }
+        /* No VRM column — the RM named on the row may itself be a VRM. */
+        if (!owner && !wantName && rmRaw) {
+          var rmHit = resolveVrmName_(rmRaw, roster());
+          if (rmHit && rmHit.ambiguous) {
+            errors.push('Row ' + line + ': RM "' + rmRaw + '" matches ' + rmHit.ambiguous.length +
+              ' different VRM records (' + rmHit.ambiguous.map(function (v) {
+                return v.empCode + ' "' + v.name + '"'; }).join(', ') +
+              '). Merge or rename them in VRMs & Access, then upload again.');
+            return;
+          }
+          if (rmHit) { owner = rmHit.vrm; fromRm++; }
+        }
         if (s.role === 'ADMIN') {
           if (!owner && wantName && mode === 'IMPORT') {
-            owner = { empCode: nextCode(), name: String(r.vrm).trim(), password: DEMO_PW,
+            /* Held back until the whole file is accepted — a rejected upload
+               must not leave a new VRM behind. */
+            owner = { empCode: nextCode(pendingVrms), name: wantName, password: DEMO_PW,
                       failed: 0, lockedUntil: '', lockedUntilMs: 0 };
-            VRMS.push(owner); created.push(owner.empCode + ' / ' + owner.name);
+            pendingVrms.push(owner);
+            created.push(owner.empCode + ' / ' + owner.name);
           }
-          if (!owner) { errors.push('Row ' + line + ': VRM "' + (r.vrm || '(blank)') +
-                        '" is not recognised. Add the VRM first, or correct the file.'); return; }
+          if (!owner) {
+            errors.push('Row ' + line + ': could not tell which VRM this belongs to — ' +
+              (wantName ? 'VRM "' + wantName + '"'
+                : rmRaw ? 'no VRM column, and RM "' + rmRaw + '" is not a VRM'
+                : 'no VRM and no RM on the row') +
+              '. Add the VRM in VRMs & Access, or add a VRM column to the file.');
+            return;
+          }
         } else {
           var me = find(s.empCode);
+          if (!owner && wantName && nameMatch_(wantName, me.name)) owner = me;
           if (owner && owner.empCode !== me.empCode) {
             errors.push('Row ' + line + ': VRM mismatch — the file says "' + r.vrm +
                         '" but you are signed in as ' + me.name + ' (' + me.empCode + '). ' +
@@ -836,7 +1108,7 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
 
         var rec = { id: 'TXN' + (++seq), date: date, time: normTime(r.time),
           clientCode: cc || cn.toUpperCase().replace(/\s+/g, '-'), clientName: cn || cc,
-          pan: pan, vrm: String(r.vrm || owner.name), rmName: String(r.rmName || ''),
+          pan: pan, vrm: owner.name, rmName: String(r.rmName || ''),
           scheme: String(r.scheme || ''), txnType: type, amount: amount,
           status: status, reason: String(r.reason || ''),
           vrmEmpCode: owner.empCode, batchId: batchId,
@@ -866,10 +1138,12 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
           'Upload "' + (meta.fileName || '') + '" rejected: ' + errors.length + ' invalid row(s)', 0);
         var bad = payload(s);
         bad.result = { inserted: 0, rejected: errors.length, blank: blank, duplicates: dupes,
+                       attributedFromRm: fromRm,
                        errors: errors.slice(0, 50), errorTotal: errors.length, batchId: '' };
         return ok(bad);
       }
 
+      pendingVrms.forEach(function (v) { VRMS.push(v); });
       made.forEach(function (t) { TX.push(t); });
       if (mode === 'IMPORT') {
         BATCHES.push({ batchId: batchId, uploadedAt: nowIso(),
@@ -888,7 +1162,8 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
         (mode === 'IMPORT' ? ' [batch ' + batchId + ']' : ''), made.length);
 
       var p = payload(s);
-      p.result = { inserted: made.length, rejected: 0, blank: blank, duplicates: 0, errors: [],
+      p.result = { inserted: made.length, rejected: 0, blank: blank, duplicates: 0,
+                   attributedFromRm: fromRm, errors: [],
                    errorTotal: 0, createdVrms: created,
                    batchId: mode === 'IMPORT' ? batchId : '' };
       return ok(p);
@@ -3449,10 +3724,22 @@ function importPreviewDialog(rows, skipped, fileName) {
   var shape = window.__typeFromStatus
     ? '<br>Read as a <b>redemption report</b> — the "Status" column holds the transaction type.'
     : '';
+  /*
+   * A file with no VRM column is attributed from RM Name where that RM is also a
+   * VRM. Say so, because the preview cannot show an owner the server has not
+   * resolved yet, and a silent attribution is the kind of thing that surprises
+   * people at month end.
+   */
+  var noVrmCol = !rows.some(function (r) { return String(r.vrm || '').trim(); });
+  var attribution = noVrmCol
+    ? '<br>No VRM column — each row is attributed to the <b>RM Name</b> where that person ' +
+      'is also a VRM. Names are matched on words, so "Dodiya Khushi" and "Khushi Mahesh ' +
+      'Dodiya" are the same person. A row whose RM is not a VRM is reported, never guessed.'
+    : '';
   modal('Upload ' + rows.length + ' row(s)',
     'From <b>' + esc(fileName) + '</b>' + (skipped ? ' — ' + skipped + ' blank row(s) ignored' : '') +
     '.<br>Dates read as <b>' + ord + '</b> — check the first row below looks right.' + shape +
-    '<br>' + esc(mix) +
+    attribution + '<br>' + esc(mix) +
     (isAdmin()
       ? '<br><span class="muted">VRM columns are respected; an unknown VRM name is created.</span>'
       : '<br><span class="muted">Rows must belong to you — a different VRM in the file will be ' +
@@ -4068,6 +4355,9 @@ var ACT = {
         closeModal();
         toast(num(r.inserted) + ' row(s) uploaded' +
           (num(r.blank) ? ', ' + r.blank + ' blank skipped' : '') +
+          /* Say when ownership came from the RM column rather than a VRM column. */
+          (num(r.attributedFromRm)
+            ? ', ' + r.attributedFromRm + ' attributed from RM Name' : '') +
           ((r.createdVrms || []).length ? '. New VRM(s): ' + r.createdVrms.join(', ') : '') +
           (r.batchId ? ' [' + r.batchId + ']' : ''));
         window._pendingImport = null;
