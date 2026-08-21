@@ -468,11 +468,12 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
 (function () {
   var DEMO_PW = 'demo1234';
 
+  /* Names as the source export spells them — uploads are matched against these. */
   var VRMS = [
-    ['VRM001', 'Riddhi Mistry'], ['VRM002', 'Pavan Soni'],
-    ['VRM003', 'Swarnarekha Shetty'], ['VRM004', 'Aakansha Baranwal'],
-    ['VRM005', 'Manisha Mahante'], ['VRM006', 'Khushi Mahesh Dodiya'],
-    ['VRM007', 'Pavan Soni']
+    ['VRM001', 'Riddhi Mistry'], ['VRM002', 'Pavan Lekhraj Soni'],
+    ['VRM003', 'Swarnarekha Divakar Shetty'], ['VRM004', 'Aakanksha Baranwal'],
+    ['VRM005', 'Manisha Hemant Mahante'], ['VRM006', 'Khushi Mahesh Dodiya'],
+    ['VRM007', 'Parth Vijay Sharma'], ['VRM008', 'Lavina Saldanha']
   ].map(function (v) {
     return { empCode: v[0], name: v[1], password: DEMO_PW, failed: 0,
              lockedUntil: '', lockedUntilMs: 0 };
