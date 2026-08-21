@@ -328,6 +328,8 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
 .kpi.net .kv{color:var(--a)}
 .kpi.red .ki{background:var(--dan-soft);color:var(--dan)}
 .kpi.red .kv{color:var(--dan)}
+.navbadge{margin-left:auto;background:var(--warn);color:#fff;border-radius:999px;
+  padding:1px 7px;font-size:11px;font-weight:700;line-height:1.5}
 .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;padding:18px 20px}
 .statbox{padding:15px;border-radius:var(--r2);border:1px solid var(--line);background:var(--surf2)}
 .statbox .sl{font-size:12px;font-weight:600;color:var(--ink2);margin-bottom:7px}
@@ -839,6 +841,52 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
     return { vrm: candidates[0], how: 'UNIQUEWORD' };
   }
 
+  function unassignedClusters(txns) {
+    var seen = {}, order = [];
+    (txns || []).forEach(function (t) {
+      if (t.vrmEmpCode) return;
+      var k = nameNorm_(t.vrm);
+      if (!seen[k]) { seen[k] = String(t.vrm || ''); order.push(k); }
+    });
+    var out = [];
+    order.forEach(function (k) {
+      var label = seen[k];
+      for (var i = 0; i < out.length; i++) {
+        if (nameMatch_(out[i].label, label)) {
+          out[i].keys.push(k);
+          if (nameWords_(label).length > nameWords_(out[i].label).length) out[i].label = label;
+          out[i].spellings.push(label);
+          return;
+        }
+      }
+      out.push({ id: 'UA' + (out.length + 1), label: label, keys: [k], spellings: [label] });
+    });
+    out.forEach(function (c) { c.reason = reasonFor(c.label); });
+    return out;
+  }
+
+  function keySet(rawNames) {
+    var arr = Object.prototype.toString.call(rawNames) === '[object Array]' ? rawNames : [rawNames];
+    var set = { count: 0 };
+    arr.forEach(function (n) {
+      var k = nameNorm_(n);
+      if (k && !set[k]) { set[k] = true; set.count++; }
+    });
+    return set;
+  }
+
+  function reasonFor(rawName) {
+    var nm = String(rawName || '').trim();
+    if (!nm) return 'no VRM or RM was named on the row';
+    var hit = resolveVrmName_(nm, VRMS);
+    if (hit && hit.ambiguous) {
+      return 'matches ' + hit.ambiguous.length + ' VRMs: ' + hit.ambiguous.map(function (v) {
+        return v.empCode + ' "' + v.name + '"'; }).join(', ');
+    }
+    if (hit && hit.vrm) return 'now matches ' + hit.vrm.empCode + ' ("' + hit.vrm.name + '") — ready to assign';
+    return 'not on the roster';
+  }
+
   function panOk(p) {
     var v = String(p || '').toUpperCase();
     if (!v) return true;
@@ -931,9 +979,12 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
         .map(function (t) {
           var c = JSON.parse(JSON.stringify(t));
           if (!fullPan) { c.pan = maskPan(c.pan); c.panMasked = true; } else { c.panMasked = false; }
+          c.unassignedReason = c.vrmEmpCode ? '' : reasonFor(c.vrm);
           return c;
         }),
       adminExists: true,
+      /* Admin only: a VRM never sees rows that belong to nobody. */
+      unassignedClusters: isAdmin ? unassignedClusters(TX) : [],
       perms: {
         canDelete: isAdmin, canEdit: isAdmin, canTransfer: isAdmin,
         canExport: isAdmin || CFG.VRM_CAN_EXPORT, canSeeFullPan: fullPan,
@@ -1002,6 +1053,65 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
 
     getData: function (token) { return ok(payload(session(token))); },
 
+    assignUnassigned: function (token, rawNames, empCode) {
+      var s = session(token);
+      if (s.role !== 'ADMIN') throw new Error('Admin only.');
+      var want = keySet(rawNames);
+      var target = find(empCode);
+      if (!target) throw new Error('That VRM no longer exists. Refresh and try again.');
+      var moved = 0;
+      TX.forEach(function (t) {
+        if (t.vrmEmpCode || !want[nameNorm_(t.vrm)]) return;
+        t.vrmEmpCode = target.empCode; t.vrm = target.name; moved++;
+      });
+      if (!moved) throw new Error('No unassigned rows are left under that name.');
+      log('ADMIN', 'ADMIN', 'ASSIGN_UNASSIGNED',
+        'Assigned ' + moved + ' unassigned row(s) to ' +
+        target.empCode + ' ("' + target.name + '")', moved);
+      var p = payload(s);
+      p.result = { moved: moved, empCode: target.empCode, name: target.name };
+      return ok(p);
+    },
+
+    createVrmForUnassigned: function (token, rawNames, displayName, pw) {
+      var s = session(token);
+      if (s.role !== 'ADMIN') throw new Error('Admin only.');
+      var want = keySet(rawNames);
+      var name = String(displayName || '').trim();
+      if (!name) throw new Error('Give the new VRM a name.');
+      var clash = resolveVrmName_(name, VRMS);
+      if (clash && clash.vrm) {
+        throw new Error('"' + name + '" already looks like ' + clash.vrm.empCode + ' ("' +
+                        clash.vrm.name + '"). Assign the rows to them instead of creating ' +
+                        'a second record.');
+      }
+      if (clash && clash.ambiguous) {
+        throw new Error('"' + name + '" resembles ' + clash.ambiguous.length +
+                        ' existing VRMs. Sort those out in VRMs & Access first.');
+      }
+      if (!pw || String(pw).length < (CFG.MIN_PASSWORD_LEN || 6)) {
+        throw new Error('Set a password of at least ' + (CFG.MIN_PASSWORD_LEN || 6) +
+                        ' characters for the new VRM.');
+      }
+      var v = { empCode: nextCode(), name: name, password: String(pw),
+                failed: 0, lockedUntil: '', lockedUntilMs: 0 };
+      VRMS.push(v);
+      log('ADMIN', 'ADMIN', 'ADD_VRM',
+        'Added VRM ' + v.empCode + ' ("' + name + '") while clearing unassigned rows', 1);
+      var moved = 0;
+      TX.forEach(function (t) {
+        if (t.vrmEmpCode || !want[nameNorm_(t.vrm)]) return;
+        t.vrmEmpCode = v.empCode; t.vrm = v.name; moved++;
+      });
+      if (moved) {
+        log('ADMIN', 'ADMIN', 'ASSIGN_UNASSIGNED',
+          'Assigned ' + moved + ' unassigned row(s) to ' + v.empCode + ' ("' + name + '")', moved);
+      }
+      var p = payload(s);
+      p.result = { moved: moved, empCode: v.empCode, name: name, createdVrm: true };
+      return ok(p);
+    },
+
     addTxns: function (token, rows, mode, meta) {
       var s = session(token);
       meta = meta || {};
@@ -1020,11 +1130,8 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
         }
       }
 
-      var made = [], errors = [], blank = 0, created = [], dupes = 0, fromRm = 0;
-      /* Includes VRMs created earlier in this same file, so a second row naming
-         the same new person matches it instead of creating another record. */
-      var pendingVrms = [];
-      var roster = function () { return VRMS.concat(pendingVrms); };
+      var made = [], errors = [], blank = 0, dupes = 0, fromRm = 0, unassigned = 0;
+      var roster = function () { return VRMS; };
       var batchId = 'B' + Date.now().toString(36).toUpperCase();
       var seen = {}, existing = {};
       TX.forEach(function (t) {
@@ -1053,51 +1160,40 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
         }
 
         var owner = null;
+        var unresolved = '';
         var wantName = String(r.vrm || '').trim();
         var rmRaw = String(r.rmName || '').trim();
         if (wantName) {
           var hit = resolveVrmName_(wantName, roster());
           if (hit && hit.ambiguous) {
-            errors.push('Row ' + line + ': VRM "' + wantName + '" matches ' + hit.ambiguous.length +
-              ' different VRM records (' + hit.ambiguous.map(function (v) {
-                return v.empCode + ' "' + v.name + '"'; }).join(', ') +
-              '). Merge or rename them in VRMs & Access, then upload again.');
-            return;
-          }
-          if (hit) owner = hit.vrm;
+            unresolved = 'VRM "' + wantName + '" matches ' + hit.ambiguous.length + ' VRM records: ' +
+              hit.ambiguous.map(function (v) { return v.empCode + ' "' + v.name + '"'; }).join(', ');
+          } else if (hit) owner = hit.vrm;
         }
         /* No VRM column — the RM named on the row may itself be a VRM. */
         if (!owner && !wantName && rmRaw) {
           var rmHit = resolveVrmName_(rmRaw, roster());
           if (rmHit && rmHit.ambiguous) {
-            errors.push('Row ' + line + ': RM "' + rmRaw + '" matches ' + rmHit.ambiguous.length +
-              ' different VRM records (' + rmHit.ambiguous.map(function (v) {
-                return v.empCode + ' "' + v.name + '"'; }).join(', ') +
-              '). Merge or rename them in VRMs & Access, then upload again.');
-            return;
-          }
-          if (rmHit) { owner = rmHit.vrm; fromRm++; }
+            unresolved = 'RM "' + rmRaw + '" matches ' + rmHit.ambiguous.length + ' VRM records: ' +
+              rmHit.ambiguous.map(function (v) { return v.empCode + ' "' + v.name + '"'; }).join(', ');
+          } else if (rmHit) { owner = rmHit.vrm; fromRm++; }
         }
         if (s.role === 'ADMIN') {
-          if (!owner && wantName && mode === 'IMPORT') {
-            /* Held back until the whole file is accepted — a rejected upload
-               must not leave a new VRM behind. */
-            owner = { empCode: nextCode(pendingVrms), name: wantName, password: DEMO_PW,
-                      failed: 0, lockedUntil: '', lockedUntilMs: 0 };
-            pendingVrms.push(owner);
-            created.push(owner.empCode + ' / ' + owner.name);
+          /* Not rejected, not auto-created: parked for an admin to map. */
+          if (!owner && !unresolved) {
+            unresolved = wantName ? 'VRM "' + wantName + '" is not on the roster'
+              : rmRaw ? 'no VRM column, and RM "' + rmRaw + '" is not a VRM'
+              : 'no VRM and no RM named on the row';
           }
-          if (!owner) {
-            errors.push('Row ' + line + ': could not tell which VRM this belongs to — ' +
-              (wantName ? 'VRM "' + wantName + '"'
-                : rmRaw ? 'no VRM column, and RM "' + rmRaw + '" is not a VRM'
-                : 'no VRM and no RM on the row') +
-              '. Add the VRM in VRMs & Access, or add a VRM column to the file.');
-            return;
-          }
+          if (!owner) unassigned++;
         } else {
           var me = find(s.empCode);
           if (!owner && wantName && nameMatch_(wantName, me.name)) owner = me;
+          if (!owner && unresolved) {
+            errors.push('Row ' + line + ': ' + unresolved +
+                        '. Please contact Admin, or correct the uploaded file.');
+            return;
+          }
           if (owner && owner.empCode !== me.empCode) {
             errors.push('Row ' + line + ': VRM mismatch — the file says "' + r.vrm +
                         '" but you are signed in as ' + me.name + ' (' + me.empCode + '). ' +
@@ -1109,10 +1205,10 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
 
         var rec = { id: 'TXN' + (++seq), date: date, time: normTime(r.time),
           clientCode: cc || cn.toUpperCase().replace(/\s+/g, '-'), clientName: cn || cc,
-          pan: pan, vrm: owner.name, rmName: String(r.rmName || ''),
+          pan: pan, vrm: owner ? owner.name : (wantName || rmRaw), rmName: String(r.rmName || ''),
           scheme: String(r.scheme || ''), txnType: type, amount: amount,
           status: status, reason: String(r.reason || ''),
-          vrmEmpCode: owner.empCode, batchId: batchId,
+          vrmEmpCode: owner ? owner.empCode : '', batchId: batchId,
           source: mode === 'IMPORT' ? 'UPLOAD' : 'MANUAL',
           createdBy: s.role === 'ADMIN' ? 'ADMIN' : s.empCode, createdAt: nowIso(),
           updatedBy: '', updatedAt: '', transferId: '', folio: String(r.folio || '').trim() };
@@ -1139,19 +1235,18 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
           'Upload "' + (meta.fileName || '') + '" rejected: ' + errors.length + ' invalid row(s)', 0);
         var bad = payload(s);
         bad.result = { inserted: 0, rejected: errors.length, blank: blank, duplicates: dupes,
-                       attributedFromRm: fromRm,
+                       attributedFromRm: fromRm, unassigned: unassigned,
                        errors: errors.slice(0, 50), errorTotal: errors.length, batchId: '' };
         return ok(bad);
       }
 
-      pendingVrms.forEach(function (v) { VRMS.push(v); });
       made.forEach(function (t) { TX.push(t); });
       if (mode === 'IMPORT') {
         BATCHES.push({ batchId: batchId, uploadedAt: nowIso(),
           uploadedBy: s.empCode || s.role, role: s.role,
           fileName: meta.fileName || '', fileType: meta.fileType || '',
           rows: (rows || []).length, inserted: made.length, failed: 0, duplicate: dupes,
-          notes: created.length ? 'new VRM(s): ' + created.join(', ') : '' });
+          notes: unassigned ? unassigned + ' row(s) unassigned' : '' });
       }
       var byType = {};
       made.forEach(function (t) { byType[t.txnType] = (byType[t.txnType] || 0) + 1; });
@@ -1164,8 +1259,8 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
 
       var p = payload(s);
       p.result = { inserted: made.length, rejected: 0, blank: blank, duplicates: 0,
-                   attributedFromRm: fromRm, errors: [],
-                   errorTotal: 0, createdVrms: created,
+                   attributedFromRm: fromRm, unassigned: unassigned, errors: [],
+                   errorTotal: 0,
                    batchId: mode === 'IMPORT' ? batchId : '' };
       return ok(p);
     },
@@ -1929,7 +2024,21 @@ var ADMIN_TABS = [
   { id: 'access',   label: 'VRMs & Access',         ic: IC.shield },
   { id: 'activity', label: 'Activity Log',          ic: IC.clock }
 ];
-function tabs() { return isAdmin() ? ADMIN_TABS : VRM_TABS; }
+/*
+ * The Unassigned tab appears only when something is waiting there. A permanent
+ * empty tab is furniture people learn to ignore; one that shows up with a count
+ * on it is a thing to go and clear.
+ */
+function tabs() {
+  if (!isAdmin()) return VRM_TABS;
+  var n = unassignedCount();
+  if (!n) return ADMIN_TABS;
+  var out = ADMIN_TABS.slice();
+  var at = 0;
+  out.forEach(function (t, i) { if (t.id === 'vrmwise') at = i + 1; });
+  out.splice(at, 0, { id: 'unassigned', label: 'Unassigned', ic: IC.users, badge: n });
+  return out;
+}
 function isAdmin() { return S.session && S.session.role === 'ADMIN'; }
 
 function enterApp() {
@@ -1951,7 +2060,8 @@ function buildSidebar() {
     '<div class="sgroup">' + (isAdmin() ? 'Administration' : 'My dashboard') + '</div>' +
     tabs().map(function (t) {
       return '<button data-tab="' + t.id + '" aria-current="' + (S.tab === t.id ? 'true' : 'false') + '">' +
-             '<span class="ic">' + t.ic + '</span>' + esc(t.label) + '</button>';
+             '<span class="ic">' + t.ic + '</span>' + esc(t.label) +
+             (t.badge ? '<span class="navbadge">' + t.badge + '</span>' : '') + '</button>';
     }).join('');
 }
 
@@ -2176,8 +2286,11 @@ function byVrm(txns, vrms) {
     m[v.empCode.toUpperCase()] = { empCode: v.empCode, name: v.name, rows: [], clients: {}, rms: [] };
   });
   (txns || []).forEach(function (t) {
-    var k = String(t.vrmEmpCode || '-').toUpperCase();
-    if (!m[k]) m[k] = { empCode: t.vrmEmpCode || '-', name: t.vrm || '(unassigned)', rows: [], clients: {}, rms: [] };
+    /* Every unassigned row shares one bucket, whatever the file called them, so
+       the VRM-wise page still adds up to the firm total. */
+    var k = t.vrmEmpCode ? String(t.vrmEmpCode).toUpperCase() : '(UNASSIGNED)';
+    if (!m[k]) m[k] = { empCode: t.vrmEmpCode || '—', name: t.vrmEmpCode ? (t.vrm || t.vrmEmpCode) : 'Unassigned',
+                        unassigned: !t.vrmEmpCode, rows: [], clients: {}, rms: [] };
     var r = m[k];
     r.rows.push(t);
     if (t.clientCode) r.clients[String(t.clientCode).toUpperCase()] = 1;
@@ -3000,12 +3113,157 @@ function viewScheme() {
 
 /* ============================== RENDER =================================== */
 
+/*
+ * Unassigned rows, grouped by the name they were uploaded under. One card per
+ * name, not per row: a name is mapped once and every row bearing it follows.
+ */
+function unassignedGroups() {
+  /*
+   * One card per PERSON. The server decides which spellings are the same person
+   * — it owns the name matcher — and sends the clusters; here we only hang the
+   * rows off them. Grouping by the literal text in the browser would show
+   * "Parth Vijay Sharma", "Sharma Parth Vijay" and "Parth V Sharma" as three
+   * people to map three times.
+   */
+  var clusters = (S.data.unassignedClusters || []).map(function (c) {
+    return { key: c.keys, label: c.label, reason: c.reason,
+             spellings: c.spellings || [], rows: [], rms: {}, batches: {} };
+  });
+  var byKey = {};
+  clusters.forEach(function (c) {
+    (c.key || []).forEach(function (k) { byKey[k] = c; });
+  });
+
+  var m = {};
+  (S.data.txns || []).forEach(function (t) {
+    if (t.vrmEmpCode) return;
+    var k = String(t.vrm || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+    var g = byKey[k];
+    if (!g) {
+      /* A cluster the payload did not describe (should not happen) still has to
+         be visible rather than silently dropped from the totals. */
+      g = m[k] || (m[k] = { key: [k], label: t.vrm || '(nothing named)',
+                            reason: t.unassignedReason || '', spellings: [t.vrm || ''],
+                            rows: [], rms: {}, batches: {} });
+      if (clusters.indexOf(g) < 0) clusters.push(g);
+    }
+    g.rows.push(t);
+    if (t.rmName) g.rms[t.rmName] = 1;
+    if (t.batchId) g.batches[t.batchId] = 1;
+  });
+
+  return clusters.filter(function (g) { return g.rows.length; }).map(function (g) {
+    var mx = metrics(g.rows);
+    g.gross = mx.gross; g.net = mx.net; g.redemption = mx.redemption;
+    g.clients = Object.keys(g.rows.reduce(function (a, t) {
+      if (t.clientCode) a[String(t.clientCode).toUpperCase()] = 1; return a;
+    }, {})).length;
+    g.rmList = Object.keys(g.rms);
+    g.batchList = Object.keys(g.batches);
+    /* Distinct spellings actually seen, so it is obvious why these rows grouped. */
+    g.seen = g.spellings.filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+    return g;
+  }).sort(function (a, b) { return b.rows.length - a.rows.length; });
+}
+
+function unassignedCount() {
+  if (!S.data || !S.data.txns) return 0;
+  return S.data.txns.filter(function (t) { return !t.vrmEmpCode; }).length;
+}
+
+function viewUnassigned() {
+  var groups = unassignedGroups();
+  var rowsTotal = groups.reduce(function (a, g) { return a + g.rows.length; }, 0);
+
+  if (!groups.length) {
+    return pageHead('Unassigned', 'Every transaction belongs to a VRM', '') +
+      '<div class="panel">' + emptyState('Nothing unassigned',
+        'Every uploaded row has been attributed to a VRM. Rows land here only when ' +
+        'the name in the file is not on the roster, or matches two people equally well.') +
+      '</div>';
+  }
+
+  var opts = (S.data.vrms || []).map(function (v) {
+    return '<option value="' + esc(v.empCode) + '">' + esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
+  }).join('');
+
+  return pageHead('Unassigned',
+      rowsTotal + ' row(s) under ' + groups.length + ' name(s) waiting to be mapped', '') +
+    '<div class="panel" style="border-left:3px solid var(--warn)"><div style="padding:14px 18px;' +
+    'font-size:13.5px;color:var(--ink2)">These transactions are counted in the firm totals but ' +
+    'belong to nobody yet, so no VRM can see them and they sit under <b>Unassigned</b> in the ' +
+    'VRM-wise summary. Map each name to the right person — or create the VRM if they are new — ' +
+    'and every row under that name moves at once.</div></div>' +
+    groups.map(function (g, i) {
+      var id = 'ua' + i;
+      return '<div class="panel"><div class="ptop"><div>' +
+        '<h3>' + esc(g.label) + '</h3>' +
+        '<p class="muted" style="margin:2px 0 0;font-size:12.5px">' + esc(g.reason || 'not on the roster') +
+          (g.seen.length > 1
+            ? ' · written ' + g.seen.length + ' ways in the file: ' + esc(g.seen.join(', '))
+            : '') + '</p>' +
+        '</div><div class="tools">' +
+          '<span class="pill">' + g.rows.length + ' row(s)</span>' +
+          '<span class="pill">' + rupee(g.gross) + ' gross</span>' +
+        '</div></div>' +
+        '<div style="padding:16px 20px;display:grid;gap:14px">' +
+          '<div style="display:flex;flex-wrap:wrap;gap:22px;font-size:13px;color:var(--ink2)">' +
+            '<div><b>' + g.clients + '</b> client(s)</div>' +
+            '<div>Net <b>' + rupee(g.net) + '</b></div>' +
+            (g.redemption ? '<div>Redemption <b>' + rupee(g.redemption) + '</b></div>' : '') +
+            (g.rmList.length ? '<div>RM: ' + esc(g.rmList.slice(0, 3).join(', ')) +
+              (g.rmList.length > 3 ? ' +' + (g.rmList.length - 3) : '') + '</div>' : '') +
+            (g.batchList.length ? '<div class="mono" style="font-size:11.5px">batch ' +
+              esc(g.batchList.join(', ')) + '</div>' : '') +
+          '</div>' +
+          '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">' +
+            '<div class="f grow" style="min-width:240px"><label class="lbl">Assign every row to</label>' +
+              '<select class="inp" id="' + id + '_to">' + opts + '</select></div>' +
+            '<button class="btn acc" data-act="assignun" data-key="' + esc(g.key.join('|')) +
+              '" data-sel="' + id + '_to">Assign ' + g.rows.length + ' row(s)</button>' +
+          '</div>' +
+          '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
+            'Not one of ours — create a new VRM for this name</summary>' +
+            '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' +
+              '<div class="f grow" style="min-width:200px"><label class="lbl">VRM name</label>' +
+                '<input class="inp" id="' + id + '_nm" value="' + esc(g.label) + '"></div>' +
+              '<div class="f grow" style="min-width:180px"><label class="lbl">Password for them</label>' +
+                '<input class="inp" id="' + id + '_pw" type="password" autocomplete="new-password"></div>' +
+              '<button class="btn" data-act="createun" data-key="' + esc(g.key.join('|')) +
+                '" data-nm="' + id + '_nm" data-pw="' + id + '_pw">Create &amp; assign</button>' +
+            '</div>' +
+            '<p class="muted" style="font-size:12.5px;margin:10px 0 0">The new account cannot be ' +
+            'signed into until this password is set, so nobody inherits an unknown one.</p>' +
+          '</details>' +
+          '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
+            'Show the ' + g.rows.length + ' row(s)</summary>' +
+            '<div class="twrap" style="max-height:280px;margin-top:12px">' +
+            '<table><thead><tr><th>Date</th><th>Client</th><th>Scheme</th>' +
+            '<th>Type</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>' +
+            g.rows.slice(0, 100).map(function (t) {
+              return '<tr><td class="mono">' + esc(dmy(t.date)) + '</td>' +
+                '<td class="mono">' + esc(t.clientCode) +
+                  '<div class="muted" style="font-size:11px">' + esc(t.clientName) + '</div></td>' +
+                '<td><span class="cx" style="max-width:200px" title="' + esc(t.scheme) + '">' +
+                  esc(t.scheme || '—') + '</span></td>' +
+                '<td>' + typePill(t.txnType) + '</td>' +
+                '<td class="num">' + amountCell(t) + '</td>' +
+                '<td>' + statusPill(t.status) + '</td></tr>';
+            }).join('') +
+            (g.rows.length > 100
+              ? '<tr><td colspan="6" class="muted">… and ' + (g.rows.length - 100) + ' more</td></tr>' : '') +
+            '</tbody></table></div>' +
+          '</details>' +
+        '</div></div>';
+    }).join('');
+}
+
 var VIEWS = {
   summary: viewSummary, data: viewData, clients: viewClients,
   overview: viewOverview, vrmwise: viewVrmwise, alltxns: viewAllTxns,
   access: viewAccess, activity: viewActivity, analytics: viewAnalytics,
   scheme: viewScheme, clientdetail: viewClientDetail,
-  restore: viewRestore, batches: viewBatches
+  restore: viewRestore, batches: viewBatches, unassigned: viewUnassigned
 };
 
 function render() {
@@ -4292,6 +4550,31 @@ var ACT = {
       absorb(d); toast('Transaction restored — it is back in the figures.');
     }).catch(function (e) { un(); fail(e); });
   },
+  assignun: function (btn) {
+    var sel = document.getElementById(btn.dataset.sel);
+    if (!sel || !sel.value) return toast('Pick a VRM first.', 'e');
+    var un = lock(btn, 'Assigning');
+    api('assignUnassigned', S.session.token, btn.dataset.key.split('|'), sel.value)
+      .then(function (d) {
+        var r = d.result || {};
+        absorb(d);
+        toast(r.moved + ' row(s) assigned to ' + r.name + '.');
+      }).catch(function (e) { un(); fail(e); });
+  },
+  createun: function (btn) {
+    var nm = document.getElementById(btn.dataset.nm);
+    var pw = document.getElementById(btn.dataset.pw);
+    if (!nm || !nm.value.trim()) return toast('Give the new VRM a name.', 'e');
+    if (!pw || !pw.value) return toast('Set a password for the new VRM.', 'e');
+    var un = lock(btn, 'Creating');
+    api('createVrmForUnassigned', S.session.token, btn.dataset.key.split('|'),
+        nm.value.trim(), pw.value)
+      .then(function (d) {
+        var r = d.result || {};
+        absorb(d);
+        toast('Created ' + r.name + ' (' + r.empCode + ') and assigned ' + r.moved + ' row(s).');
+      }).catch(function (e) { un(); fail(e); });
+  },
   restorebatch: function (btn) {
     var b = btn.dataset.batch, un = lock(btn, '');
     api('restoreBatch', S.session.token, b).then(function (d) {
@@ -4359,6 +4642,8 @@ var ACT = {
           /* Say when ownership came from the RM column rather than a VRM column. */
           (num(r.attributedFromRm)
             ? ', ' + r.attributedFromRm + ' attributed from RM Name' : '') +
+          (num(r.unassigned)
+            ? '. ' + r.unassigned + ' row(s) need a VRM — see Unassigned' : '') +
           ((r.createdVrms || []).length ? '. New VRM(s): ' + r.createdVrms.join(', ') : '') +
           (r.batchId ? ' [' + r.batchId + ']' : ''));
         window._pendingImport = null;

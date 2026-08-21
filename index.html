@@ -327,6 +327,8 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
 .kpi.net .kv{color:var(--a)}
 .kpi.red .ki{background:var(--dan-soft);color:var(--dan)}
 .kpi.red .kv{color:var(--dan)}
+.navbadge{margin-left:auto;background:var(--warn);color:#fff;border-radius:999px;
+  padding:1px 7px;font-size:11px;font-weight:700;line-height:1.5}
 .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;padding:18px 20px}
 .statbox{padding:15px;border-radius:var(--r2);border:1px solid var(--line);background:var(--surf2)}
 .statbox .sl{font-size:12px;font-weight:600;color:var(--ink2);margin-bottom:7px}
@@ -919,7 +921,21 @@ var ADMIN_TABS = [
   { id: 'access',   label: 'VRMs & Access',         ic: IC.shield },
   { id: 'activity', label: 'Activity Log',          ic: IC.clock }
 ];
-function tabs() { return isAdmin() ? ADMIN_TABS : VRM_TABS; }
+/*
+ * The Unassigned tab appears only when something is waiting there. A permanent
+ * empty tab is furniture people learn to ignore; one that shows up with a count
+ * on it is a thing to go and clear.
+ */
+function tabs() {
+  if (!isAdmin()) return VRM_TABS;
+  var n = unassignedCount();
+  if (!n) return ADMIN_TABS;
+  var out = ADMIN_TABS.slice();
+  var at = 0;
+  out.forEach(function (t, i) { if (t.id === 'vrmwise') at = i + 1; });
+  out.splice(at, 0, { id: 'unassigned', label: 'Unassigned', ic: IC.users, badge: n });
+  return out;
+}
 function isAdmin() { return S.session && S.session.role === 'ADMIN'; }
 
 function enterApp() {
@@ -941,7 +957,8 @@ function buildSidebar() {
     '<div class="sgroup">' + (isAdmin() ? 'Administration' : 'My dashboard') + '</div>' +
     tabs().map(function (t) {
       return '<button data-tab="' + t.id + '" aria-current="' + (S.tab === t.id ? 'true' : 'false') + '">' +
-             '<span class="ic">' + t.ic + '</span>' + esc(t.label) + '</button>';
+             '<span class="ic">' + t.ic + '</span>' + esc(t.label) +
+             (t.badge ? '<span class="navbadge">' + t.badge + '</span>' : '') + '</button>';
     }).join('');
 }
 
@@ -1166,8 +1183,11 @@ function byVrm(txns, vrms) {
     m[v.empCode.toUpperCase()] = { empCode: v.empCode, name: v.name, rows: [], clients: {}, rms: [] };
   });
   (txns || []).forEach(function (t) {
-    var k = String(t.vrmEmpCode || '-').toUpperCase();
-    if (!m[k]) m[k] = { empCode: t.vrmEmpCode || '-', name: t.vrm || '(unassigned)', rows: [], clients: {}, rms: [] };
+    /* Every unassigned row shares one bucket, whatever the file called them, so
+       the VRM-wise page still adds up to the firm total. */
+    var k = t.vrmEmpCode ? String(t.vrmEmpCode).toUpperCase() : '(UNASSIGNED)';
+    if (!m[k]) m[k] = { empCode: t.vrmEmpCode || '—', name: t.vrmEmpCode ? (t.vrm || t.vrmEmpCode) : 'Unassigned',
+                        unassigned: !t.vrmEmpCode, rows: [], clients: {}, rms: [] };
     var r = m[k];
     r.rows.push(t);
     if (t.clientCode) r.clients[String(t.clientCode).toUpperCase()] = 1;
@@ -1990,12 +2010,157 @@ function viewScheme() {
 
 /* ============================== RENDER =================================== */
 
+/*
+ * Unassigned rows, grouped by the name they were uploaded under. One card per
+ * name, not per row: a name is mapped once and every row bearing it follows.
+ */
+function unassignedGroups() {
+  /*
+   * One card per PERSON. The server decides which spellings are the same person
+   * — it owns the name matcher — and sends the clusters; here we only hang the
+   * rows off them. Grouping by the literal text in the browser would show
+   * "Parth Vijay Sharma", "Sharma Parth Vijay" and "Parth V Sharma" as three
+   * people to map three times.
+   */
+  var clusters = (S.data.unassignedClusters || []).map(function (c) {
+    return { key: c.keys, label: c.label, reason: c.reason,
+             spellings: c.spellings || [], rows: [], rms: {}, batches: {} };
+  });
+  var byKey = {};
+  clusters.forEach(function (c) {
+    (c.key || []).forEach(function (k) { byKey[k] = c; });
+  });
+
+  var m = {};
+  (S.data.txns || []).forEach(function (t) {
+    if (t.vrmEmpCode) return;
+    var k = String(t.vrm || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+    var g = byKey[k];
+    if (!g) {
+      /* A cluster the payload did not describe (should not happen) still has to
+         be visible rather than silently dropped from the totals. */
+      g = m[k] || (m[k] = { key: [k], label: t.vrm || '(nothing named)',
+                            reason: t.unassignedReason || '', spellings: [t.vrm || ''],
+                            rows: [], rms: {}, batches: {} });
+      if (clusters.indexOf(g) < 0) clusters.push(g);
+    }
+    g.rows.push(t);
+    if (t.rmName) g.rms[t.rmName] = 1;
+    if (t.batchId) g.batches[t.batchId] = 1;
+  });
+
+  return clusters.filter(function (g) { return g.rows.length; }).map(function (g) {
+    var mx = metrics(g.rows);
+    g.gross = mx.gross; g.net = mx.net; g.redemption = mx.redemption;
+    g.clients = Object.keys(g.rows.reduce(function (a, t) {
+      if (t.clientCode) a[String(t.clientCode).toUpperCase()] = 1; return a;
+    }, {})).length;
+    g.rmList = Object.keys(g.rms);
+    g.batchList = Object.keys(g.batches);
+    /* Distinct spellings actually seen, so it is obvious why these rows grouped. */
+    g.seen = g.spellings.filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+    return g;
+  }).sort(function (a, b) { return b.rows.length - a.rows.length; });
+}
+
+function unassignedCount() {
+  if (!S.data || !S.data.txns) return 0;
+  return S.data.txns.filter(function (t) { return !t.vrmEmpCode; }).length;
+}
+
+function viewUnassigned() {
+  var groups = unassignedGroups();
+  var rowsTotal = groups.reduce(function (a, g) { return a + g.rows.length; }, 0);
+
+  if (!groups.length) {
+    return pageHead('Unassigned', 'Every transaction belongs to a VRM', '') +
+      '<div class="panel">' + emptyState('Nothing unassigned',
+        'Every uploaded row has been attributed to a VRM. Rows land here only when ' +
+        'the name in the file is not on the roster, or matches two people equally well.') +
+      '</div>';
+  }
+
+  var opts = (S.data.vrms || []).map(function (v) {
+    return '<option value="' + esc(v.empCode) + '">' + esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
+  }).join('');
+
+  return pageHead('Unassigned',
+      rowsTotal + ' row(s) under ' + groups.length + ' name(s) waiting to be mapped', '') +
+    '<div class="panel" style="border-left:3px solid var(--warn)"><div style="padding:14px 18px;' +
+    'font-size:13.5px;color:var(--ink2)">These transactions are counted in the firm totals but ' +
+    'belong to nobody yet, so no VRM can see them and they sit under <b>Unassigned</b> in the ' +
+    'VRM-wise summary. Map each name to the right person — or create the VRM if they are new — ' +
+    'and every row under that name moves at once.</div></div>' +
+    groups.map(function (g, i) {
+      var id = 'ua' + i;
+      return '<div class="panel"><div class="ptop"><div>' +
+        '<h3>' + esc(g.label) + '</h3>' +
+        '<p class="muted" style="margin:2px 0 0;font-size:12.5px">' + esc(g.reason || 'not on the roster') +
+          (g.seen.length > 1
+            ? ' · written ' + g.seen.length + ' ways in the file: ' + esc(g.seen.join(', '))
+            : '') + '</p>' +
+        '</div><div class="tools">' +
+          '<span class="pill">' + g.rows.length + ' row(s)</span>' +
+          '<span class="pill">' + rupee(g.gross) + ' gross</span>' +
+        '</div></div>' +
+        '<div style="padding:16px 20px;display:grid;gap:14px">' +
+          '<div style="display:flex;flex-wrap:wrap;gap:22px;font-size:13px;color:var(--ink2)">' +
+            '<div><b>' + g.clients + '</b> client(s)</div>' +
+            '<div>Net <b>' + rupee(g.net) + '</b></div>' +
+            (g.redemption ? '<div>Redemption <b>' + rupee(g.redemption) + '</b></div>' : '') +
+            (g.rmList.length ? '<div>RM: ' + esc(g.rmList.slice(0, 3).join(', ')) +
+              (g.rmList.length > 3 ? ' +' + (g.rmList.length - 3) : '') + '</div>' : '') +
+            (g.batchList.length ? '<div class="mono" style="font-size:11.5px">batch ' +
+              esc(g.batchList.join(', ')) + '</div>' : '') +
+          '</div>' +
+          '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">' +
+            '<div class="f grow" style="min-width:240px"><label class="lbl">Assign every row to</label>' +
+              '<select class="inp" id="' + id + '_to">' + opts + '</select></div>' +
+            '<button class="btn acc" data-act="assignun" data-key="' + esc(g.key.join('|')) +
+              '" data-sel="' + id + '_to">Assign ' + g.rows.length + ' row(s)</button>' +
+          '</div>' +
+          '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
+            'Not one of ours — create a new VRM for this name</summary>' +
+            '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' +
+              '<div class="f grow" style="min-width:200px"><label class="lbl">VRM name</label>' +
+                '<input class="inp" id="' + id + '_nm" value="' + esc(g.label) + '"></div>' +
+              '<div class="f grow" style="min-width:180px"><label class="lbl">Password for them</label>' +
+                '<input class="inp" id="' + id + '_pw" type="password" autocomplete="new-password"></div>' +
+              '<button class="btn" data-act="createun" data-key="' + esc(g.key.join('|')) +
+                '" data-nm="' + id + '_nm" data-pw="' + id + '_pw">Create &amp; assign</button>' +
+            '</div>' +
+            '<p class="muted" style="font-size:12.5px;margin:10px 0 0">The new account cannot be ' +
+            'signed into until this password is set, so nobody inherits an unknown one.</p>' +
+          '</details>' +
+          '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
+            'Show the ' + g.rows.length + ' row(s)</summary>' +
+            '<div class="twrap" style="max-height:280px;margin-top:12px">' +
+            '<table><thead><tr><th>Date</th><th>Client</th><th>Scheme</th>' +
+            '<th>Type</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>' +
+            g.rows.slice(0, 100).map(function (t) {
+              return '<tr><td class="mono">' + esc(dmy(t.date)) + '</td>' +
+                '<td class="mono">' + esc(t.clientCode) +
+                  '<div class="muted" style="font-size:11px">' + esc(t.clientName) + '</div></td>' +
+                '<td><span class="cx" style="max-width:200px" title="' + esc(t.scheme) + '">' +
+                  esc(t.scheme || '—') + '</span></td>' +
+                '<td>' + typePill(t.txnType) + '</td>' +
+                '<td class="num">' + amountCell(t) + '</td>' +
+                '<td>' + statusPill(t.status) + '</td></tr>';
+            }).join('') +
+            (g.rows.length > 100
+              ? '<tr><td colspan="6" class="muted">… and ' + (g.rows.length - 100) + ' more</td></tr>' : '') +
+            '</tbody></table></div>' +
+          '</details>' +
+        '</div></div>';
+    }).join('');
+}
+
 var VIEWS = {
   summary: viewSummary, data: viewData, clients: viewClients,
   overview: viewOverview, vrmwise: viewVrmwise, alltxns: viewAllTxns,
   access: viewAccess, activity: viewActivity, analytics: viewAnalytics,
   scheme: viewScheme, clientdetail: viewClientDetail,
-  restore: viewRestore, batches: viewBatches
+  restore: viewRestore, batches: viewBatches, unassigned: viewUnassigned
 };
 
 function render() {
@@ -3282,6 +3447,31 @@ var ACT = {
       absorb(d); toast('Transaction restored — it is back in the figures.');
     }).catch(function (e) { un(); fail(e); });
   },
+  assignun: function (btn) {
+    var sel = document.getElementById(btn.dataset.sel);
+    if (!sel || !sel.value) return toast('Pick a VRM first.', 'e');
+    var un = lock(btn, 'Assigning');
+    api('assignUnassigned', S.session.token, btn.dataset.key.split('|'), sel.value)
+      .then(function (d) {
+        var r = d.result || {};
+        absorb(d);
+        toast(r.moved + ' row(s) assigned to ' + r.name + '.');
+      }).catch(function (e) { un(); fail(e); });
+  },
+  createun: function (btn) {
+    var nm = document.getElementById(btn.dataset.nm);
+    var pw = document.getElementById(btn.dataset.pw);
+    if (!nm || !nm.value.trim()) return toast('Give the new VRM a name.', 'e');
+    if (!pw || !pw.value) return toast('Set a password for the new VRM.', 'e');
+    var un = lock(btn, 'Creating');
+    api('createVrmForUnassigned', S.session.token, btn.dataset.key.split('|'),
+        nm.value.trim(), pw.value)
+      .then(function (d) {
+        var r = d.result || {};
+        absorb(d);
+        toast('Created ' + r.name + ' (' + r.empCode + ') and assigned ' + r.moved + ' row(s).');
+      }).catch(function (e) { un(); fail(e); });
+  },
   restorebatch: function (btn) {
     var b = btn.dataset.batch, un = lock(btn, '');
     api('restoreBatch', S.session.token, b).then(function (d) {
@@ -3349,6 +3539,8 @@ var ACT = {
           /* Say when ownership came from the RM column rather than a VRM column. */
           (num(r.attributedFromRm)
             ? ', ' + r.attributedFromRm + ' attributed from RM Name' : '') +
+          (num(r.unassigned)
+            ? '. ' + r.unassigned + ' row(s) need a VRM — see Unassigned' : '') +
           ((r.createdVrms || []).length ? '. New VRM(s): ' + r.createdVrms.join(', ') : '') +
           (r.batchId ? ' [' + r.batchId + ']' : ''));
         window._pendingImport = null;
