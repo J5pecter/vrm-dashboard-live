@@ -699,7 +699,8 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
       perms: {
         canDelete: isAdmin, canEdit: isAdmin, canTransfer: isAdmin,
         canExport: isAdmin || CFG.VRM_CAN_EXPORT, canSeeFullPan: fullPan,
-        canManageVrms: isAdmin, canViewAudit: isAdmin, canViewAllVrms: isAdmin
+        canManageVrms: isAdmin, canViewAudit: isAdmin, canViewAllVrms: isAdmin,
+        canUploadRedemption: isAdmin
       },
       config: {
         newClientBasis: 'FIRST_EVER_IN_REF_MONTH', minPasswordLen: CFG.MIN_PASSWORD_LEN,
@@ -766,6 +767,21 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
     addTxns: function (token, rows, mode, meta) {
       var s = session(token);
       meta = meta || {};
+      /* Redemption data is Admin-only to load — checked on the data, not on a
+         flag the caller sends. */
+      if (s.role !== 'ADMIN') {
+        var redN = (rows || []).filter(function (r) {
+          return normType((r || {}).txnType) === 'REDEMPTION';
+        }).length;
+        if (redN) {
+          log(s.empCode, s.role, 'PERMISSION_DENIED',
+            'Refused a redemption upload of ' + redN + ' row(s) — Admin only', redN);
+          throw new Error('Redemption uploads are restricted to Admin. Please send the ' +
+                          'redemption report to Admin — purchase files (SIP and Lumpsum) ' +
+                          'upload as usual.');
+        }
+      }
+
       var made = [], errors = [], blank = 0, created = [], dupes = 0;
       var batchId = 'B' + Date.now().toString(36).toUpperCase();
       var seen = {}, existing = {};
@@ -2328,13 +2344,17 @@ function viewData() {
   return pageHead('My data', rows.length + ' of ' + S.data.txns.length + ' rows',
       '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload CSV/Excel</button>' +
       '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Upload template</button>' +
-      '<button class="btn sm" data-act="tplred">' + IC.down + ' Redemption template</button>') +
+      /* Redemption uploads are Admin-only, so a VRM is not offered the template. */
+      (can('canUploadRedemption')
+        ? '<button class="btn sm" data-act="tplred">' + IC.down + ' Redemption template</button>'
+        : '')) +
     /* CR: a VRM cannot amend or remove anything after upload. */
     (can('canDelete') ? '' :
       '<div class="panel" style="border-left:3px solid var(--p)"><div style="padding:14px 18px;' +
       'font-size:13.5px;color:var(--ink2)">Corrections are handled by Admin. If a transaction is ' +
       'wrong, contact Admin with the client code and transaction date — deletion and editing are ' +
-      'restricted to keep the audit trail intact.</div></div>') +
+      'restricted to keep the audit trail intact. <b>Redemption files are uploaded by Admin only</b>; ' +
+      'your redemptions still count against your Net Sales once loaded.</div></div>') +
     '<div class="panel"><div class="ptop"><div><h3>Transactions</h3></div>' +
     '<div class="tools">' + searchBox('data', 'Search client, PAN, scheme, amount…') + expBtns('vrmtxns') + '</div></div>' +
     (rows.length
@@ -3435,7 +3455,8 @@ function importPreviewDialog(rows, skipped, fileName) {
     '<br>' + esc(mix) +
     (isAdmin()
       ? '<br><span class="muted">VRM columns are respected; an unknown VRM name is created.</span>'
-      : '<br><span class="muted">Rows must belong to you — a different VRM in the file will be reported.</span>'),
+      : '<br><span class="muted">Rows must belong to you — a different VRM in the file will be ' +
+        'reported. Redemption files are Admin-only.</span>'),
     '<div class="twrap" style="max-height:250px;border:1px solid var(--line);border-radius:10px">' +
     '<table><thead><tr><th>Date</th><th>Client</th><th>Scheme</th><th>Type</th>' +
     '<th class="num">Amount</th><th>Status</th></tr></thead><tbody>' +
@@ -3881,6 +3902,28 @@ function handleFile(file) {
   function finish(matrix) {
     try {
       var res = rowsFromMatrix(matrix);
+      /*
+       * Redemption data is Admin-only. Caught here so the VRM gets a plain answer
+       * instead of a rejected upload; the server refuses it regardless.
+       */
+      if (!can('canUploadRedemption')) {
+        var red = res.rows.filter(function (r) {
+          return normTxnTypeC(r.txnType) === 'REDEMPTION';
+        }).length;
+        if (red) {
+          return modal('Redemption uploads are Admin-only',
+            'This file contains <b>' + red + ' redemption row(s)</b>' +
+            (window.__typeFromStatus ? ' and looks like the redemption report' : '') + '.',
+            '<div class="panel" style="border-left:3px solid var(--p)"><div style="padding:14px 18px;' +
+            'font-size:13.5px;color:var(--ink2)">The redemption report is a firm-wide export with no ' +
+            'VRM column, so uploading it here would attribute redemptions belonging to other ' +
+            'VRMs to you. ' +
+            'Send the file to Admin instead.<br><br>Purchase files — SIP and Lumpsum — upload as ' +
+            'usual, and your own redemptions still show in your Net Sales once Admin loads them.' +
+            '</div></div>',
+            '<button class="btn pri" data-act="close">Understood</button>');
+        }
+      }
       if (!res.rows.length) {
         return toast('No usable rows found' + (res.skipped ? ' (' + res.skipped + ' row(s) had no date or no amount)' : '') + '.', 'e');
       }
