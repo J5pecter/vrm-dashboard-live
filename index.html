@@ -329,6 +329,8 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
 .kpi.red .kv{color:var(--dan)}
 .navbadge{margin-left:auto;background:var(--warn);color:#fff;border-radius:999px;
   padding:1px 7px;font-size:11px;font-weight:700;line-height:1.5}
+.kpi.ytd{background:var(--surf2)}
+.kpi.ytd .kt{color:var(--ink3)}
 .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;padding:18px 20px}
 .statbox{padding:15px;border-radius:var(--r2);border:1px solid var(--line);background:var(--surf2)}
 .statbox .sl{font-size:12px;font-weight:600;color:var(--ink2);margin-bottom:7px}
@@ -1163,7 +1165,7 @@ function kpis(txns) {
 
   return {
     latest: latest, refMonth: refMonth, refYear: refYear,
-    refLabel: refMonth ? monLabel(refMonth) : '-',
+    refLabel: refMonth ? monLabel(refMonth) : 'no data yet',
     month: mm, year: my, all: all,
     clients: clientCount(txns),
     clientsMonth: clientCount(monthTx),
@@ -1315,29 +1317,40 @@ function panCell(t) {
  * represents business actually retained.
  * ========================================================================== */
 function kpiCards(k) {
+  /* Spell the period out rather than leaning on a dash-suffix nobody reads. */
+  var mLabel = k.refMonth ? monLabel(k.refMonth) : 'no data yet';
+  var yLabel = k.refYear ? k.refYear : 'no data yet';
+
   var cards = [
-    { t: 'Net Sales — ' + k.refLabel, v: k.month.net, ic: IC.spark, g: 'net',
-      s: 'Gross ' + shortInr(k.month.gross) + ' − Redemption ' + shortInr(k.month.redemption) },
-    { t: 'Net Sales — ' + (k.refYear || '-'), v: k.year.net, ic: IC.spark, g: 'net',
-      s: 'year to date' },
-    { t: 'Gross Sales — ' + k.refLabel, v: k.month.gross, ic: IC.rupee, g: '',
-      s: 'SIP + Lumpsum' },
-    { t: 'Gross Sales — ' + (k.refYear || '-'), v: k.year.gross, ic: IC.cal, g: '',
-      s: 'SIP + Lumpsum' },
-    { t: 'Redemption — ' + k.refLabel, v: k.month.redemption, ic: IC.down, g: 'red',
-      s: 'money withdrawn' },
-    { t: 'Redemption — ' + (k.refYear || '-'), v: k.year.redemption, ic: IC.down, g: 'red',
-      s: 'money withdrawn' },
-    { t: 'SIP — ' + k.refLabel, v: k.month.sip, ic: IC.repeat, g: 'g2', s: '' },
-    { t: 'SIP — ' + (k.refYear || '-'), v: k.year.sip, ic: IC.repeat, g: 'g2', s: '' },
-    { t: 'Lumpsum — ' + k.refLabel, v: k.month.lumpsum, ic: IC.rupee, g: 'g2', s: '' },
-    { t: 'Lumpsum — ' + (k.refYear || '-'), v: k.year.lumpsum, ic: IC.rupee, g: 'g2', s: '' },
-    { t: 'Clients', v: k.clients, ic: IC.user, g: '', plain: true, s: 'distinct client codes' },
-    { t: 'New clients — ' + k.refLabel, v: k.newClients, ic: IC.spark, g: '', plain: true,
-      s: 'first-ever purchase this month' }
+    { t: 'Net Sales', v: k.month.net, ic: IC.spark, g: 'net',
+      s: mLabel + ' · gross ' + shortInr(k.month.gross) +
+         ' − redemption ' + shortInr(k.month.redemption) },
+    { t: 'Gross Sales', v: k.month.gross, ic: IC.rupee, g: '',
+      s: mLabel + ' · SIP + Lumpsum' },
+    { t: 'Redemption', v: k.month.redemption, ic: IC.down, g: 'red',
+      s: mLabel + ' · money withdrawn' },
+    { t: 'SIP', v: k.month.sip, ic: IC.repeat, g: 'g2', s: mLabel },
+    { t: 'Lumpsum', v: k.month.lumpsum, ic: IC.rupee, g: 'g2', s: mLabel },
+    { t: 'New clients', v: k.newClients, ic: IC.spark, g: '', plain: true,
+      s: mLabel + ' · first-ever purchase' },
+
+    /* Year to date. Same five metrics, tinted and labelled so the pair cannot be
+       mistaken for the month repeating itself. */
+    { t: 'Net Sales · YTD', v: k.year.net, ic: IC.spark, g: 'net', ytd: true,
+      s: yLabel + ' · year to date' },
+    { t: 'Gross Sales · YTD', v: k.year.gross, ic: IC.cal, g: '', ytd: true,
+      s: yLabel + ' · year to date' },
+    { t: 'Redemption · YTD', v: k.year.redemption, ic: IC.down, g: 'red', ytd: true,
+      s: yLabel + ' · year to date' },
+    { t: 'SIP · YTD', v: k.year.sip, ic: IC.repeat, g: 'g2', ytd: true,
+      s: yLabel + ' · year to date' },
+    { t: 'Lumpsum · YTD', v: k.year.lumpsum, ic: IC.rupee, g: 'g2', ytd: true,
+      s: yLabel + ' · year to date' },
+    { t: 'Clients', v: k.clients, ic: IC.user, g: '', plain: true, ytd: true,
+      s: 'distinct client codes, all time' }
   ];
   return '<div class="kpis">' + cards.map(function (c) {
-    return '<div class="kpi ' + c.g + '">' +
+    return '<div class="kpi ' + c.g + (c.ytd ? ' ytd' : '') + '">' +
       '<div class="kt"><span class="ki">' + c.ic + '</span>' + esc(c.t) + '</div>' +
       '<div class="kv" data-count="' + num(c.v) + '" data-plain="' + (c.plain ? 1 : 0) + '">' +
       (c.plain ? '0' : rupee(0)) + '</div>' +
@@ -1656,7 +1669,7 @@ function viewSummary() {
 
   return pageHead('My summary', S.session.name + ' (' + S.session.empCode + ') — ' + k.refLabel, '') +
     kpiCards(k) +
-    waterfall(k.month, 'How ' + k.refLabel + ' adds up') +
+    waterfall(k.month, k.refMonth ? 'How ' + k.refLabel + ' adds up' : 'How the month adds up') +
     trendPanel('c1', m) +
     statusStrip(k.all);
 }
@@ -1815,10 +1828,12 @@ function viewOverview() {
   var active = vw.filter(function (v) { return v.n > 0; }).length;
 
   return pageHead('Consolidated overview',
-      k.refLabel + ' · ' + t.length + ' transactions · ' + active + ' of ' +
+      (k.refMonth ? monLabel(k.refMonth) : 'no data yet') +
+      ' · ' + t.length + ' transactions · ' + active + ' of ' +
       (S.data.vrms || []).length + ' VRMs active', '') +
     kpiCards(k) +
-    waterfall(k.month, 'How ' + k.refLabel + ' adds up — whole business') +
+    waterfall(k.month, (k.refMonth ? 'How ' + k.refLabel + ' adds up' : 'How the month adds up') +
+      ' — whole business') +
     trendPanel('c1', m) +
     statusStrip(k.all);
 }
