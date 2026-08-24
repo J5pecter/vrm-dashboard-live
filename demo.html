@@ -1652,7 +1652,9 @@ function unassignedClusters_(txns, vrms, ctx) {
       }
 
       var made = [], errors = [], blank = 0, dupes = 0, fromRm = 0, unassigned = 0;
-      var excluded = 0, viaAlias = 0;
+      var excluded = 0, viaAlias = 0, keptBoth = 0, skippedDup = 0;
+      var dryRun = !!meta.dryRun, decisions = meta.decisions || {};
+      var dupGroups = {}, dupSeq = {};
       var rctx = resolverContext_(VRMS);
       var batchId = 'B' + Date.now().toString(36).toUpperCase();
       var seen = {}, existing = {};
@@ -1743,21 +1745,49 @@ function unassignedClusters_(txns, vrms, ctx) {
           updatedBy: '', updatedAt: '', transferId: '', folio: String(r.folio || '').trim() };
 
         var fp = fingerprint(rec); rec.fingerprint = fp;
-        if (seen[fp] !== undefined) {
+        var clash = (seen[fp] !== undefined)
+          ? { kind: 'IN_FILE', note: 'duplicate of row ' + seen[fp] + ' in this same file' }
+          : existing[fp] ? { kind: 'STORED', note: existing[fp] } : null;
+        if (clash) {
           dupes++;
-          errors.push('Row ' + line + ': duplicate of row ' + seen[fp] +
-                      ' in this same file — ' + fpLabel(rec));
-          return;
-        }
-        if (existing[fp]) {
-          dupes++;
-          errors.push('Row ' + line + ': ' + existing[fp] + ' — ' + fpLabel(rec));
+          if (!dupGroups[fp]) {
+            dupGroups[fp] = { fingerprint: fp, kind: clash.kind, note: clash.note,
+              label: fpLabel(rec), lines: [],
+              sample: { date: rec.date, time: rec.time, clientCode: rec.clientCode,
+                        clientName: rec.clientName, scheme: rec.scheme, txnType: rec.txnType,
+                        amount: rec.amount, status: rec.status, folio: rec.folio,
+                        vrm: rec.vrm, rmName: rec.rmName } };
+          }
+          dupGroups[fp].lines.push(line);
+          var choice = String(decisions[fp] || '').toUpperCase();
+          if (choice === 'KEEP_BOTH') {
+            dupSeq[fp] = (dupSeq[fp] || 1) + 1;
+            rec.fingerprint = fp + '|copy' + dupSeq[fp];
+            keptBoth++;
+            made.push(rec);
+            return;
+          }
+          if (choice === 'SKIP') { skippedDup++; return; }
+          errors.push('Row ' + line + ': ' + clash.note + ' — ' + fpLabel(rec));
           return;
         }
         seen[fp] = line;
         made.push(rec);
       });
 
+      var groupList = Object.keys(dupGroups).map(function (k) { return dupGroups[k]; });
+      if (dryRun) {
+        var dp = payload(s);
+        var realErrors = errors.filter(function (e) {
+          return !/already uploaded|duplicate of row/.test(e);
+        });
+        dp.result = { dryRun: true, wouldInsert: made.length, blank: blank,
+          duplicates: dupes, dupGroups: groupList, unassigned: unassigned,
+          excluded: excluded, viaAlias: viaAlias, attributedFromRm: fromRm,
+          errors: realErrors.slice(0, 50), rejected: realErrors.length,
+          errorTotal: realErrors.length };
+        return ok(dp);
+      }
       if (mode !== 'IMPORT' && errors.length) throw new Error(errors[0]);
       if (mode === 'IMPORT' && errors.length) {
         log(s.empCode, s.role, 'UPLOAD_REJECTED',
@@ -1790,7 +1820,8 @@ function unassignedClusters_(txns, vrms, ctx) {
       var p = payload(s);
       p.result = { inserted: made.length, rejected: 0, blank: blank, duplicates: 0,
                    attributedFromRm: fromRm, unassigned: unassigned,
-                   excluded: excluded, viaAlias: viaAlias, errors: [],
+                   excluded: excluded, viaAlias: viaAlias,
+                   keptBoth: keptBoth, skippedDuplicates: skippedDup, errors: [],
                    errorTotal: 0,
                    batchId: mode === 'IMPORT' ? batchId : '' };
       return ok(p);
@@ -4668,6 +4699,91 @@ function editTxnDialog(id) {
     '<button class="btn pri" data-act="doedittxn">Save changes</button>');
 }
 
+/*
+ * Second pass: the same rows, plus a decision for every collision.
+ * KEEP_BOTH stores the row alongside its twin; SKIP leaves it out.
+ */
+function commitImport(rows, fileName, decisions) {
+  return api('addTxns', S.session.token, rows, 'IMPORT',
+             { fileName: fileName, fileType: window._pendingType || '',
+               decisions: decisions || {} })
+    .then(function (d) {
+      var r = d.result || {};
+      if (r.rejected) { uploadErrorDialog(r, fileName); return; }
+      closeModal();
+      absorb(d);
+      toast(num(r.inserted) + ' row(s) uploaded' +
+        (num(r.blank) ? ', ' + r.blank + ' blank skipped' : '') +
+        (num(r.keptBoth) ? ', ' + r.keptBoth + ' duplicate(s) kept' : '') +
+        (num(r.skippedDuplicates) ? ', ' + r.skippedDuplicates + ' duplicate(s) skipped' : '') +
+        (num(r.viaAlias) ? ', ' + r.viaAlias + ' matched a remembered name' : '') +
+        (num(r.excluded) ? ', ' + r.excluded + ' excluded' : '') +
+        (num(r.unassigned) ? '. ' + r.unassigned + ' need a VRM — see Unassigned' : '') +
+        (r.batchId ? ' [' + r.batchId + ']' : ''));
+      window._pendingImport = null;
+      window._dupGroups = null;
+    });
+}
+
+/*
+ * One card per collision. Default is SKIP — the safe reading of "this looks like
+ * the same transaction twice" — but the choice is explicit either way, and the
+ * row is shown in full so it can be judged rather than guessed at.
+ */
+function duplicateReviewDialog(res, fileName) {
+  var groups = res.dupGroups || [];
+  window._dupGroups = groups;
+
+  var body = groups.map(function (g, i) {
+    var sp = g.sample || {};
+    return '<div class="panel" style="margin:0 0 12px">' +
+      '<div class="ptop"><div><h3 style="font-size:14.5px">' + esc(sp.clientCode || '—') +
+        ' · ' + esc(sp.clientName || '') + '</h3>' +
+        '<p class="muted" style="margin:2px 0 0;font-size:12.5px">' +
+        esc(g.kind === 'IN_FILE' ? 'Appears twice inside this file'
+                                 : 'Matches a transaction already stored') +
+        ' · row' + (g.lines.length > 1 ? 's ' : ' ') + g.lines.join(', ') + '</p></div>' +
+        '<div class="tools"><span class="pill">' + amountCell(sp) + '</span></div></div>' +
+      '<div style="padding:12px 18px">' +
+        '<div class="twrap" style="margin-bottom:12px"><table><thead><tr>' +
+        '<th>Date</th><th>Time</th><th>Scheme</th><th>Type</th>' +
+        '<th class="num">Amount</th><th>Status</th><th>Folio</th>' +
+        '</tr></thead><tbody><tr>' +
+        '<td class="mono">' + esc(dmy(sp.date) || '—') + '</td>' +
+        '<td class="mono">' + esc(hhmm(sp.time) || '—') + '</td>' +
+        '<td><span class="cx" style="max-width:200px" title="' + esc(sp.scheme || '') + '">' +
+          esc(sp.scheme || '—') + '</span></td>' +
+        '<td>' + typePill(sp.txnType) + '</td>' +
+        '<td class="num">' + amountCell(sp) + '</td>' +
+        '<td>' + statusPill(sp.status) + '</td>' +
+        '<td class="mono" style="font-size:11.5px">' + esc(sp.folio || '—') + '</td>' +
+        '</tr></tbody></table></div>' +
+        '<div class="row" style="gap:18px;flex-wrap:wrap;font-size:13.5px">' +
+          '<label style="display:flex;gap:7px;align-items:center;cursor:pointer">' +
+            '<input type="radio" name="dup' + i + '" value="SKIP" checked ' +
+            'data-fp="' + esc(g.fingerprint) + '"> Skip it — the same transaction twice' +
+          '</label>' +
+          '<label style="display:flex;gap:7px;align-items:center;cursor:pointer">' +
+            '<input type="radio" name="dup' + i + '" value="KEEP_BOTH" ' +
+            'data-fp="' + esc(g.fingerprint) + '"> Keep both — two real transactions' +
+          '</label>' +
+        '</div>' +
+      '</div></div>';
+  }).join('');
+
+  modal('Review ' + groups.length + ' possible duplicate(s)',
+    '<b>' + esc(fileName) + '</b> would load <b>' + num(res.wouldInsert) + ' row(s)</b>. ' +
+    num(res.duplicates) + ' row(s) look like something already present — decide each one. ' +
+    'Nothing has been saved yet.',
+    '<div class="row" style="gap:10px;margin-bottom:14px">' +
+      '<button class="btn xs" data-act="dupallskip">Skip all</button>' +
+      '<button class="btn xs" data-act="dupallkeep">Keep all</button>' +
+    '</div>' +
+    '<div style="max-height:46vh;overflow:auto">' + body + '</div>',
+    '<button class="btn gh" data-act="close">Cancel the whole upload</button>' +
+    '<button class="btn pri" data-act="dupgo">Upload with these choices</button>');
+}
+
 function importPreviewDialog(rows, skipped, fileName) {
   var head = rows.slice(0, 6);
   var counts = {};
@@ -5260,6 +5376,7 @@ function handleFile(file) {
       if (!res.rows.length) {
         return toast('No usable rows found' + (res.skipped ? ' (' + res.skipped + ' row(s) had no date or no amount)' : '') + '.', 'e');
       }
+      window._pendingType = isCsv ? 'csv' : 'xlsx';
       importPreviewDialog(res.rows, res.skipped, file.name);
     } catch (err) { fail(err); }
   }
@@ -5324,6 +5441,21 @@ var ACT = {
   tplred: function () { saveCsv('VRM-MF_redemption-template', RED_HEADERS, RED_SAMPLE); },
   /* Same file picker; the declared intent is used to sanity-check the file. */
   uploadred: function () { window.__expectShape = 'REDEMPTION'; $('fileIn').click(); },
+  dupallskip: function () {
+    document.querySelectorAll('input[value="SKIP"]').forEach(function (r) { r.checked = true; });
+  },
+  dupallkeep: function () {
+    document.querySelectorAll('input[value="KEEP_BOTH"]').forEach(function (r) { r.checked = true; });
+  },
+  dupgo: function (btn) {
+    var decisions = {};
+    document.querySelectorAll('input[type=radio][data-fp]').forEach(function (r) {
+      if (r.checked) decisions[r.dataset.fp] = r.value;
+    });
+    var un = lock(btn, 'Uploading');
+    commitImport(window._pendingImport, window._pendingFile, decisions)
+      .catch(function (e) { un(); fail(e); });
+  },
 
   /* ---- activity filters ---- */
   preset: function (btn) { S.af.action = btn.dataset.p || ''; render(); },
@@ -5530,35 +5662,33 @@ var ACT = {
     }).catch(function (e) { un(); fail(e); });
   },
 
+  /*
+   * Uploading is two passes.
+   *
+   * The first is a dry run: the server validates the whole file, writes nothing,
+   * and reports any rows that collide with each other or with what is already
+   * stored. If there are none, the second pass runs immediately and the operator
+   * never knows there were two.
+   *
+   * If there ARE collisions, they get shown and decided. Refusing the file
+   * outright used to be the only option, which took the judgement away from the
+   * only people who know whether a client really did buy the same fund twice for
+   * the same amount on the same day. Sometimes they did.
+   */
   doimport: function (btn) {
-    var rows = window._pendingImport || [];
-    var fileName = window._pendingFile || 'upload';
-    if (!rows.length) return closeModal();
-    var un = lock(btn, 'Uploading');
+    var rows = window._pendingImport, fileName = window._pendingFile;
+    if (!rows) return;
+    var un = lock(btn, 'Checking');
     api('addTxns', S.session.token, rows, 'IMPORT',
-        { fileName: fileName, fileType: /\.csv$/i.test(fileName) ? 'CSV' : 'Excel' })
+        { fileName: fileName, fileType: window._pendingType || '', dryRun: true })
       .then(function (d) {
         var r = d.result || {};
-        absorb(d);
-        if (num(r.inserted) === 0 && num(r.errorTotal)) {
-          uploadErrorDialog(r, fileName);
-          return;
+        if ((r.dupGroups || []).length) {
+          un();
+          return duplicateReviewDialog(r, fileName);
         }
-        closeModal();
-        toast(num(r.inserted) + ' row(s) uploaded' +
-          (num(r.blank) ? ', ' + r.blank + ' blank skipped' : '') +
-          /* Say when ownership came from the RM column rather than a VRM column. */
-          (num(r.attributedFromRm)
-            ? ', ' + r.attributedFromRm + ' attributed from RM Name' : '') +
-          (num(r.viaAlias)
-            ? ', ' + r.viaAlias + ' matched a remembered name' : '') +
-          (num(r.excluded)
-            ? ', ' + r.excluded + ' excluded' : '') +
-          (num(r.unassigned)
-            ? '. ' + r.unassigned + ' row(s) need a VRM — see Unassigned' : '') +
-          ((r.createdVrms || []).length ? '. New VRM(s): ' + r.createdVrms.join(', ') : '') +
-          (r.batchId ? ' [' + r.batchId + ']' : ''));
-        window._pendingImport = null;
+        if (r.rejected) { un(); return uploadErrorDialog(r, fileName); }
+        return commitImport(rows, fileName, {});
       }).catch(function (e) { un(); fail(e); });
   },
 
