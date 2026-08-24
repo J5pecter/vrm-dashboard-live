@@ -1196,12 +1196,13 @@ function unassignedClusters_(txns, vrms, ctx) {
     return set;
   }
 
-  function panOk(p) {
-    var v = String(p || '').toUpperCase();
-    if (!v) return true;
-    if (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(v)) return true;
-    /* the redemption report supplies PANs already masked, e.g. HN****574J */
-    return v.length === 10 && /^[A-Z0-9*]+$/.test(v) && v.indexOf('*') >= 0;
+  /* PAN is optional and never rejects a row — see cleanPan_ in Code.gs. */
+  function cleanPan(p) {
+    var v = String(p || '').toUpperCase().replace(/\s+/g, '');
+    if (!v) return '';
+    if (!/[A-Z0-9]/.test(v)) return '';
+    if (v === 'NA' || v === 'N/A' || v === 'NULL' || v === 'NIL') return '';
+    return v;
   }
 
   /*
@@ -1663,7 +1664,7 @@ function unassignedClusters_(txns, vrms, ctx) {
         var line = r.__line || (i + 2);
         var date = normDate(r.date), type = normType(r.txnType), status = normStatus(r.status);
         var amount = +String(r.amount).replace(/[,\s₹]/g, '') || 0;
-        var pan = String(r.pan || '').toUpperCase().replace(/\s+/g, '');
+        var pan = cleanPan(r.pan);
         var cc = String(r.clientCode || '').trim(), cn = String(r.clientName || '').trim();
 
         if (!cc && !cn && !amount && !type && !date && !String(r.folio || '').trim()) { blank++; return; }
@@ -1676,9 +1677,7 @@ function unassignedClusters_(txns, vrms, ctx) {
         if (!status) { errors.push('Row ' + line + ': Txn Status "' + r.status +
                       '" is not recognised. Use Completed, In Process or Rejected.'); return; }
         if (amount <= 0) { errors.push('Row ' + line + ': Amount must be greater than zero.'); return; }
-        if (!panOk(pan)) {
-          errors.push('Row ' + line + ': PAN "' + pan + '" is not a PAN or a masked PAN.'); return;
-        }
+
 
         var owner = null;
         var unresolved = '';
@@ -1814,7 +1813,7 @@ function unassignedClusters_(txns, vrms, ctx) {
         ch.push('amount ' + t.amount + ' -> ' + f.amount); t.amount = +f.amount; }
       if (f.pan !== undefined) {
         var pan = String(f.pan).toUpperCase().replace(/\s+/g, '');
-        if (pan && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)) throw new Error('PAN must look like AAAAA9999A.');
+        /* optional; blank is fine */
         if (pan !== t.pan) { ch.push('PAN updated'); t.pan = pan; } }
       if (f.date) { var d = normDate(f.date);
         if (!d) throw new Error('That transaction date could not be understood.');
@@ -3587,8 +3586,9 @@ function viewAllTxns() {
   }).join('');
 
   return pageHead('All transactions', rows.length + ' of ' + S.data.txns.length + ' rows',
-      '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload CSV/Excel</button>' +
-      '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Template</button>' +
+      '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload purchases</button>' +
+      '<button class="btn sm acc" data-act="uploadred">' + IC.up + ' Upload redemptions</button>' +
+      '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Purchase template</button>' +
       '<button class="btn sm" data-act="tplred">' + IC.down + ' Redemption template</button>' +
       guard('all',
         '<button class="btn xs dan" data-act="delall">Confirm — delete ALL</button>',
@@ -4688,6 +4688,7 @@ function importPreviewDialog(rows, skipped, fileName) {
    * resolved yet, and a silent attribution is the kind of thing that surprises
    * people at month end.
    */
+  var noPan = !rows.some(function (r) { return String(r.pan || '').trim(); });
   var noVrmCol = !rows.some(function (r) { return String(r.vrm || '').trim(); });
   var attribution = noVrmCol
     ? '<br>No VRM column — each row is attributed to the <b>RM Name</b> where that person ' +
@@ -4697,7 +4698,9 @@ function importPreviewDialog(rows, skipped, fileName) {
   modal('Upload ' + rows.length + ' row(s)',
     'From <b>' + esc(fileName) + '</b>' + (skipped ? ' — ' + skipped + ' blank row(s) ignored' : '') +
     '.<br>Dates read as <b>' + ord + '</b> — check the first row below looks right.' + shape +
-    attribution + '<br>' + esc(mix) +
+    attribution +
+    (noPan ? '<br><span class="muted">No PAN in this file — that is fine, PAN is optional.</span>' : '') +
+    '<br>' + esc(mix) +
     (isAdmin()
       ? '<br><span class="muted">VRM columns are respected; an unknown VRM name is created.</span>'
       : '<br><span class="muted">Rows must belong to you — a different VRM in the file will be ' +
@@ -4755,13 +4758,15 @@ var TPL_HEADERS = ['TxnDate', 'TxnTime', 'Client Code', 'Client Name', 'PAN No.'
 /* Three example rows covering all three transaction types. The PAN is a
    deliberately fake placeholder — never ship a real one in a template. */
 var TPL_SAMPLE = [
-  ['17-08-2026', '1:47 PM', 'S70810', 'SOMA VIDYA SAGAR', 'AAAAA1111A',
+  /* PAN deliberately blank: it is optional, and most operators are not
+     permitted to put a client's PAN into a spreadsheet. */
+  ['17-08-2026', '1:47 PM', 'S70810', 'SOMA VIDYA SAGAR', '',
    'Khushi Mahesh Dodiya', 'Rajashri Alkesh Mohandas',
    'KOTAK EQUITY SAVINGS FUND REGULAR GROWTH', 'Lumpsum', 5000, 'Completed', 'ALLOTMENT DONE'],
-  ['17-08-2026', '10:15 AM', 'S70811', 'EXAMPLE CLIENT TWO', 'AAAAA2222A',
+  ['17-08-2026', '10:15 AM', 'S70811', 'EXAMPLE CLIENT TWO', '',
    'Khushi Mahesh Dodiya', 'Rajashri Alkesh Mohandas',
    'HDFC FLEXI CAP FUND GROWTH', 'SIP', 10000, 'Completed', ''],
-  ['18-08-2026', '2:30 PM', 'S70812', 'EXAMPLE CLIENT THREE', 'AAAAA3333A',
+  ['18-08-2026', '2:30 PM', 'S70812', 'EXAMPLE CLIENT THREE', '',
    'Khushi Mahesh Dodiya', 'Rajashri Alkesh Mohandas',
    'ICICI PRUDENTIAL BLUECHIP FUND GROWTH', 'Redemption', 20000, 'Completed', '']
 ];
@@ -4774,9 +4779,9 @@ var TPL_SAMPLE = [
 var RED_HEADERS = ['Client Code', 'Client Name', 'PAN', 'RM Name', 'Scheme Name',
                    'Status', 'Transaction Date', 'Folio Number', 'Trans Amount'];
 var RED_SAMPLE = [
-  ['A41685', 'EXAMPLE CLIENT ONE', 'AA****111A', 'Khushi Mahesh Dodiya',
+  ['A41685', 'EXAMPLE CLIENT ONE', '', 'Khushi Mahesh Dodiya',
    'NIPPON INDIA MULTI CAP FUND (G)', 'RED', '10-08-2026', '440453792466', 3000.03],
-  ['A24554', 'EXAMPLE CLIENT TWO', 'AA****222A', 'Mukesh Malpani - Khushi',
+  ['A24554', 'EXAMPLE CLIENT TWO', '', 'Mukesh Malpani - Khushi',
    'TATA DIGITAL INDIA FUND (G)', 'RED', '17-08-2026', '7250387/22', 30088.80]
 ];
 
@@ -5147,6 +5152,37 @@ function handleFile(file) {
   function finish(matrix) {
     try {
       var res = rowsFromMatrix(matrix);
+
+      /*
+       * The user told us which kind of file this is by which button they pressed.
+       * Believe the file over the button, but say so — silently treating a
+       * purchase export as a redemption report (or the reverse) is how a month
+       * ends up with its signs inverted.
+       */
+      var want = window.__expectShape;
+      var looksRedemption = !!window.__typeFromStatus ||
+        res.rows.every(function (r) { return normTxnTypeC(r.txnType) === 'REDEMPTION'; });
+      if (want === 'REDEMPTION' && !looksRedemption) {
+        return modal('That does not look like a redemption report',
+          'You pressed <b>Upload redemptions</b>, but this file reads as a normal ' +
+          'purchase export.',
+          '<div class="panel" style="border-left:3px solid var(--warn)"><div style="padding:14px 18px;' +
+          'font-size:13.5px;color:var(--ink2)">The redemption report has a <b>Status</b> column ' +
+          'holding <b>RED</b>, and a <b>Folio Number</b>. This file has neither.<br><br>' +
+          'If it really is a purchase file, use <b>Upload purchases</b> instead. If it is meant ' +
+          'to be a redemption report, download <b>Redemption template</b> to see the expected ' +
+          'columns.</div></div>',
+          '<button class="btn pri" data-act="close">Close</button>');
+      }
+      if (want === 'PURCHASE' && looksRedemption && res.rows.length) {
+        return modal('That looks like a redemption report',
+          'You pressed <b>Upload purchases</b>, but every row in this file is a redemption.',
+          '<div class="panel" style="border-left:3px solid var(--warn)"><div style="padding:14px 18px;' +
+          'font-size:13.5px;color:var(--ink2)">Redemptions reduce Net Sales, so loading them ' +
+          'through the wrong button would be easy to miss and hard to spot later. Use ' +
+          '<b>Upload redemptions</b> for this file.</div></div>',
+          '<button class="btn pri" data-act="close">Close</button>');
+      }
       /*
        * Redemption data is Admin-only. Caught here so the VRM gets a plain answer
        * instead of a rejected upload; the server refuses it regardless.
@@ -5213,7 +5249,8 @@ var ACT = {
   addvrm: addVrmDialog,
   edittxn: function (btn) { editTxnDialog(btn.dataset.id); },
   resetpw: function (btn) { resetPwDialog(btn.dataset.code, btn.dataset.name); },
-  upload: function () { $('fileIn').click(); },
+  upload: function () {
+    window.__expectShape = 'PURCHASE'; $('fileIn').click(); },
 
   /* ---- exports & templates ---- */
   csv: function (btn) {
@@ -5233,6 +5270,8 @@ var ACT = {
   tplcsv: function () { saveCsv('VRM-MF_upload-template', TPL_HEADERS, TPL_SAMPLE); },
   tplxlsx: function () { saveXlsx('VRM-MF_upload-template', 'Template', TPL_HEADERS, TPL_SAMPLE); },
   tplred: function () { saveCsv('VRM-MF_redemption-template', RED_HEADERS, RED_SAMPLE); },
+  /* Same file picker; the declared intent is used to sanity-check the file. */
+  uploadred: function () { window.__expectShape = 'REDEMPTION'; $('fileIn').click(); },
 
   /* ---- activity filters ---- */
   preset: function (btn) { S.af.action = btn.dataset.p || ''; render(); },
