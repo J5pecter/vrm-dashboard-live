@@ -1058,7 +1058,34 @@ function isCounted(t) { return !!countedSet()[t.status]; }
 /** A purchase, i.e. something that adds business rather than removing it. */
 function isPurchase(t) { return t.txnType === TT.SIP || t.txnType === TT.LUMPSUM; }
 
+/*
+ * Rows an admin has marked as not-a-person. They stay in the data for the audit
+ * trail but leave every figure — including the unassigned percentage — because
+ * "Test" inflating the queue was the whole reason exclusions exist.
+ */
+/*
+ * The name to SHOW for a row. vrmEmpCode is the identity; the row's own text is
+ * whatever the file happened to write, kept for provenance. Resolving through
+ * the roster means one person reads one way in every table, and a rename shows
+ * up everywhere at once without touching a single transaction row.
+ */
+function vrmNameOf(t) {
+  if (!t.vrmEmpCode) return t.vrm || '';
+  var list = (S.data && S.data.vrms) || [];
+  for (var i = 0; i < list.length; i++) {
+    if (String(list[i].empCode).toUpperCase() === String(t.vrmEmpCode).toUpperCase()) {
+      return list[i].name;
+    }
+  }
+  return t.vrm || t.vrmEmpCode;
+}
+
+function liveRows(txns) {
+  return (txns || []).filter(function (t) { return !t.excluded; });
+}
+
 function metrics(txns) {
+  txns = liveRows(txns);
   var counted = countedSet();
   var m = { sip: 0, lumpsum: 0, redemption: 0, gross: 0, net: 0,
             pending: 0, rejected: 0, txns: 0, countedTxns: 0,
@@ -1186,7 +1213,7 @@ function byVrm(txns, vrms) {
     /* Every unassigned row shares one bucket, whatever the file called them, so
        the VRM-wise page still adds up to the firm total. */
     var k = t.vrmEmpCode ? String(t.vrmEmpCode).toUpperCase() : '(UNASSIGNED)';
-    if (!m[k]) m[k] = { empCode: t.vrmEmpCode || '—', name: t.vrmEmpCode ? (t.vrm || t.vrmEmpCode) : 'Unassigned',
+    if (!m[k]) m[k] = { empCode: t.vrmEmpCode || '—', name: t.vrmEmpCode ? vrmNameOf(t) : 'Unassigned',
                         unassigned: !t.vrmEmpCode, rows: [], clients: {}, rms: [] };
     var r = m[k];
     r.rows.push(t);
@@ -1228,7 +1255,7 @@ function byScheme(txns) {
 function matches(t, q) {
   if (!q) return true;
   q = q.toLowerCase();
-  return [t.clientCode, t.clientName, t.pan, t.vrm, t.vrmEmpCode, t.rmName, t.scheme,
+  return [t.clientCode, t.clientName, t.pan, t.vrm, vrmNameOf(t), t.vrmEmpCode, t.rmName, t.scheme,
           TT_LABEL[t.txnType] || t.txnType, TS_LABEL[t.status] || t.status,
           t.reason, dmy(t.date), t.date, hhmm(t.time), String(t.amount), t.batchId]
     .some(function (f) { return String(f || '').toLowerCase().indexOf(q) >= 0; });
@@ -1582,7 +1609,8 @@ function txnCells(t) {
     '<td class="mono"><b>' + esc(t.clientCode) + '</b></td>' +
     '<td>' + esc(t.clientName) + '</td>' +
     '<td>' + panCell(t) + '</td>' +
-    '<td>' + esc(t.vrm || '') + '<div class="mono muted" style="font-size:11px">' + esc(t.vrmEmpCode) + '</div></td>' +
+    '<td>' + esc(vrmNameOf(t)) + '<div class="mono muted" style="font-size:11px">' +
+      esc(t.vrmEmpCode || 'unassigned') + '</div></td>' +
     '<td>' + (t.rmName ? esc(t.rmName) : '<span class="muted">—</span>') + '</td>' +
     '<td><span class="cx" title="' + esc(t.scheme) + '">' + (t.scheme ? esc(t.scheme) : '<span class="muted">—</span>') + '</span></td>' +
     '<td>' + typePill(t.txnType) + '</td>' +
@@ -2016,124 +2044,212 @@ function viewScheme() {
  */
 function unassignedGroups() {
   /*
-   * One card per PERSON. The server decides which spellings are the same person
-   * — it owns the name matcher — and sends the clusters; here we only hang the
-   * rows off them. Grouping by the literal text in the browser would show
-   * "Parth Vijay Sharma", "Sharma Parth Vijay" and "Parth V Sharma" as three
-   * people to map three times.
+   * The server owns clustering: it has the normaliser, the alias table and the
+   * scorer, and duplicating any of those in the browser is how the two ends
+   * start disagreeing about who somebody is. Here we only attach the rows.
    */
   var clusters = (S.data.unassignedClusters || []).map(function (c) {
-    return { key: c.keys, label: c.label, reason: c.reason,
-             spellings: c.spellings || [], rows: [], rms: {}, batches: {} };
+    return {
+      aliasKey: c.aliasKey, label: c.display_raw, spellings: c.spellings || [],
+      reason: c.reason || '', suggestions: c.suggestions || [],
+      ambiguous: !!c.ambiguous, warnings: c.warnings || [],
+      rows: [], gross: c.total_amount || 0, rowCount: c.row_count || 0
+    };
   });
-  var byKey = {};
+  var bySpelling = {};
   clusters.forEach(function (c) {
-    (c.key || []).forEach(function (k) { byKey[k] = c; });
+    c.spellings.forEach(function (sp) { bySpelling[sp] = c; });
   });
 
-  var m = {};
   (S.data.txns || []).forEach(function (t) {
-    if (t.vrmEmpCode) return;
-    var k = String(t.vrm || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
-    var g = byKey[k];
-    if (!g) {
-      /* A cluster the payload did not describe (should not happen) still has to
-         be visible rather than silently dropped from the totals. */
-      g = m[k] || (m[k] = { key: [k], label: t.vrm || '(nothing named)',
-                            reason: t.unassignedReason || '', spellings: [t.vrm || ''],
-                            rows: [], rms: {}, batches: {} });
-      if (clusters.indexOf(g) < 0) clusters.push(g);
-    }
-    g.rows.push(t);
-    if (t.rmName) g.rms[t.rmName] = 1;
-    if (t.batchId) g.batches[t.batchId] = 1;
+    if (t.vrmEmpCode || t.excluded) return;
+    var c = bySpelling[String(t.vrm || '')];
+    if (c) c.rows.push(t);
   });
 
-  return clusters.filter(function (g) { return g.rows.length; }).map(function (g) {
-    var mx = metrics(g.rows);
-    g.gross = mx.gross; g.net = mx.net; g.redemption = mx.redemption;
-    g.clients = Object.keys(g.rows.reduce(function (a, t) {
-      if (t.clientCode) a[String(t.clientCode).toUpperCase()] = 1; return a;
-    }, {})).length;
-    g.rmList = Object.keys(g.rms);
-    g.batchList = Object.keys(g.batches);
-    /* Distinct spellings actually seen, so it is obvious why these rows grouped. */
-    g.seen = g.spellings.filter(function (x, i, a) { return x && a.indexOf(x) === i; });
-    return g;
-  }).sort(function (a, b) { return b.rows.length - a.rows.length; });
+  return clusters.filter(function (c) { return c.rowCount; });
 }
 
 function unassignedCount() {
   if (!S.data || !S.data.txns) return 0;
-  return S.data.txns.filter(function (t) { return !t.vrmEmpCode; }).length;
+  return S.data.txns.filter(function (t) { return !t.vrmEmpCode && !t.excluded; }).length;
+}
+
+/** Unassigned gross as a share of firm gross — what drives the banner. */
+function unassignedShare() {
+  if (!S.data || !S.data.txns) return { gross: 0, firm: 0, pct: 0 };
+  var un = metrics(S.data.txns.filter(function (t) { return !t.vrmEmpCode; }));
+  var all = metrics(S.data.txns);
+  return { gross: un.gross, firm: all.gross,
+           pct: all.gross ? (un.gross / all.gross) * 100 : 0 };
+}
+
+/*
+ * Shown above every page while a material slice of the book has no owner. VRM-wise
+ * figures are genuinely incomplete until it clears, and a number nobody has
+ * flagged as provisional is a number somebody will quote in a meeting.
+ */
+function provisionalBanner() {
+  if (!isAdmin()) return '';
+  var sh = unassignedShare();
+  if (sh.pct <= 5) return '';
+  return '<div class="panel" style="border-left:3px solid var(--warn);margin-bottom:18px">' +
+    '<div style="padding:13px 18px;font-size:13.5px;color:var(--ink2)">' +
+    '<b>Provisional</b> — ' + rupee(sh.gross) + ' (' + sh.pct.toFixed(1) + '%) is not yet ' +
+    'attributed to a VRM, so VRM-wise figures are incomplete. ' +
+    '<a href="#" data-act="gotounassigned" style="color:var(--p);font-weight:600">' +
+    'Clear the Unassigned queue</a>.</div></div>';
+}
+
+function bandLabel(b) {
+  return b === 'VERY_LIKELY' ? 'Very likely' : b === 'POSSIBLE' ? 'Possible' : 'Weak';
+}
+function bandColour(b) {
+  return b === 'VERY_LIKELY' ? 'var(--ok)' : b === 'POSSIBLE' ? 'var(--warn)' : 'var(--ink3)';
 }
 
 function viewUnassigned() {
   var groups = unassignedGroups();
-  var rowsTotal = groups.reduce(function (a, g) { return a + g.rows.length; }, 0);
+  var rowsTotal = groups.reduce(function (a, g) { return a + g.rowCount; }, 0);
+  var grossTotal = groups.reduce(function (a, g) { return a + g.gross; }, 0);
 
   if (!groups.length) {
     return pageHead('Unassigned', 'Every transaction belongs to a VRM', '') +
       '<div class="panel">' + emptyState('Nothing unassigned',
-        'Every uploaded row has been attributed to a VRM. Rows land here only when ' +
-        'the name in the file is not on the roster, or matches two people equally well.') +
+        'Every uploaded row has been attributed. Rows land here only when the name in ' +
+        'the file is not on the roster, or matches two people too closely to call — and ' +
+        'once you map a name, that decision is remembered and never asked again.') +
       '</div>';
   }
+
+  /* Bulk confirm covers only unambiguous, very-likely clusters. Nothing else. */
+  var bulk = groups.filter(function (g) {
+    return !g.ambiguous && g.suggestions.length &&
+           g.suggestions[0].band === 'VERY_LIKELY';
+  });
+  var bulkGross = bulk.reduce(function (a, g) { return a + g.gross; }, 0);
 
   var opts = (S.data.vrms || []).map(function (v) {
     return '<option value="' + esc(v.empCode) + '">' + esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
   }).join('');
 
-  return pageHead('Unassigned',
-      rowsTotal + ' row(s) under ' + groups.length + ' name(s) waiting to be mapped', '') +
+  var head = pageHead('Unassigned',
+    rowsTotal + ' row(s) · ' + rupee(grossTotal) + ' · ' + groups.length + ' name(s) to map',
+    bulk.length
+      ? '<button class="btn sm acc" data-act="bulkpre">Confirm all Very likely (' +
+        bulk.length + ', ' + rupee(bulkGross) + ')</button>'
+      : '');
+
+  return head +
     '<div class="panel" style="border-left:3px solid var(--warn)"><div style="padding:14px 18px;' +
-    'font-size:13.5px;color:var(--ink2)">These transactions are counted in the firm totals but ' +
-    'belong to nobody yet, so no VRM can see them and they sit under <b>Unassigned</b> in the ' +
-    'VRM-wise summary. Map each name to the right person — or create the VRM if they are new — ' +
-    'and every row under that name moves at once.</div></div>' +
+    'font-size:13.5px;color:var(--ink2)">These transactions count in the firm total but belong ' +
+    'to nobody yet, so no VRM can see them and they sit under <b>Unassigned</b> in the VRM-wise ' +
+    'summary. Confirming a name <b>remembers</b> the decision — the same spelling resolves ' +
+    'silently on every future upload.</div></div>' +
     groups.map(function (g, i) {
       var id = 'ua' + i;
+      var others = g.spellings.filter(function (x) { return x !== g.label; });
+      var top = g.suggestions[0];
+      var rest = g.suggestions.slice(1);
+
+      var primary = g.ambiguous
+        ? '<div style="padding:12px 14px;background:var(--warn-soft);border-radius:6px;' +
+          'font-size:13.5px;color:var(--ink2)">' +
+          '<b>Ambiguous</b> — two roster names match closely. Choose manually below.</div>'
+        : top
+          ? '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;' +
+            'padding:12px 14px;border:1px solid var(--line);border-radius:6px">' +
+              '<span style="color:' + bandColour(top.band) + ';font-weight:700">&#9679;</span>' +
+              '<span style="font-size:13.5px"><b>' + bandLabel(top.band) + '</b> — ' +
+                esc(top.name) + ' <span class="mono muted">(' + esc(top.vrmId) + ')</span></span>' +
+              '<span class="pill mono">' + top.score.toFixed(2) + '</span>' +
+              '<span style="flex:1"></span>' +
+              '<button class="btn sm ' + (top.band === 'VERY_LIKELY' ? 'acc' : '') + '" ' +
+                'data-act="confirmmap" data-key="' + esc(g.aliasKey) + '" data-vrm="' +
+                esc(top.vrmId) + '" data-sp="' + esc(g.spellings.join('\u0001')) + '">' +
+                'Confirm &amp; remember</button>' +
+              '<button class="btn sm gh" data-act="rejectmap" data-key="' + esc(g.aliasKey) +
+                '" data-vrm="' + esc(top.vrmId) + '">Not this person</button>' +
+            '</div>'
+          : '<div style="padding:12px 14px;font-size:13.5px;color:var(--ink2)">' +
+            'No roster name is close enough to suggest.</div>';
+
       return '<div class="panel"><div class="ptop"><div>' +
         '<h3>' + esc(g.label) + '</h3>' +
-        '<p class="muted" style="margin:2px 0 0;font-size:12.5px">' + esc(g.reason || 'not on the roster') +
-          (g.seen.length > 1
-            ? ' · written ' + g.seen.length + ' ways in the file: ' + esc(g.seen.join(', '))
-            : '') + '</p>' +
+        (others.length
+          ? '<p class="muted" style="margin:2px 0 0;font-size:12.5px">also: ' +
+            esc(others.join(' · ')) + '</p>'
+          : '') +
+        (g.warnings.length
+          ? '<p class="muted" style="margin:2px 0 0;font-size:12px">' +
+            esc(g.warnings.join(', ')) + '</p>'
+          : '') +
         '</div><div class="tools">' +
-          '<span class="pill">' + g.rows.length + ' row(s)</span>' +
-          '<span class="pill">' + rupee(g.gross) + ' gross</span>' +
+          '<span class="pill">' + g.rowCount + ' rows</span>' +
+          '<span class="pill">' + rupee(g.gross) + '</span>' +
         '</div></div>' +
         '<div style="padding:16px 20px;display:grid;gap:14px">' +
-          '<div style="display:flex;flex-wrap:wrap;gap:22px;font-size:13px;color:var(--ink2)">' +
-            '<div><b>' + g.clients + '</b> client(s)</div>' +
-            '<div>Net <b>' + rupee(g.net) + '</b></div>' +
-            (g.redemption ? '<div>Redemption <b>' + rupee(g.redemption) + '</b></div>' : '') +
-            (g.rmList.length ? '<div>RM: ' + esc(g.rmList.slice(0, 3).join(', ')) +
-              (g.rmList.length > 3 ? ' +' + (g.rmList.length - 3) : '') + '</div>' : '') +
-            (g.batchList.length ? '<div class="mono" style="font-size:11.5px">batch ' +
-              esc(g.batchList.join(', ')) + '</div>' : '') +
-          '</div>' +
-          '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">' +
-            '<div class="f grow" style="min-width:240px"><label class="lbl">Assign every row to</label>' +
-              '<select class="inp" id="' + id + '_to">' + opts + '</select></div>' +
-            '<button class="btn acc" data-act="assignun" data-key="' + esc(g.key.join('|')) +
-              '" data-sel="' + id + '_to">Assign ' + g.rows.length + ' row(s)</button>' +
-          '</div>' +
+          primary +
+          (rest.length || g.ambiguous || !top
+            ? '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
+              'Other options</summary>' +
+              (rest.length
+                ? '<div style="margin-top:10px;display:grid;gap:8px">' +
+                  rest.map(function (o) {
+                    return '<div style="display:flex;gap:10px;align-items:center;font-size:13px">' +
+                      '<span style="color:' + bandColour(o.band) + '">&#9679;</span>' +
+                      esc(o.name) + ' <span class="mono muted">(' + esc(o.vrmId) + ')</span>' +
+                      '<span class="pill mono">' + o.score.toFixed(2) + '</span>' +
+                      '<span style="flex:1"></span>' +
+                      '<button class="btn xs" data-act="confirmmap" data-key="' + esc(g.aliasKey) +
+                        '" data-vrm="' + esc(o.vrmId) + '" data-sp="' +
+                        esc(g.spellings.join('\u0001')) + '">Confirm</button>' +
+                      '<button class="btn xs gh" data-act="rejectmap" data-key="' +
+                        esc(g.aliasKey) + '" data-vrm="' + esc(o.vrmId) + '">Not them</button>' +
+                      '</div>';
+                  }).join('') + '</div>'
+                : '') +
+              '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' +
+                '<div class="f grow" style="min-width:240px"><label class="lbl">Assign to</label>' +
+                  '<select class="inp" id="' + id + '_to">' + opts + '</select></div>' +
+                '<button class="btn" data-act="confirmsel" data-key="' + esc(g.aliasKey) +
+                  '" data-sel="' + id + '_to" data-sp="' + esc(g.spellings.join('\u0001')) +
+                  '">Confirm &amp; remember</button>' +
+              '</div></details>'
+            : '') +
           '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
-            'Not one of ours — create a new VRM for this name</summary>' +
+            'Create a new VRM for this name</summary>' +
             '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' +
               '<div class="f grow" style="min-width:200px"><label class="lbl">VRM name</label>' +
                 '<input class="inp" id="' + id + '_nm" value="' + esc(g.label) + '"></div>' +
               '<div class="f grow" style="min-width:180px"><label class="lbl">Password for them</label>' +
                 '<input class="inp" id="' + id + '_pw" type="password" autocomplete="new-password"></div>' +
-              '<button class="btn" data-act="createun" data-key="' + esc(g.key.join('|')) +
+              '<button class="btn" data-act="createun" data-key="' + esc(g.spellings.join('\u0001')) +
                 '" data-nm="' + id + '_nm" data-pw="' + id + '_pw">Create &amp; assign</button>' +
             '</div>' +
-            '<p class="muted" style="font-size:12.5px;margin:10px 0 0">The new account cannot be ' +
-            'signed into until this password is set, so nobody inherits an unknown one.</p>' +
+            '<p class="muted" style="font-size:12.5px;margin:10px 0 0">Refused if the name ' +
+            'resembles someone already on the roster — that is how a book gets split in two.</p>' +
           '</details>' +
           '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
-            'Show the ' + g.rows.length + ' row(s)</summary>' +
+            'Exclude these rows</summary>' +
+            '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' +
+              '<div class="f" style="min-width:190px"><label class="lbl">Reason</label>' +
+                '<select class="inp" id="' + id + '_rc">' +
+                  '<option value="TEST_DATA">Test data</option>' +
+                  '<option value="NOT_A_PERSON">Not a person</option>' +
+                  '<option value="OTHER">Other</option></select></div>' +
+              '<div class="f grow" style="min-width:200px"><label class="lbl">Note (required for Other)</label>' +
+                '<input class="inp" id="' + id + '_rn"></div>' +
+              '<button class="btn dan" data-act="excludecl" data-key="' + esc(g.aliasKey) +
+                '" data-sp="' + esc(g.spellings.join('\u0001')) + '" data-rc="' + id +
+                '_rc" data-rn="' + id + '_rn">Exclude ' + g.rowCount + ' row(s)</button>' +
+            '</div>' +
+            '<p class="muted" style="font-size:12.5px;margin:10px 0 0">The rows stay on the ' +
+            'sheet for the record but leave every figure, including the unassigned share. ' +
+            'Reversible.</p>' +
+          '</details>' +
+          '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
+            'Show the ' + g.rowCount + ' row(s)</summary>' +
             '<div class="twrap" style="max-height:280px;margin-top:12px">' +
             '<table><thead><tr><th>Date</th><th>Client</th><th>Scheme</th>' +
             '<th>Type</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>' +
@@ -2166,7 +2282,8 @@ var VIEWS = {
 function render() {
   if (!S.session || !S.data) return;
   var fn = VIEWS[S.tab] || VIEWS[tabs()[0].id];
-  $('main').innerHTML = '<div class="view">' + fn() + '</div>';
+  $('main').innerHTML = '<div class="view">' +
+    (S.tab === 'unassigned' ? '' : provisionalBanner()) + fn() + '</div>';
   animateCounts();
   flushAfter_();
 }
@@ -2578,7 +2695,8 @@ function leagueTable(rows, met, f) {
 
   rows.forEach(function (t) {
     var k = (t.vrmEmpCode || '-').toUpperCase();
-    if (!per[k]) per[k] = { empCode: t.vrmEmpCode || '-', name: t.vrm || '(unassigned)', rows: [], n: 0, clients: {}, cur: 0, prv: 0 };
+    if (!per[k]) per[k] = { empCode: t.vrmEmpCode || '-', name: t.vrmEmpCode ? vrmNameOf(t) : 'Unassigned',
+                            rows: [], n: 0, clients: {}, cur: 0, prv: 0 };
     var r = per[k];
     r.rows.push(t); r.n++;
     if (t.clientCode) r.clients[t.clientCode.toUpperCase()] = 1;
@@ -3039,7 +3157,7 @@ function exportSpec(what) {
     var g = counted && isPurchase(t) ? num(t.amount) : 0;
     var rd = counted && t.txnType === TT.REDEMPTION ? num(t.amount) : 0;
     return [dmy(t.date), hhmm(t.time), t.clientCode, t.clientName, t.pan,
-            t.vrm, t.rmName, t.scheme, TT_LABEL[t.txnType] || t.txnType, num(t.amount),
+            vrmNameOf(t), t.rmName, t.scheme, TT_LABEL[t.txnType] || t.txnType, num(t.amount),
             TS_LABEL[t.status] || t.status, t.reason,
             t.vrmEmpCode, g, rd, g - rd, counted ? 'Yes' : 'No', t.batchId, t.id];
   }
@@ -3447,6 +3565,124 @@ var ACT = {
       absorb(d); toast('Transaction restored — it is back in the figures.');
     }).catch(function (e) { un(); fail(e); });
   },
+  /* Spellings travel as one attribute, split on \u0001 — a character no name
+     contains, so a comma or a pipe inside a name cannot break the list. */
+  confirmmap: function (btn) {
+    var sp = (btn.dataset.sp || '').split('\u0001').filter(Boolean);
+    var un = lock(btn, 'Saving');
+    api('confirmMapping', S.session.token, btn.dataset.key, sp, btn.dataset.vrm, 'MANUAL')
+      .then(function (d) {
+        var r = d.result || {};
+        absorb(d);
+        toast(r.moved + ' row(s) assigned to ' + r.name + ' — ' + r.aliases +
+              ' spelling(s) remembered.');
+      }).catch(function (e) { un(); fail(e); });
+  },
+  confirmsel: function (btn) {
+    var sel = document.getElementById(btn.dataset.sel);
+    if (!sel || !sel.value) return toast('Pick a VRM first.', 'e');
+    var sp = (btn.dataset.sp || '').split('\u0001').filter(Boolean);
+    var un = lock(btn, 'Saving');
+    api('confirmMapping', S.session.token, btn.dataset.key, sp, sel.value, 'MANUAL')
+      .then(function (d) {
+        var r = d.result || {};
+        absorb(d);
+        toast(r.moved + ' row(s) assigned to ' + r.name + ' — ' + r.aliases +
+              ' spelling(s) remembered.');
+      }).catch(function (e) { un(); fail(e); });
+  },
+  rejectmap: function (btn) {
+    var un = lock(btn, '');
+    api('rejectSuggestion', S.session.token, btn.dataset.key, btn.dataset.vrm)
+      .then(function (d) {
+        absorb(d);
+        toast('Noted — that person will not be suggested for this name again.');
+      }).catch(function (e) { un(); fail(e); });
+  },
+  excludecl: function (btn) {
+    var rc = document.getElementById(btn.dataset.rc);
+    var rn = document.getElementById(btn.dataset.rn);
+    var code = rc ? rc.value : '';
+    var note = rn ? rn.value.trim() : '';
+    if (code === 'OTHER' && !note) return toast('Say why, when the reason is Other.', 'e');
+    var sp = (btn.dataset.sp || '').split('\u0001').filter(Boolean);
+    var un = lock(btn, 'Excluding');
+    api('excludeCluster', S.session.token, btn.dataset.key, sp, code, note)
+      .then(function (d) {
+        var r = d.result || {};
+        absorb(d);
+        toast(r.excluded + ' row(s) excluded (' + rupee(r.amount) +
+              ') — out of every figure, reversible.');
+      }).catch(function (e) { un(); fail(e); });
+  },
+  undomap: function (btn) {
+    var un = lock(btn, 'Undoing');
+    api('undoMapping', S.session.token, btn.dataset.key)
+      .then(function (d) {
+        var r = d.result || {};
+        absorb(d);
+        toast('Undid the ' + r.kind + (r.restored ? ' — ' + r.restored +
+              ' row(s) back in Unassigned' : '') + '.');
+      }).catch(function (e) { un(); fail(e); });
+  },
+  /*
+   * Bulk confirm must show its work before writing. A dialog listing every
+   * cluster, its target and its amount is the difference between a considered
+   * action and a button that silently moved half the book.
+   */
+  bulkpre: function () {
+    var picks = unassignedGroups().filter(function (g) {
+      return !g.ambiguous && g.suggestions.length &&
+             g.suggestions[0].band === 'VERY_LIKELY';
+    });
+    if (!picks.length) return toast('Nothing is a very likely match right now.', 'e');
+    var total = picks.reduce(function (a, g) { return a + g.gross; }, 0);
+    var rows = picks.reduce(function (a, g) { return a + g.rowCount; }, 0);
+    window._bulkPicks = picks;
+    modal('Confirm ' + picks.length + ' mapping(s)',
+      rows + ' row(s) worth <b>' + rupee(total) + '</b> will be attributed, and every ' +
+      'spelling below remembered for future uploads.',
+      '<div class="twrap" style="max-height:300px;border:1px solid var(--line);border-radius:10px">' +
+      '<table><thead><tr><th>Name in the file</th><th>Goes to</th>' +
+      '<th class="num">Score</th><th class="num">Rows</th><th class="num">Gross</th>' +
+      '</tr></thead><tbody>' +
+      picks.map(function (g) {
+        var t = g.suggestions[0];
+        return '<tr><td>' + esc(g.label) +
+          (g.spellings.length > 1
+            ? '<div class="muted" style="font-size:11px">+ ' + (g.spellings.length - 1) +
+              ' other spelling(s)</div>' : '') + '</td>' +
+          '<td>' + esc(t.name) + ' <span class="mono muted">(' + esc(t.vrmId) + ')</span></td>' +
+          '<td class="num mono">' + t.score.toFixed(2) + '</td>' +
+          '<td class="num">' + g.rowCount + '</td>' +
+          '<td class="num">' + rupee(g.gross) + '</td></tr>';
+      }).join('') + '</tbody></table></div>',
+      '<button class="btn gh" data-act="close">Cancel</button>' +
+      '<button class="btn pri" data-act="bulkgo">Confirm all ' + picks.length + '</button>');
+  },
+  bulkgo: function (btn) {
+    var picks = window._bulkPicks || [];
+    if (!picks.length) return closeModal();
+    var items = picks.map(function (g) {
+      return { aliasKey: g.aliasKey, spellings: g.spellings,
+               vrmId: g.suggestions[0].vrmId,
+               txnDate: (g.rows[g.rows.length - 1] || {}).date || '' };
+    });
+    var un = lock(btn, 'Confirming');
+    api('bulkConfirmMappings', S.session.token, items)
+      .then(function (d) {
+        var r = d.result || {};
+        absorb(d); closeModal();
+        window._bulkPicks = null;
+        toast(r.clusters + ' mapping(s) confirmed, ' + r.moved + ' row(s) (' +
+              rupee(r.amount) + ')' +
+              ((r.refused || []).length ? '. ' + r.refused.length + ' refused — see the log' : '') +
+              '.', (r.refused || []).length ? 'w' : 's');
+      }).catch(function (e) { un(); fail(e); });
+  },
+  gotounassigned: function () {
+    S.tab = 'unassigned'; buildSidebar(); render();
+  },
   assignun: function (btn) {
     var sel = document.getElementById(btn.dataset.sel);
     if (!sel || !sel.value) return toast('Pick a VRM first.', 'e');
@@ -3539,6 +3775,10 @@ var ACT = {
           /* Say when ownership came from the RM column rather than a VRM column. */
           (num(r.attributedFromRm)
             ? ', ' + r.attributedFromRm + ' attributed from RM Name' : '') +
+          (num(r.viaAlias)
+            ? ', ' + r.viaAlias + ' matched a remembered name' : '') +
+          (num(r.excluded)
+            ? ', ' + r.excluded + ' excluded' : '') +
           (num(r.unassigned)
             ? '. ' + r.unassigned + ' row(s) need a VRM — see Unassigned' : '') +
           ((r.createdVrms || []).length ? '. New VRM(s): ' + r.createdVrms.join(', ') : '') +

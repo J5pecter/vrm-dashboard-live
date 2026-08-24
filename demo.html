@@ -610,6 +610,39 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
      cannot drift from the server; it needs the server's string helper. */
   function s_(v) { return v === null || v === undefined ? '' : String(v).trim(); }
 
+  /*
+   * THE person key. Every name comparison in this file routes through it: roster
+   * lookup, alias lookup, exclusion lookup, cluster grouping.
+   *
+   * Tokens are sorted, which is the whole point — it is what collapses
+   * "Lavina  Saldanha" and "Saldanha Lavina" into one key, and these exports write
+   * surname-first about as often as not.
+   *
+   * Known trade-off, accepted deliberately: this is a PERSON key, not a string
+   * key. Two different people whose names are anagrams of each other collide. At
+   * this roster size that is a fair trade, and the pairwise roster check in
+   * dataHealthCheck() is there to catch it if it ever happens.
+   */
+  var NAME_HONORIFICS = {
+    'mr': 1, 'mrs': 1, 'ms': 1, 'miss': 1, 'dr': 1,
+    'shri': 1, 'smt': 1, 'sri': 1, 'mstr': 1
+  };
+  
+  function normaliseName_(v) {
+    if (v === null || v === undefined) return '';
+    var t = String(v)
+      .toLowerCase()
+      .replace(/[\u00a0\u2007\u202f]/g, ' ')        /* non-breaking spaces */
+      .replace(/[.,'"()\-]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!t) return '';
+    var toks = t.split(' ').filter(function (w) { return w && !NAME_HONORIFICS[w]; });
+    if (!toks.length) return '';
+    toks.sort();
+    return toks.join(' ');
+  }
+  
   /* ======================== PERSON-NAME MATCHING ==============================
    *
    * The same person is written many ways across the exports and the roster:
@@ -648,6 +681,13 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
   /* Uppercase, strip anything that is not a letter or digit, collapse spaces. */
   function nameNorm_(n) {
     return s_(n).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  
+  /* Unsorted words, cleaned the same way normaliseName_ cleans them. The pairwise
+     matcher needs word order preserved; the person key does not. */
+  function nameTokens_(n) {
+    var k = normaliseName_(n);
+    return k ? k.split(' ') : [];
   }
   
   function nameWords_(n) {
@@ -754,137 +794,401 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
   var NAME_MATCH_RANK = { EXACT: 5, ORDER: 4, SUBSET: 3, INITIAL: 2, SPELLING: 1 };
   
   /*
-   * Resolve a written name to one VRM. Returns:
-   *   { vrm: <record>, how: 'EXACT'|... }         one confident match
-   *   { ambiguous: [<record>, ...], how: ... }    two or more equally good
-   *   null                                        nothing resembling it
-   *
-   * Only the strongest tier that matched counts, so an EXACT hit is never outvoted
-   * by two SPELLING hits — but two EXACT hits are a real collision the caller must
-   * hear about, which is exactly the duplicate-roster case.
+   * Does any OTHER roster record describe the same person as this one? Returns the
+   * clashing records, or []. This is not the same question as "who does this name
+   * belong to" — that is the ladder's job — and it deliberately uses the pairwise
+   * matcher, because a duplicate hides behind an exact match: resolving
+   * "Pavan Soni" returns its exact hit and never mentions "Pavan Lekhraj Soni".
    */
-  function resolveVrmName_(name, vrms) {
-    if (!s_(name)) return null;
-    var list = vrms || [];
-  
-    /*
-     * The RM column sometimes carries a compound: "Mukesh  Malpani - Khushi" is an
-     * RM, then the VRM they report to. Each side is tried on its own as well as the
-     * whole string, strongest result winning.
-     */
-    var tries = [s_(name)];
-    s_(name).split(/\s*[-\/,;|]\s*|\s+&\s+/).forEach(function (part) {
-      if (s_(part) && tries.indexOf(s_(part)) < 0) tries.push(s_(part));
+  function rosterTwins_(name, vrms, exceptCode) {
+    var skip = s_(exceptCode).toUpperCase();
+    return (vrms || []).filter(function (v) {
+      if (skip && s_(v.empCode).toUpperCase() === skip) return false;
+      return !!nameMatch_(name, v.name);
     });
-  
-    var best = 0, hits = [];
-    tries.forEach(function (q) {
-      list.forEach(function (v) {
-        var how = nameMatch_(q, v.name);
-        if (!how) return;
-        var rank = NAME_MATCH_RANK[how] || 0;
-        if (rank > best) { best = rank; hits = [{ vrm: v, how: how }]; }
-        else if (rank === best) hits.push({ vrm: v, how: how });
-      });
-    });
-  
-    var settle = function (found, how) {
-      /* One person listed twice under the SAME empCode is not a collision. */
-      var codes = {}, unique = [];
-      found.forEach(function (h) {
-        var c = s_(h.vrm.empCode).toUpperCase();
-        if (!codes[c]) { codes[c] = 1; unique.push(h); }
-      });
-      if (unique.length > 1) {
-        return { ambiguous: unique.map(function (h) { return h.vrm; }), how: unique[0].how };
-      }
-      return { vrm: unique[0].vrm, how: unique[0].how || how };
-    };
-  
-    if (hits.length) return settle(hits);
-  
-    /*
-     * Last resort: a single word that belongs to exactly ONE person on the roster.
-     * This is how "Mukesh  Malpani - Khushi" reaches Khushi Mahesh Dodiya — nothing
-     * else in that string is a VRM, and only one VRM is called Khushi.
-     *
-     * A single word is normally never enough (nameMatch_ refuses it outright,
-     * pairwise, because it cannot see the rest of the roster). It is safe only
-     * BECAUSE uniqueness is checked across every VRM: the moment a second Khushi
-     * exists, this returns an ambiguity instead of a guess. Kept deliberately at
-     * the bottom, so it can never override a real name match.
-     */
-    var byWord = {};
-    list.forEach(function (v) {
-      realWords_(nameWords_(v.name)).forEach(function (w) {
-        if (w.length < 3) return;
-        if (!byWord[w]) byWord[w] = [];
-        var seen = false;
-        byWord[w].forEach(function (x) {
-          if (s_(x.empCode).toUpperCase() === s_(v.empCode).toUpperCase()) seen = true;
-        });
-        if (!seen) byWord[w].push(v);
-      });
-    });
-  
-    var candidates = [], codesSeen = {};
-    realWords_(nameWords_(name)).forEach(function (w) {
-      if (w.length < 3 || !byWord[w]) return;
-      byWord[w].forEach(function (v) {
-        var c = s_(v.empCode).toUpperCase();
-        if (!codesSeen[c]) { codesSeen[c] = 1; candidates.push(v); }
-      });
-    });
-  
-    if (!candidates.length) return null;
-    if (candidates.length > 1) return { ambiguous: candidates, how: 'UNIQUEWORD' };
-    return { vrm: candidates[0], how: 'UNIQUEWORD' };
   }
 
-  function unassignedClusters(txns) {
-    var seen = {}, order = [];
-    (txns || []).forEach(function (t) {
-      if (t.vrmEmpCode) return;
-      var k = nameNorm_(t.vrm);
-      if (!seen[k]) { seen[k] = String(t.vrm || ''); order.push(k); }
+  var ACTIVE_FROM_DEFAULT = '1900-01-01';
+  var ACTIVE_TO_DEFAULT = '2999-12-31';
+  var ALIAS_SOURCES = { MANUAL: 'MANUAL', BACKFILL: 'BACKFILL', BULK_CONFIRM: 'BULK_CONFIRM' };
+  var EXCLUSION_REASONS = { TEST_DATA: 1, NOT_A_PERSON: 1, OTHER: 1 };
+  var TXN_TYPES = { SIP: 'SIP', LUMPSUM: 'LUMPSUM', REDEMPTION: 'REDEMPTION' };
+  function normTxnType_(v) { return normType(v); }
+  function normTxnStatus_(v) { return normStatus(v); }
+  function num_(v) { return +String(v === null || v === undefined ? 0 : v).replace(/[,\s]/g, '') || 0; }
+  function countedStatuses_() { return { COMPLETED: true }; }
+
+/* ===================== ALIAS TABLES AND THE RESOLUTION LADDER ==============
+   *
+   * The queue used never to shrink: every upload re-presented the same unmatched
+   * names, because the decision an admin made about one was never written down.
+   * These three tables are that memory.
+   *
+   *   Aliases          a spelling -> a VRM. Decided once, applied forever after.
+   *   NegativeAliases  a spelling is NOT this VRM. Stops a rejected suggestion
+   *                    coming back.
+   *   Exclusions       a spelling is not a person at all ("Test"). Its rows stop
+   *                    inflating the unassigned figure.
+   *
+   * All three are soft-deleted (Active=FALSE), never hard-deleted, so any decision
+   * can be undone and the reversal is still on the record.
+   *
+   * NOTE FOR LATER (and the real fix): everything here compensates for the export
+   * not carrying an employee code. When that column arrives it slots in as tier
+   * 0.5 — see resolveVrmName_ — above every name-based tier, and the rest of the
+   * ladder can then wither away rather than needing to be unpicked.
+   */
+  
+  /* The demo holds the three tables in memory. Everything below this point is the
+     server's own code, so the two ends cannot drift apart. */
+  var ALIASES = [], NEG_ALIASES = [], EXCLUSIONS = [];
+  function isTrue_(v) { return v === true || String(v).toUpperCase() === 'TRUE'; }
+  
+  function readAliasesLive_() { return ALIASES; }
+  
+  function readNegAliasesLive_() { return NEG_ALIASES; }
+  
+  function readExclusionsLive_() { return EXCLUSIONS; }
+  
+  /*
+   * Everything the ladder needs, read once. Resolving 106 rows must not mean 106
+   * reads of three sheets — that is the difference between an upload that returns
+   * and one that times out.
+   */
+  function resolverContext_(vrms) {
+    var ctx = { vrms: vrms || VRMS, alias: {}, neg: {}, excl: {}, byId: {} };
+    ctx.vrms.forEach(function (v) {
+      ctx.byId[s_(v.empCode).toUpperCase()] = v;
+      v.aliasKey = normaliseName_(v.name);
     });
-    var out = [];
-    order.forEach(function (k) {
-      var label = seen[k];
-      for (var i = 0; i < out.length; i++) {
-        if (nameMatch_(out[i].label, label)) {
-          out[i].keys.push(k);
-          if (nameWords_(label).length > nameWords_(out[i].label).length) out[i].label = label;
-          out[i].spellings.push(label);
-          return;
+    readAliasesLive_().forEach(function (a) {
+      if (a.active) ctx.alias[a.key] = a;
+    });
+    readNegAliasesLive_().forEach(function (n) {
+      if (!ctx.neg[n.key]) ctx.neg[n.key] = {};
+      ctx.neg[n.key][s_(n.vrmId).toUpperCase()] = true;
+    });
+    readExclusionsLive_().forEach(function (e) {
+      if (e.active) ctx.excl[e.key] = e;
+    });
+    return ctx;
+  }
+  
+  /* ------------------------------ scoring ---------------------------------- */
+  
+  function levenshtein_(a, b) {
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    var prev = [], cur = [], i, j;
+    for (j = 0; j <= b.length; j++) prev[j] = j;
+    for (i = 1; i <= a.length; i++) {
+      cur[0] = i;
+      for (j = 1; j <= b.length; j++) {
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1,
+                          prev[j - 1] + (a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1));
+      }
+      for (j = 0; j <= b.length; j++) prev[j] = cur[j];
+    }
+    return prev[b.length];
+  }
+  
+  /** Levenshtein similarity over the sorted token strings, 0..1. */
+  function tokenSetRatio_(keyA, keyB) {
+    if (!keyA && !keyB) return 1;
+    var max = Math.max(keyA.length, keyB.length);
+    if (!max) return 0;
+    return 1 - (levenshtein_(keyA, keyB) / max);
+  }
+  
+  /** How many tokens the two names share exactly, over the longer token count. */
+  function sharedTokenFraction_(tokA, tokB) {
+    var pool = tokB.slice(), hit = 0;
+    tokA.forEach(function (t) {
+      var at = pool.indexOf(t);
+      if (at >= 0) { pool.splice(at, 1); hit++; }
+    });
+    var max = Math.max(tokA.length, tokB.length);
+    return max ? hit / max : 0;
+  }
+  
+  /*
+   * 1.0 when every token pairs up, allowing a single letter on either side to
+   * stand for a word beginning with it. This is what lets "Parth V Sharma" score
+   * against "Parth Vijay Sharma" at all.
+   */
+  function initialsMatch_(tokA, tokB) {
+    if (tokA.length !== tokB.length) return 0;
+    var pool = tokB.slice();
+    for (var i = 0; i < tokA.length; i++) {
+      var w = tokA[i], at = pool.indexOf(w), x;
+      if (at < 0 && w.length === 1) {
+        for (x = 0; x < pool.length; x++) {
+          if (pool[x].charAt(0) === w) { at = x; break; }
         }
       }
-      out.push({ id: 'UA' + (out.length + 1), label: label, keys: [k], spellings: [label] });
+      if (at < 0) {
+        for (x = 0; x < pool.length; x++) {
+          if (pool[x].length === 1 && pool[x] === w.charAt(0)) { at = x; break; }
+        }
+      }
+      if (at < 0) return 0;
+      pool.splice(at, 1);
+    }
+    return 1;
+  }
+  
+  function suggestionScore_(keyA, keyB) {
+    var tokA = keyA ? keyA.split(' ') : [];
+    var tokB = keyB ? keyB.split(' ') : [];
+    return 0.55 * tokenSetRatio_(keyA, keyB) +
+           0.30 * sharedTokenFraction_(tokA, tokB) +
+           0.15 * initialsMatch_(tokA, tokB);
+  }
+  
+  var SUGGEST_FLOOR_DEFAULT = 0.70;
+    var SUGGEST_AMBIGUITY_GAP = 0.05;   /* never widened, never made configurable */
+  
+  function suggestFloor_() {
+    var v = Number(CFG.SUGGEST_FLOOR === undefined ? SUGGEST_FLOOR_DEFAULT : CFG.SUGGEST_FLOOR);
+    if (isNaN(v) || v <= 0 || v > 1) return SUGGEST_FLOOR_DEFAULT;
+    return v;
+  }
+  
+  /*
+   * Candidacy gate. Two settings:
+   *
+   *   NONE    the specified behaviour: any roster name scoring at or above the
+   *           floor is a candidate. This is the default.
+   *
+   *   TIERED  a name must ALSO be a tiered match (same words in another order, a
+   *           subset sharing two identifying words, an abbreviated initial, or one
+   *           character out) before its score is considered.
+   *
+   * The gate exists because the score alone cannot separate these two cases:
+   *
+   *   "Pavan Soni"  vs  "Pavan Lekhraj Soni"   0.5056   the same person
+   *   "Pavan Soni"  vs  "Pavan Shah"           0.5350   different people
+   *
+   * The wrong pair scores HIGHER, so no floor can divide them: the formula's
+   * dominant term measures character distance over the whole name, which punishes
+   * a dropped middle name harder than a changed surname. The tiered matcher asks a
+   * structural question instead — do these two names share their identifying words
+   * — and on the sixteen real pairs from this book it caught 8 of 8 true matches
+   * while admitting 1 of 8 false ones.
+   *
+   * Left at NONE by default because that is what was specified. Turn it on with
+   * Config SUGGEST_GATE = TIERED.
+   */
+  function suggestGate_() {
+    return String(CFG.SUGGEST_GATE || 'NONE').toUpperCase() === 'TIERED' ? 'TIERED' : 'NONE';
+  }
+  
+  function confidenceBand_(score) {
+    if (score >= 0.92) return 'VERY_LIKELY';
+    if (score >= 0.80) return 'POSSIBLE';
+    if (score >= suggestFloor_()) return 'WEAK';
+    return '';
+  }
+
+  /** Roster members whose employment window contains this date. */
+  function eligibleVrms_(ctx, txnDate) {
+    var d = s_(txnDate);
+    if (!d) return ctx.vrms.slice();
+    return ctx.vrms.filter(function (v) {
+      return (v.activeFrom || ACTIVE_FROM_DEFAULT) <= d && d <= (v.activeTo || ACTIVE_TO_DEFAULT);
     });
-    out.forEach(function (c) { c.reason = reasonFor(c.label); });
+  }
+  
+  /*
+   * Candidate VRMs for a parked name, best first, capped at three.
+   *
+   * Ambiguity suppression is mandatory and deliberately blunt: if the top two are
+   * within 0.05 of each other, EVERY suggestion is dropped and the cluster is
+   * marked ambiguous. A wrong one-tap confirm credits revenue to the wrong person
+   * and nobody notices; an admin choosing manually costs a few seconds.
+   */
+  function suggestionsFor_(aliasKey, ctx, txnDate) {
+    var rejected = ctx.neg[aliasKey] || {};
+    var floor = suggestFloor_();
+    var gate = suggestGate_();
+    var scored = [];
+    eligibleVrms_(ctx, txnDate).forEach(function (v) {
+      if (rejected[s_(v.empCode).toUpperCase()]) return;
+      if (gate === 'TIERED' && !nameMatch_(aliasKey, v.aliasKey || normaliseName_(v.name))) return;
+      var score = suggestionScore_(aliasKey, v.aliasKey || normaliseName_(v.name));
+      if (score < floor) return;
+      scored.push({ vrmId: v.empCode, name: v.name,
+                    score: Math.round(score * 10000) / 10000, band: confidenceBand_(score) });
+    });
+    scored.sort(function (a, b) { return b.score - a.score; });
+  
+    if (scored.length > 1 && (scored[0].score - scored[1].score) < SUGGEST_AMBIGUITY_GAP) {
+      return { suggestions: [], ambiguous: true };
+    }
+    return { suggestions: scored.slice(0, 3), ambiguous: false };
+  }
+  
+  /* ------------------------------ the ladder ------------------------------- */
+  
+  /*
+   * tier 0    an active exclusion            -> EXCLUDED
+   * tier 0.5  an employee code on the row    -> handled by the caller, above this
+   *                                            function; the slot exists so that
+   *                                            when the export finally carries a
+   *                                            code it lands here and nothing else
+   *                                            in the ladder has to move.
+   * tier 1    an active alias                -> ASSIGNED
+   * tier 2    exactly a roster name, in date -> ASSIGNED
+   * tier 3    fuzzy >= 0.70                  -> PARKED, with suggestions
+   * tier 4    nothing                        -> PARKED, no suggestions
+   *
+   * Tier 3 deliberately does NOT assign. A near-miss that silently credits revenue
+   * to the wrong VRM is far worse than a row waiting in a queue for a day — and
+   * with two Sharmas on the roster it stopped being hypothetical. The one-tap
+   * confirm is what keeps the cost of that caution low.
+   */
+  function resolveVrmName_(rawName, txnDate, ctx) {
+    ctx = ctx || resolverContext_();
+    var key = normaliseName_(rawName);
+    var warnings = [];
+    if (!s_(txnDate)) warnings.push('no_txn_date');
+  
+    if (!key) {
+      return { outcome: 'PARKED', vrmId: '', tier: 4, matchedVia: null,
+               aliasKey: '', suggestions: [], ambiguous: false, warnings: warnings };
+    }
+  
+    if (ctx.excl[key]) {
+      return { outcome: 'EXCLUDED', vrmId: '', tier: 0, matchedVia: 'EXCLUSION',
+               aliasKey: key, suggestions: [], ambiguous: false, warnings: warnings,
+               reasonCode: ctx.excl[key].reasonCode };
+    }
+  
+    var al = ctx.alias[key];
+    if (al && ctx.byId[s_(al.vrmId).toUpperCase()]) {
+      return { outcome: 'ASSIGNED', vrmId: ctx.byId[s_(al.vrmId).toUpperCase()].empCode,
+               tier: 1, matchedVia: 'ALIAS', aliasKey: key,
+               suggestions: [], ambiguous: false, warnings: warnings };
+    }
+  
+    var eligible = eligibleVrms_(ctx, txnDate);
+    var exact = eligible.filter(function (v) {
+      return (v.aliasKey || normaliseName_(v.name)) === key;
+    });
+    if (exact.length === 1) {
+      return { outcome: 'ASSIGNED', vrmId: exact[0].empCode, tier: 2,
+               matchedVia: 'ROSTER_EXACT', aliasKey: key,
+               suggestions: [], ambiguous: false, warnings: warnings };
+    }
+    if (exact.length > 1) {
+      /* Two roster records share one person key. Never guess between them. */
+      return { outcome: 'PARKED', vrmId: '', tier: 2, matchedVia: null, aliasKey: key,
+               suggestions: [], ambiguous: true,
+               warnings: warnings.concat(['roster_duplicate']) };
+    }
+  
+    var sug = suggestionsFor_(key, ctx, txnDate);
+    return { outcome: 'PARKED', vrmId: '', tier: sug.suggestions.length ? 3 : 4,
+             matchedVia: null, aliasKey: key, suggestions: sug.suggestions,
+             ambiguous: sug.ambiguous, warnings: warnings };
+  }
+
+  /* The server's clusterer calls it by this name. */
+  function unassignedReason_(raw, ctx, when) { return reasonFor(raw, ctx, when); }
+
+  function reasonFor(rawName, ctx, when) {
+    var nm = String(rawName || '').trim();
+    if (!nm) return 'no VRM or RM was named on the row';
+    var v = resolveVrmName_(nm, when, ctx || resolverContext_(VRMS));
+    if (v.outcome === 'ASSIGNED') return 'now resolves to ' + v.vrmId;
+    if (v.ambiguous) return 'more than one roster name matches closely - choose manually';
+    if (v.suggestions.length) return 'closest match ' + v.suggestions[0].name +
+      ' (' + v.suggestions[0].vrmId + ') at ' + v.suggestions[0].score.toFixed(2);
+    return 'not on the roster';
+  }
+
+function unassignedClusters_(txns, vrms, ctx) {
+    ctx = ctx || resolverContext_(vrms);
+    var counts = countedStatuses_();
+    var byKey = {};
+  
+    (txns || []).forEach(function (t) {
+      if (s_(t.vrmEmpCode)) return;
+      var key = normaliseName_(t.vrm);
+      if (ctx.excl[key]) return;                 /* excluded is not unassigned */
+      if (!byKey[key]) {
+        byKey[key] = { aliasKey: key, spellingCount: {}, rows: 0, amount: 0,
+                       warnings: {}, dates: [] };
+      }
+      var c = byKey[key];
+      var raw = s_(t.vrm);
+      c.spellingCount[raw] = (c.spellingCount[raw] || 0) + 1;
+      c.rows++;
+      var ty = normTxnType_(t.txnType);
+      if (counts[normTxnStatus_(t.status)] &&
+          (ty === TXN_TYPES.SIP || ty === TXN_TYPES.LUMPSUM)) {
+        c.amount += num_(t.amount);
+      }
+      if (s_(t.date)) c.dates.push(s_(t.date)); else c.warnings.no_txn_date = 1;
+    });
+  
+    var out = Object.keys(byKey).map(function (k) {
+      var c = byKey[k];
+      var spellings = Object.keys(c.spellingCount);
+      /* Show the spelling the file used most often, not an arbitrary one. */
+      var display = spellings[0] || '';
+      spellings.forEach(function (sp) {
+        if (c.spellingCount[sp] > c.spellingCount[display]) display = sp;
+      });
+      /* Score against the roster as it was on the cluster's latest date, so a
+         leaver is not offered for months they were not employed. */
+      c.dates.sort();
+      var when = c.dates.length ? c.dates[c.dates.length - 1] : '';
+      var sug = suggestionsFor_(k, ctx, when);
+      return {
+        id: 'UA' + k, aliasKey: k, display_raw: display, spellings: spellings,
+        row_count: c.rows, total_amount: c.amount,
+        suggestions: sug.suggestions, ambiguous: sug.ambiguous,
+        warnings: Object.keys(c.warnings),
+        reason: unassignedReason_(display, ctx, when),
+        /* kept for the older client contract */
+        keys: [k], label: display
+      };
+    });
+  
+    /* Amount descending. A five-row cluster worth 26 lakh must sit above a
+       seven-row cluster worth nothing; row count is only the tiebreaker. */
+    out.sort(function (a, b) {
+      if (b.total_amount !== a.total_amount) return b.total_amount - a.total_amount;
+      return b.row_count - a.row_count;
+    });
     return out;
+  }
+
+  function moveUnassigned(keys, target) {
+    var moved = 0, amount = 0;
+    TX.forEach(function (t) {
+      if (t.vrmEmpCode || !keys[normaliseName_(t.vrm)]) return;
+      t.vrmEmpCode = target.empCode;
+      /* The name cell keeps the file's spelling — undo needs it. */
+      moved++;
+      var ty = normType(t.txnType);
+      if (normStatus(t.status) === 'COMPLETED' && (ty === 'SIP' || ty === 'LUMPSUM')) {
+        amount += +t.amount || 0;
+      }
+    });
+    return { moved: moved, amount: amount };
   }
 
   function keySet(rawNames) {
     var arr = Object.prototype.toString.call(rawNames) === '[object Array]' ? rawNames : [rawNames];
     var set = { count: 0 };
     arr.forEach(function (n) {
-      var k = nameNorm_(n);
+      var k = normaliseName_(n);
       if (k && !set[k]) { set[k] = true; set.count++; }
     });
     return set;
-  }
-
-  function reasonFor(rawName) {
-    var nm = String(rawName || '').trim();
-    if (!nm) return 'no VRM or RM was named on the row';
-    var hit = resolveVrmName_(nm, VRMS);
-    if (hit && hit.ambiguous) {
-      return 'matches ' + hit.ambiguous.length + ' VRMs: ' + hit.ambiguous.map(function (v) {
-        return v.empCode + ' "' + v.name + '"'; }).join(', ');
-    }
-    if (hit && hit.vrm) return 'now matches ' + hit.vrm.empCode + ' ("' + hit.vrm.name + '") — ready to assign';
-    return 'not on the roster';
   }
 
   function panOk(p) {
@@ -968,6 +1272,7 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
 
   function payload(s) {
     var isAdmin = s.role === 'ADMIN';
+    var rctx = resolverContext_(VRMS);
     var fullPan = isAdmin || CFG.VRM_SEES_FULL_PAN;
     return {
       vrms: VRMS.map(function (v) {
@@ -979,12 +1284,15 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
         .map(function (t) {
           var c = JSON.parse(JSON.stringify(t));
           if (!fullPan) { c.pan = maskPan(c.pan); c.panMasked = true; } else { c.panMasked = false; }
-          c.unassignedReason = c.vrmEmpCode ? '' : reasonFor(c.vrm);
+          c.excluded = c.vrmEmpCode ? false : !!rctx.excl[normaliseName_(c.vrm)];
+          c.unassignedReason = c.vrmEmpCode ? '' : reasonFor(c.vrm, rctx, c.date);
           return c;
         }),
       adminExists: true,
       /* Admin only: a VRM never sees rows that belong to nobody. */
-      unassignedClusters: isAdmin ? unassignedClusters(TX) : [],
+      unassignedClusters: isAdmin ? unassignedClusters_(TX, VRMS, rctx) : [],
+      aliasCount: isAdmin ? Object.keys(rctx.alias).length : 0,
+      exclusionCount: isAdmin ? Object.keys(rctx.excl).length : 0,
       perms: {
         canDelete: isAdmin, canEdit: isAdmin, canTransfer: isAdmin,
         canExport: isAdmin || CFG.VRM_CAN_EXPORT, canSeeFullPan: fullPan,
@@ -1049,6 +1357,212 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
       var s = TOKENS[token];
       if (s) { log(s.empCode, s.role, 'LOGOUT', (s.name || s.role) + ' signed out', 1); delete TOKENS[token]; }
       return ok();
+    },
+
+/* ---- mapping decisions: the same contract as the server ---- */
+
+    confirmMapping: function (token, aliasKey, spellings, vrmId, source) {
+      var s = session(token);
+      if (s.role !== 'ADMIN') throw new Error('Admin only.');
+      var key = normaliseName_(aliasKey);
+      if (!key) throw new Error('Which name are you mapping?');
+      var target = find(vrmId);
+      if (!target) throw new Error('That VRM no longer exists. Refresh and try again.');
+      var src = ALIAS_SOURCES[String(source || '').toUpperCase()] || ALIAS_SOURCES.MANUAL;
+
+      var raws = (spellings && spellings.length) ? spellings : [aliasKey];
+      var keys = {};
+      raws.forEach(function (r) { var k = normaliseName_(r); if (k) keys[k] = String(r); });
+      if (!keys[key]) keys[key] = String(aliasKey);
+
+      Object.keys(keys).forEach(function (k) {
+        ALIASES.forEach(function (a) {
+          if (a.active && a.key === k) {
+            throw new Error('"' + a.raw + '" is already mapped to ' + a.vrmId +
+              ' (by ' + a.by + ' on ' + a.on + '). Undo that first if it is wrong.');
+          }
+        });
+        EXCLUSIONS.forEach(function (e) {
+          if (e.active && e.key === k) {
+            throw new Error('"' + e.raw + '" is on the exclusion list (' + e.reasonCode +
+              '). Undo the exclusion before mapping it.');
+          }
+        });
+        VRMS.forEach(function (v) {
+          if (normaliseName_(v.name) === k && v.empCode !== target.empCode) {
+            throw new Error('That spelling is already ' + v.empCode + "'s own name.");
+          }
+        });
+      });
+
+      var now = nowIso();
+      Object.keys(keys).forEach(function (k) {
+        ALIASES.push({ key: k, raw: keys[k], vrmId: target.empCode, by: 'ADMIN',
+                       on: now, source: src, active: true });
+      });
+
+      var res = moveUnassigned(keys, target);
+      log('ADMIN', 'ADMIN', 'ASSIGN_UNASSIGNED',
+        'Mapped "' + Object.keys(keys).map(function (k) { return keys[k]; }).join('", "') +
+        '" to ' + target.empCode + ' [' + src + ']; ' + res.moved + ' row(s)', res.moved);
+      var p = payload(s);
+      p.result = { moved: res.moved, amount: res.amount, aliases: Object.keys(keys).length,
+                   empCode: target.empCode, name: target.name };
+      return ok(p);
+    },
+
+    rejectSuggestion: function (token, aliasKey, vrmId) {
+      var s = session(token);
+      if (s.role !== 'ADMIN') throw new Error('Admin only.');
+      var key = normaliseName_(aliasKey);
+      var target = find(vrmId);
+      if (!target) throw new Error('That VRM no longer exists. Refresh and try again.');
+      var already = false;
+      NEG_ALIASES.forEach(function (n) {
+        if (n.key === key && n.vrmId === target.empCode) already = true;
+      });
+      if (!already) {
+        NEG_ALIASES.push({ key: key, vrmId: target.empCode, by: 'ADMIN', on: nowIso() });
+      }
+      log('ADMIN', 'ADMIN', 'REJECT_SUGGESTION',
+        'Rejected ' + target.empCode + ' as a match for "' + aliasKey + '"', 1);
+      return ok(payload(s));
+    },
+
+    excludeCluster: function (token, aliasKey, spellings, reasonCode, reasonNote) {
+      var s = session(token);
+      if (s.role !== 'ADMIN') throw new Error('Admin only.');
+      var key = normaliseName_(aliasKey);
+      if (!key) throw new Error('Which name are you excluding?');
+      var code = String(reasonCode || '').toUpperCase();
+      if (!EXCLUSION_REASONS[code]) {
+        throw new Error('Choose a reason: TEST_DATA, NOT_A_PERSON or OTHER.');
+      }
+      var note = String(reasonNote || '').trim();
+      if (code === 'OTHER' && !note) throw new Error('Say why, when the reason is Other.');
+
+      var raws = (spellings && spellings.length) ? spellings : [aliasKey];
+      var keys = {};
+      raws.forEach(function (r) { var k = normaliseName_(r); if (k) keys[k] = String(r); });
+      if (!keys[key]) keys[key] = String(aliasKey);
+
+      Object.keys(keys).forEach(function (k) {
+        ALIASES.forEach(function (a) {
+          if (a.active && a.key === k) {
+            throw new Error('"' + a.raw + '" is mapped to ' + a.vrmId +
+              '. Undo that mapping before excluding it.');
+          }
+        });
+        EXCLUSIONS.forEach(function (e) {
+          if (e.active && e.key === k) throw new Error('"' + keys[k] + '" is already excluded.');
+        });
+      });
+
+      var now = nowIso();
+      Object.keys(keys).forEach(function (k) {
+        EXCLUSIONS.push({ key: k, raw: keys[k], reasonCode: code, note: note,
+                          by: 'ADMIN', on: now, active: true });
+      });
+
+      var n = 0, amount = 0;
+      TX.forEach(function (t) {
+        if (t.vrmEmpCode || !keys[normaliseName_(t.vrm)]) return;
+        n++;
+        var ty = normType(t.txnType);
+        if (normStatus(t.status) === 'COMPLETED' && (ty === 'SIP' || ty === 'LUMPSUM')) {
+          amount += +t.amount || 0;
+        }
+      });
+      log('ADMIN', 'ADMIN', 'EXCLUDE_ROWS',
+        'Excluded "' + Object.keys(keys).map(function (k) { return keys[k]; }).join('", "') +
+        '" (' + code + '); ' + n + ' row(s)', n);
+      var p = payload(s);
+      p.result = { excluded: n, amount: amount, reasonCode: code };
+      return ok(p);
+    },
+
+    undoMapping: function (token, aliasKey) {
+      var s = session(token);
+      if (s.role !== 'ADMIN') throw new Error('Admin only.');
+      var key = normaliseName_(aliasKey);
+      var undone = 0, restored = 0, kind = '', hitVrm = '';
+      ALIASES.forEach(function (a) {
+        if (!a.active || a.key !== key) return;
+        a.active = false; hitVrm = a.vrmId; undone++;
+      });
+      if (undone) {
+        kind = 'mapping';
+        TX.forEach(function (t) {
+          if (t.vrmEmpCode !== hitVrm) return;
+          if (normaliseName_(t.vrm) !== key) return;
+          t.vrmEmpCode = ''; restored++;
+        });
+      } else {
+        EXCLUSIONS.forEach(function (e) {
+          if (!e.active || e.key !== key) return;
+          e.active = false; undone++;
+        });
+        if (undone) kind = 'exclusion';
+      }
+      if (!undone) throw new Error('Nothing active to undo for that name.');
+      log('ADMIN', 'ADMIN', 'UNDO_MAPPING',
+        'Undid the ' + kind + ' for "' + aliasKey + '"', restored || 1);
+      var p = payload(s);
+      p.result = { undone: undone, restored: restored, kind: kind };
+      return ok(p);
+    },
+
+    bulkConfirmMappings: function (token, items) {
+      var s = session(token);
+      if (s.role !== 'ADMIN') throw new Error('Admin only.');
+      var list = items || [];
+      if (!list.length) throw new Error('Nothing selected.');
+      var ctx = resolverContext_(VRMS);
+      var done = [], refused = [], moved = 0, amount = 0;
+
+      list.forEach(function (it) {
+        var key = normaliseName_(it.aliasKey);
+        var target = find(it.vrmId);
+        if (!key || !target) { refused.push(String(it.aliasKey) + ': unknown VRM'); return; }
+        var sug = suggestionsFor_(key, ctx, String(it.txnDate || ''));
+        if (sug.ambiguous || !sug.suggestions.length ||
+            sug.suggestions[0].band !== 'VERY_LIKELY' ||
+            sug.suggestions[0].vrmId !== target.empCode) {
+          refused.push(String(it.aliasKey) + ': no longer a very likely match');
+          return;
+        }
+        var raws = (it.spellings && it.spellings.length) ? it.spellings : [it.aliasKey];
+        var keys = {};
+        raws.forEach(function (r) { var k = normaliseName_(r); if (k) keys[k] = String(r); });
+        if (!keys[key]) keys[key] = String(it.aliasKey);
+
+        var bad = '';
+        Object.keys(keys).forEach(function (k) {
+          ALIASES.forEach(function (a) { if (a.active && a.key === k) bad = 'already mapped'; });
+          EXCLUSIONS.forEach(function (e) { if (e.active && e.key === k) bad = 'excluded'; });
+          VRMS.forEach(function (v) {
+            if (normaliseName_(v.name) === k && v.empCode !== target.empCode) {
+              bad = "already " + v.empCode + "'s own name";
+            }
+          });
+        });
+        if (bad) { refused.push(String(it.aliasKey) + ': ' + bad); return; }
+
+        var now = nowIso();
+        Object.keys(keys).forEach(function (k) {
+          ALIASES.push({ key: k, raw: keys[k], vrmId: target.empCode, by: 'ADMIN',
+                         on: now, source: ALIAS_SOURCES.BULK_CONFIRM, active: true });
+        });
+        var res = moveUnassigned(keys, target);
+        moved += res.moved; amount += res.amount;
+        done.push(keys[key] + ' -> ' + target.empCode);
+      });
+
+      log('ADMIN', 'ADMIN', 'ASSIGN_UNASSIGNED',
+        'Bulk confirmed ' + done.length + ' cluster(s); ' + moved + ' row(s)', moved);
+      var p = payload(s);
+      p.result = { clusters: done.length, moved: moved, amount: amount, refused: refused };
+      return ok(p);
     },
 
     getData: function (token) { return ok(payload(session(token))); },
@@ -1131,7 +1645,8 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
       }
 
       var made = [], errors = [], blank = 0, dupes = 0, fromRm = 0, unassigned = 0;
-      var roster = function () { return VRMS; };
+      var excluded = 0, viaAlias = 0;
+      var rctx = resolverContext_(VRMS);
       var batchId = 'B' + Date.now().toString(36).toUpperCase();
       var seen = {}, existing = {};
       TX.forEach(function (t) {
@@ -1163,20 +1678,28 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
         var unresolved = '';
         var wantName = String(r.vrm || '').trim();
         var rmRaw = String(r.rmName || '').trim();
+        var verdict = null;
         if (wantName) {
-          var hit = resolveVrmName_(wantName, roster());
-          if (hit && hit.ambiguous) {
-            unresolved = 'VRM "' + wantName + '" matches ' + hit.ambiguous.length + ' VRM records: ' +
-              hit.ambiguous.map(function (v) { return v.empCode + ' "' + v.name + '"'; }).join(', ');
-          } else if (hit) owner = hit.vrm;
+          verdict = resolveVrmName_(wantName, date, rctx);
+        } else if (rmRaw) {
+          verdict = resolveVrmName_(rmRaw, date, rctx);
+          if (verdict.outcome === 'ASSIGNED') fromRm++;
         }
-        /* No VRM column — the RM named on the row may itself be a VRM. */
-        if (!owner && !wantName && rmRaw) {
-          var rmHit = resolveVrmName_(rmRaw, roster());
-          if (rmHit && rmHit.ambiguous) {
-            unresolved = 'RM "' + rmRaw + '" matches ' + rmHit.ambiguous.length + ' VRM records: ' +
-              rmHit.ambiguous.map(function (v) { return v.empCode + ' "' + v.name + '"'; }).join(', ');
-          } else if (rmHit) { owner = rmHit.vrm; fromRm++; }
+        if (verdict) {
+          if (verdict.outcome === 'EXCLUDED') {
+            excluded++;
+          } else if (verdict.outcome === 'ASSIGNED') {
+            owner = find(verdict.vrmId);
+            if (owner && verdict.tier === 1) viaAlias++;
+          }
+          if (!owner && verdict.outcome !== 'EXCLUDED') {
+            unresolved = verdict.ambiguous
+              ? 'more than one roster name matches this closely'
+              : verdict.suggestions.length
+                ? 'looks like ' + verdict.suggestions[0].name + ' (' +
+                  verdict.suggestions[0].vrmId + ')'
+                : 'not on the roster';
+          }
         }
         if (s.role === 'ADMIN') {
           /* Not rejected, not auto-created: parked for an admin to map. */
@@ -1205,7 +1728,8 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
 
         var rec = { id: 'TXN' + (++seq), date: date, time: normTime(r.time),
           clientCode: cc || cn.toUpperCase().replace(/\s+/g, '-'), clientName: cn || cc,
-          pan: pan, vrm: owner ? owner.name : (wantName || rmRaw), rmName: String(r.rmName || ''),
+          pan: pan, vrm: wantName || rmRaw || (owner ? owner.name : ''),
+          rmName: String(r.rmName || ''),
           scheme: String(r.scheme || ''), txnType: type, amount: amount,
           status: status, reason: String(r.reason || ''),
           vrmEmpCode: owner ? owner.empCode : '', batchId: batchId,
@@ -1236,6 +1760,7 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
         var bad = payload(s);
         bad.result = { inserted: 0, rejected: errors.length, blank: blank, duplicates: dupes,
                        attributedFromRm: fromRm, unassigned: unassigned,
+                       excluded: excluded, viaAlias: viaAlias,
                        errors: errors.slice(0, 50), errorTotal: errors.length, batchId: '' };
         return ok(bad);
       }
@@ -1259,7 +1784,8 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
 
       var p = payload(s);
       p.result = { inserted: made.length, rejected: 0, blank: blank, duplicates: 0,
-                   attributedFromRm: fromRm, unassigned: unassigned, errors: [],
+                   attributedFromRm: fromRm, unassigned: unassigned,
+                   excluded: excluded, viaAlias: viaAlias, errors: [],
                    errorTotal: 0,
                    batchId: mode === 'IMPORT' ? batchId : '' };
       return ok(p);
@@ -1552,6 +2078,31 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
   });
   window.google = { script: { run: proto, host: { close: function () {} } } };
   window.__DEMO_PW = DEMO_PW;
+  /* Test hook. The acceptance suite asserts against the resolution code itself,
+     not just its effects, so it needs the same functions the server runs. */
+  window.__engine = {
+    normaliseName_: normaliseName_,
+    nameMatch_: nameMatch_,
+    resolveVrmName_: resolveVrmName_,
+    resolverContext_: resolverContext_,
+    suggestionsFor_: suggestionsFor_,
+    suggestionScore_: suggestionScore_,
+    setConfig: function (k, v) { CFG[k] = v; },
+    /* Lets the acceptance suite run repeatedly in one page: the three decision
+       tables are emptied and any VRM the suite invented is dropped. */
+    resetDecisions: function () {
+      ALIASES.length = 0; NEG_ALIASES.length = 0; EXCLUSIONS.length = 0;
+      for (var i = TX.length - 1; i >= 0; i--) {
+        if (String(TX[i].clientCode || '').indexOf('T1') === 0) TX.splice(i, 1);
+      }
+      for (var j = VRMS.length - 1; j >= 0; j--) {
+        if (/^(Anand Kumar|Rohit Kumar|Zephyr|Sneaky)/.test(VRMS[j].name)) VRMS.splice(j, 1);
+      }
+    },
+    confidenceBand_: confidenceBand_,
+    unassignedClusters_: unassignedClusters_,
+    tables: function () { return { aliases: ALIASES, negatives: NEG_ALIASES, exclusions: EXCLUSIONS }; }
+  };
 })();
 
 </script>
@@ -2161,7 +2712,34 @@ function isCounted(t) { return !!countedSet()[t.status]; }
 /** A purchase, i.e. something that adds business rather than removing it. */
 function isPurchase(t) { return t.txnType === TT.SIP || t.txnType === TT.LUMPSUM; }
 
+/*
+ * Rows an admin has marked as not-a-person. They stay in the data for the audit
+ * trail but leave every figure — including the unassigned percentage — because
+ * "Test" inflating the queue was the whole reason exclusions exist.
+ */
+/*
+ * The name to SHOW for a row. vrmEmpCode is the identity; the row's own text is
+ * whatever the file happened to write, kept for provenance. Resolving through
+ * the roster means one person reads one way in every table, and a rename shows
+ * up everywhere at once without touching a single transaction row.
+ */
+function vrmNameOf(t) {
+  if (!t.vrmEmpCode) return t.vrm || '';
+  var list = (S.data && S.data.vrms) || [];
+  for (var i = 0; i < list.length; i++) {
+    if (String(list[i].empCode).toUpperCase() === String(t.vrmEmpCode).toUpperCase()) {
+      return list[i].name;
+    }
+  }
+  return t.vrm || t.vrmEmpCode;
+}
+
+function liveRows(txns) {
+  return (txns || []).filter(function (t) { return !t.excluded; });
+}
+
 function metrics(txns) {
+  txns = liveRows(txns);
   var counted = countedSet();
   var m = { sip: 0, lumpsum: 0, redemption: 0, gross: 0, net: 0,
             pending: 0, rejected: 0, txns: 0, countedTxns: 0,
@@ -2289,7 +2867,7 @@ function byVrm(txns, vrms) {
     /* Every unassigned row shares one bucket, whatever the file called them, so
        the VRM-wise page still adds up to the firm total. */
     var k = t.vrmEmpCode ? String(t.vrmEmpCode).toUpperCase() : '(UNASSIGNED)';
-    if (!m[k]) m[k] = { empCode: t.vrmEmpCode || '—', name: t.vrmEmpCode ? (t.vrm || t.vrmEmpCode) : 'Unassigned',
+    if (!m[k]) m[k] = { empCode: t.vrmEmpCode || '—', name: t.vrmEmpCode ? vrmNameOf(t) : 'Unassigned',
                         unassigned: !t.vrmEmpCode, rows: [], clients: {}, rms: [] };
     var r = m[k];
     r.rows.push(t);
@@ -2331,7 +2909,7 @@ function byScheme(txns) {
 function matches(t, q) {
   if (!q) return true;
   q = q.toLowerCase();
-  return [t.clientCode, t.clientName, t.pan, t.vrm, t.vrmEmpCode, t.rmName, t.scheme,
+  return [t.clientCode, t.clientName, t.pan, t.vrm, vrmNameOf(t), t.vrmEmpCode, t.rmName, t.scheme,
           TT_LABEL[t.txnType] || t.txnType, TS_LABEL[t.status] || t.status,
           t.reason, dmy(t.date), t.date, hhmm(t.time), String(t.amount), t.batchId]
     .some(function (f) { return String(f || '').toLowerCase().indexOf(q) >= 0; });
@@ -2685,7 +3263,8 @@ function txnCells(t) {
     '<td class="mono"><b>' + esc(t.clientCode) + '</b></td>' +
     '<td>' + esc(t.clientName) + '</td>' +
     '<td>' + panCell(t) + '</td>' +
-    '<td>' + esc(t.vrm || '') + '<div class="mono muted" style="font-size:11px">' + esc(t.vrmEmpCode) + '</div></td>' +
+    '<td>' + esc(vrmNameOf(t)) + '<div class="mono muted" style="font-size:11px">' +
+      esc(t.vrmEmpCode || 'unassigned') + '</div></td>' +
     '<td>' + (t.rmName ? esc(t.rmName) : '<span class="muted">—</span>') + '</td>' +
     '<td><span class="cx" title="' + esc(t.scheme) + '">' + (t.scheme ? esc(t.scheme) : '<span class="muted">—</span>') + '</span></td>' +
     '<td>' + typePill(t.txnType) + '</td>' +
@@ -3119,124 +3698,212 @@ function viewScheme() {
  */
 function unassignedGroups() {
   /*
-   * One card per PERSON. The server decides which spellings are the same person
-   * — it owns the name matcher — and sends the clusters; here we only hang the
-   * rows off them. Grouping by the literal text in the browser would show
-   * "Parth Vijay Sharma", "Sharma Parth Vijay" and "Parth V Sharma" as three
-   * people to map three times.
+   * The server owns clustering: it has the normaliser, the alias table and the
+   * scorer, and duplicating any of those in the browser is how the two ends
+   * start disagreeing about who somebody is. Here we only attach the rows.
    */
   var clusters = (S.data.unassignedClusters || []).map(function (c) {
-    return { key: c.keys, label: c.label, reason: c.reason,
-             spellings: c.spellings || [], rows: [], rms: {}, batches: {} };
+    return {
+      aliasKey: c.aliasKey, label: c.display_raw, spellings: c.spellings || [],
+      reason: c.reason || '', suggestions: c.suggestions || [],
+      ambiguous: !!c.ambiguous, warnings: c.warnings || [],
+      rows: [], gross: c.total_amount || 0, rowCount: c.row_count || 0
+    };
   });
-  var byKey = {};
+  var bySpelling = {};
   clusters.forEach(function (c) {
-    (c.key || []).forEach(function (k) { byKey[k] = c; });
+    c.spellings.forEach(function (sp) { bySpelling[sp] = c; });
   });
 
-  var m = {};
   (S.data.txns || []).forEach(function (t) {
-    if (t.vrmEmpCode) return;
-    var k = String(t.vrm || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
-    var g = byKey[k];
-    if (!g) {
-      /* A cluster the payload did not describe (should not happen) still has to
-         be visible rather than silently dropped from the totals. */
-      g = m[k] || (m[k] = { key: [k], label: t.vrm || '(nothing named)',
-                            reason: t.unassignedReason || '', spellings: [t.vrm || ''],
-                            rows: [], rms: {}, batches: {} });
-      if (clusters.indexOf(g) < 0) clusters.push(g);
-    }
-    g.rows.push(t);
-    if (t.rmName) g.rms[t.rmName] = 1;
-    if (t.batchId) g.batches[t.batchId] = 1;
+    if (t.vrmEmpCode || t.excluded) return;
+    var c = bySpelling[String(t.vrm || '')];
+    if (c) c.rows.push(t);
   });
 
-  return clusters.filter(function (g) { return g.rows.length; }).map(function (g) {
-    var mx = metrics(g.rows);
-    g.gross = mx.gross; g.net = mx.net; g.redemption = mx.redemption;
-    g.clients = Object.keys(g.rows.reduce(function (a, t) {
-      if (t.clientCode) a[String(t.clientCode).toUpperCase()] = 1; return a;
-    }, {})).length;
-    g.rmList = Object.keys(g.rms);
-    g.batchList = Object.keys(g.batches);
-    /* Distinct spellings actually seen, so it is obvious why these rows grouped. */
-    g.seen = g.spellings.filter(function (x, i, a) { return x && a.indexOf(x) === i; });
-    return g;
-  }).sort(function (a, b) { return b.rows.length - a.rows.length; });
+  return clusters.filter(function (c) { return c.rowCount; });
 }
 
 function unassignedCount() {
   if (!S.data || !S.data.txns) return 0;
-  return S.data.txns.filter(function (t) { return !t.vrmEmpCode; }).length;
+  return S.data.txns.filter(function (t) { return !t.vrmEmpCode && !t.excluded; }).length;
+}
+
+/** Unassigned gross as a share of firm gross — what drives the banner. */
+function unassignedShare() {
+  if (!S.data || !S.data.txns) return { gross: 0, firm: 0, pct: 0 };
+  var un = metrics(S.data.txns.filter(function (t) { return !t.vrmEmpCode; }));
+  var all = metrics(S.data.txns);
+  return { gross: un.gross, firm: all.gross,
+           pct: all.gross ? (un.gross / all.gross) * 100 : 0 };
+}
+
+/*
+ * Shown above every page while a material slice of the book has no owner. VRM-wise
+ * figures are genuinely incomplete until it clears, and a number nobody has
+ * flagged as provisional is a number somebody will quote in a meeting.
+ */
+function provisionalBanner() {
+  if (!isAdmin()) return '';
+  var sh = unassignedShare();
+  if (sh.pct <= 5) return '';
+  return '<div class="panel" style="border-left:3px solid var(--warn);margin-bottom:18px">' +
+    '<div style="padding:13px 18px;font-size:13.5px;color:var(--ink2)">' +
+    '<b>Provisional</b> — ' + rupee(sh.gross) + ' (' + sh.pct.toFixed(1) + '%) is not yet ' +
+    'attributed to a VRM, so VRM-wise figures are incomplete. ' +
+    '<a href="#" data-act="gotounassigned" style="color:var(--p);font-weight:600">' +
+    'Clear the Unassigned queue</a>.</div></div>';
+}
+
+function bandLabel(b) {
+  return b === 'VERY_LIKELY' ? 'Very likely' : b === 'POSSIBLE' ? 'Possible' : 'Weak';
+}
+function bandColour(b) {
+  return b === 'VERY_LIKELY' ? 'var(--ok)' : b === 'POSSIBLE' ? 'var(--warn)' : 'var(--ink3)';
 }
 
 function viewUnassigned() {
   var groups = unassignedGroups();
-  var rowsTotal = groups.reduce(function (a, g) { return a + g.rows.length; }, 0);
+  var rowsTotal = groups.reduce(function (a, g) { return a + g.rowCount; }, 0);
+  var grossTotal = groups.reduce(function (a, g) { return a + g.gross; }, 0);
 
   if (!groups.length) {
     return pageHead('Unassigned', 'Every transaction belongs to a VRM', '') +
       '<div class="panel">' + emptyState('Nothing unassigned',
-        'Every uploaded row has been attributed to a VRM. Rows land here only when ' +
-        'the name in the file is not on the roster, or matches two people equally well.') +
+        'Every uploaded row has been attributed. Rows land here only when the name in ' +
+        'the file is not on the roster, or matches two people too closely to call — and ' +
+        'once you map a name, that decision is remembered and never asked again.') +
       '</div>';
   }
+
+  /* Bulk confirm covers only unambiguous, very-likely clusters. Nothing else. */
+  var bulk = groups.filter(function (g) {
+    return !g.ambiguous && g.suggestions.length &&
+           g.suggestions[0].band === 'VERY_LIKELY';
+  });
+  var bulkGross = bulk.reduce(function (a, g) { return a + g.gross; }, 0);
 
   var opts = (S.data.vrms || []).map(function (v) {
     return '<option value="' + esc(v.empCode) + '">' + esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
   }).join('');
 
-  return pageHead('Unassigned',
-      rowsTotal + ' row(s) under ' + groups.length + ' name(s) waiting to be mapped', '') +
+  var head = pageHead('Unassigned',
+    rowsTotal + ' row(s) · ' + rupee(grossTotal) + ' · ' + groups.length + ' name(s) to map',
+    bulk.length
+      ? '<button class="btn sm acc" data-act="bulkpre">Confirm all Very likely (' +
+        bulk.length + ', ' + rupee(bulkGross) + ')</button>'
+      : '');
+
+  return head +
     '<div class="panel" style="border-left:3px solid var(--warn)"><div style="padding:14px 18px;' +
-    'font-size:13.5px;color:var(--ink2)">These transactions are counted in the firm totals but ' +
-    'belong to nobody yet, so no VRM can see them and they sit under <b>Unassigned</b> in the ' +
-    'VRM-wise summary. Map each name to the right person — or create the VRM if they are new — ' +
-    'and every row under that name moves at once.</div></div>' +
+    'font-size:13.5px;color:var(--ink2)">These transactions count in the firm total but belong ' +
+    'to nobody yet, so no VRM can see them and they sit under <b>Unassigned</b> in the VRM-wise ' +
+    'summary. Confirming a name <b>remembers</b> the decision — the same spelling resolves ' +
+    'silently on every future upload.</div></div>' +
     groups.map(function (g, i) {
       var id = 'ua' + i;
+      var others = g.spellings.filter(function (x) { return x !== g.label; });
+      var top = g.suggestions[0];
+      var rest = g.suggestions.slice(1);
+
+      var primary = g.ambiguous
+        ? '<div style="padding:12px 14px;background:var(--warn-soft);border-radius:6px;' +
+          'font-size:13.5px;color:var(--ink2)">' +
+          '<b>Ambiguous</b> — two roster names match closely. Choose manually below.</div>'
+        : top
+          ? '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;' +
+            'padding:12px 14px;border:1px solid var(--line);border-radius:6px">' +
+              '<span style="color:' + bandColour(top.band) + ';font-weight:700">&#9679;</span>' +
+              '<span style="font-size:13.5px"><b>' + bandLabel(top.band) + '</b> — ' +
+                esc(top.name) + ' <span class="mono muted">(' + esc(top.vrmId) + ')</span></span>' +
+              '<span class="pill mono">' + top.score.toFixed(2) + '</span>' +
+              '<span style="flex:1"></span>' +
+              '<button class="btn sm ' + (top.band === 'VERY_LIKELY' ? 'acc' : '') + '" ' +
+                'data-act="confirmmap" data-key="' + esc(g.aliasKey) + '" data-vrm="' +
+                esc(top.vrmId) + '" data-sp="' + esc(g.spellings.join('\u0001')) + '">' +
+                'Confirm &amp; remember</button>' +
+              '<button class="btn sm gh" data-act="rejectmap" data-key="' + esc(g.aliasKey) +
+                '" data-vrm="' + esc(top.vrmId) + '">Not this person</button>' +
+            '</div>'
+          : '<div style="padding:12px 14px;font-size:13.5px;color:var(--ink2)">' +
+            'No roster name is close enough to suggest.</div>';
+
       return '<div class="panel"><div class="ptop"><div>' +
         '<h3>' + esc(g.label) + '</h3>' +
-        '<p class="muted" style="margin:2px 0 0;font-size:12.5px">' + esc(g.reason || 'not on the roster') +
-          (g.seen.length > 1
-            ? ' · written ' + g.seen.length + ' ways in the file: ' + esc(g.seen.join(', '))
-            : '') + '</p>' +
+        (others.length
+          ? '<p class="muted" style="margin:2px 0 0;font-size:12.5px">also: ' +
+            esc(others.join(' · ')) + '</p>'
+          : '') +
+        (g.warnings.length
+          ? '<p class="muted" style="margin:2px 0 0;font-size:12px">' +
+            esc(g.warnings.join(', ')) + '</p>'
+          : '') +
         '</div><div class="tools">' +
-          '<span class="pill">' + g.rows.length + ' row(s)</span>' +
-          '<span class="pill">' + rupee(g.gross) + ' gross</span>' +
+          '<span class="pill">' + g.rowCount + ' rows</span>' +
+          '<span class="pill">' + rupee(g.gross) + '</span>' +
         '</div></div>' +
         '<div style="padding:16px 20px;display:grid;gap:14px">' +
-          '<div style="display:flex;flex-wrap:wrap;gap:22px;font-size:13px;color:var(--ink2)">' +
-            '<div><b>' + g.clients + '</b> client(s)</div>' +
-            '<div>Net <b>' + rupee(g.net) + '</b></div>' +
-            (g.redemption ? '<div>Redemption <b>' + rupee(g.redemption) + '</b></div>' : '') +
-            (g.rmList.length ? '<div>RM: ' + esc(g.rmList.slice(0, 3).join(', ')) +
-              (g.rmList.length > 3 ? ' +' + (g.rmList.length - 3) : '') + '</div>' : '') +
-            (g.batchList.length ? '<div class="mono" style="font-size:11.5px">batch ' +
-              esc(g.batchList.join(', ')) + '</div>' : '') +
-          '</div>' +
-          '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">' +
-            '<div class="f grow" style="min-width:240px"><label class="lbl">Assign every row to</label>' +
-              '<select class="inp" id="' + id + '_to">' + opts + '</select></div>' +
-            '<button class="btn acc" data-act="assignun" data-key="' + esc(g.key.join('|')) +
-              '" data-sel="' + id + '_to">Assign ' + g.rows.length + ' row(s)</button>' +
-          '</div>' +
+          primary +
+          (rest.length || g.ambiguous || !top
+            ? '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
+              'Other options</summary>' +
+              (rest.length
+                ? '<div style="margin-top:10px;display:grid;gap:8px">' +
+                  rest.map(function (o) {
+                    return '<div style="display:flex;gap:10px;align-items:center;font-size:13px">' +
+                      '<span style="color:' + bandColour(o.band) + '">&#9679;</span>' +
+                      esc(o.name) + ' <span class="mono muted">(' + esc(o.vrmId) + ')</span>' +
+                      '<span class="pill mono">' + o.score.toFixed(2) + '</span>' +
+                      '<span style="flex:1"></span>' +
+                      '<button class="btn xs" data-act="confirmmap" data-key="' + esc(g.aliasKey) +
+                        '" data-vrm="' + esc(o.vrmId) + '" data-sp="' +
+                        esc(g.spellings.join('\u0001')) + '">Confirm</button>' +
+                      '<button class="btn xs gh" data-act="rejectmap" data-key="' +
+                        esc(g.aliasKey) + '" data-vrm="' + esc(o.vrmId) + '">Not them</button>' +
+                      '</div>';
+                  }).join('') + '</div>'
+                : '') +
+              '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' +
+                '<div class="f grow" style="min-width:240px"><label class="lbl">Assign to</label>' +
+                  '<select class="inp" id="' + id + '_to">' + opts + '</select></div>' +
+                '<button class="btn" data-act="confirmsel" data-key="' + esc(g.aliasKey) +
+                  '" data-sel="' + id + '_to" data-sp="' + esc(g.spellings.join('\u0001')) +
+                  '">Confirm &amp; remember</button>' +
+              '</div></details>'
+            : '') +
           '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
-            'Not one of ours — create a new VRM for this name</summary>' +
+            'Create a new VRM for this name</summary>' +
             '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' +
               '<div class="f grow" style="min-width:200px"><label class="lbl">VRM name</label>' +
                 '<input class="inp" id="' + id + '_nm" value="' + esc(g.label) + '"></div>' +
               '<div class="f grow" style="min-width:180px"><label class="lbl">Password for them</label>' +
                 '<input class="inp" id="' + id + '_pw" type="password" autocomplete="new-password"></div>' +
-              '<button class="btn" data-act="createun" data-key="' + esc(g.key.join('|')) +
+              '<button class="btn" data-act="createun" data-key="' + esc(g.spellings.join('\u0001')) +
                 '" data-nm="' + id + '_nm" data-pw="' + id + '_pw">Create &amp; assign</button>' +
             '</div>' +
-            '<p class="muted" style="font-size:12.5px;margin:10px 0 0">The new account cannot be ' +
-            'signed into until this password is set, so nobody inherits an unknown one.</p>' +
+            '<p class="muted" style="font-size:12.5px;margin:10px 0 0">Refused if the name ' +
+            'resembles someone already on the roster — that is how a book gets split in two.</p>' +
           '</details>' +
           '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
-            'Show the ' + g.rows.length + ' row(s)</summary>' +
+            'Exclude these rows</summary>' +
+            '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' +
+              '<div class="f" style="min-width:190px"><label class="lbl">Reason</label>' +
+                '<select class="inp" id="' + id + '_rc">' +
+                  '<option value="TEST_DATA">Test data</option>' +
+                  '<option value="NOT_A_PERSON">Not a person</option>' +
+                  '<option value="OTHER">Other</option></select></div>' +
+              '<div class="f grow" style="min-width:200px"><label class="lbl">Note (required for Other)</label>' +
+                '<input class="inp" id="' + id + '_rn"></div>' +
+              '<button class="btn dan" data-act="excludecl" data-key="' + esc(g.aliasKey) +
+                '" data-sp="' + esc(g.spellings.join('\u0001')) + '" data-rc="' + id +
+                '_rc" data-rn="' + id + '_rn">Exclude ' + g.rowCount + ' row(s)</button>' +
+            '</div>' +
+            '<p class="muted" style="font-size:12.5px;margin:10px 0 0">The rows stay on the ' +
+            'sheet for the record but leave every figure, including the unassigned share. ' +
+            'Reversible.</p>' +
+          '</details>' +
+          '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
+            'Show the ' + g.rowCount + ' row(s)</summary>' +
             '<div class="twrap" style="max-height:280px;margin-top:12px">' +
             '<table><thead><tr><th>Date</th><th>Client</th><th>Scheme</th>' +
             '<th>Type</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>' +
@@ -3269,7 +3936,8 @@ var VIEWS = {
 function render() {
   if (!S.session || !S.data) return;
   var fn = VIEWS[S.tab] || VIEWS[tabs()[0].id];
-  $('main').innerHTML = '<div class="view">' + fn() + '</div>';
+  $('main').innerHTML = '<div class="view">' +
+    (S.tab === 'unassigned' ? '' : provisionalBanner()) + fn() + '</div>';
   animateCounts();
   flushAfter_();
 }
@@ -3681,7 +4349,8 @@ function leagueTable(rows, met, f) {
 
   rows.forEach(function (t) {
     var k = (t.vrmEmpCode || '-').toUpperCase();
-    if (!per[k]) per[k] = { empCode: t.vrmEmpCode || '-', name: t.vrm || '(unassigned)', rows: [], n: 0, clients: {}, cur: 0, prv: 0 };
+    if (!per[k]) per[k] = { empCode: t.vrmEmpCode || '-', name: t.vrmEmpCode ? vrmNameOf(t) : 'Unassigned',
+                            rows: [], n: 0, clients: {}, cur: 0, prv: 0 };
     var r = per[k];
     r.rows.push(t); r.n++;
     if (t.clientCode) r.clients[t.clientCode.toUpperCase()] = 1;
@@ -4142,7 +4811,7 @@ function exportSpec(what) {
     var g = counted && isPurchase(t) ? num(t.amount) : 0;
     var rd = counted && t.txnType === TT.REDEMPTION ? num(t.amount) : 0;
     return [dmy(t.date), hhmm(t.time), t.clientCode, t.clientName, t.pan,
-            t.vrm, t.rmName, t.scheme, TT_LABEL[t.txnType] || t.txnType, num(t.amount),
+            vrmNameOf(t), t.rmName, t.scheme, TT_LABEL[t.txnType] || t.txnType, num(t.amount),
             TS_LABEL[t.status] || t.status, t.reason,
             t.vrmEmpCode, g, rd, g - rd, counted ? 'Yes' : 'No', t.batchId, t.id];
   }
@@ -4550,6 +5219,124 @@ var ACT = {
       absorb(d); toast('Transaction restored — it is back in the figures.');
     }).catch(function (e) { un(); fail(e); });
   },
+  /* Spellings travel as one attribute, split on \u0001 — a character no name
+     contains, so a comma or a pipe inside a name cannot break the list. */
+  confirmmap: function (btn) {
+    var sp = (btn.dataset.sp || '').split('\u0001').filter(Boolean);
+    var un = lock(btn, 'Saving');
+    api('confirmMapping', S.session.token, btn.dataset.key, sp, btn.dataset.vrm, 'MANUAL')
+      .then(function (d) {
+        var r = d.result || {};
+        absorb(d);
+        toast(r.moved + ' row(s) assigned to ' + r.name + ' — ' + r.aliases +
+              ' spelling(s) remembered.');
+      }).catch(function (e) { un(); fail(e); });
+  },
+  confirmsel: function (btn) {
+    var sel = document.getElementById(btn.dataset.sel);
+    if (!sel || !sel.value) return toast('Pick a VRM first.', 'e');
+    var sp = (btn.dataset.sp || '').split('\u0001').filter(Boolean);
+    var un = lock(btn, 'Saving');
+    api('confirmMapping', S.session.token, btn.dataset.key, sp, sel.value, 'MANUAL')
+      .then(function (d) {
+        var r = d.result || {};
+        absorb(d);
+        toast(r.moved + ' row(s) assigned to ' + r.name + ' — ' + r.aliases +
+              ' spelling(s) remembered.');
+      }).catch(function (e) { un(); fail(e); });
+  },
+  rejectmap: function (btn) {
+    var un = lock(btn, '');
+    api('rejectSuggestion', S.session.token, btn.dataset.key, btn.dataset.vrm)
+      .then(function (d) {
+        absorb(d);
+        toast('Noted — that person will not be suggested for this name again.');
+      }).catch(function (e) { un(); fail(e); });
+  },
+  excludecl: function (btn) {
+    var rc = document.getElementById(btn.dataset.rc);
+    var rn = document.getElementById(btn.dataset.rn);
+    var code = rc ? rc.value : '';
+    var note = rn ? rn.value.trim() : '';
+    if (code === 'OTHER' && !note) return toast('Say why, when the reason is Other.', 'e');
+    var sp = (btn.dataset.sp || '').split('\u0001').filter(Boolean);
+    var un = lock(btn, 'Excluding');
+    api('excludeCluster', S.session.token, btn.dataset.key, sp, code, note)
+      .then(function (d) {
+        var r = d.result || {};
+        absorb(d);
+        toast(r.excluded + ' row(s) excluded (' + rupee(r.amount) +
+              ') — out of every figure, reversible.');
+      }).catch(function (e) { un(); fail(e); });
+  },
+  undomap: function (btn) {
+    var un = lock(btn, 'Undoing');
+    api('undoMapping', S.session.token, btn.dataset.key)
+      .then(function (d) {
+        var r = d.result || {};
+        absorb(d);
+        toast('Undid the ' + r.kind + (r.restored ? ' — ' + r.restored +
+              ' row(s) back in Unassigned' : '') + '.');
+      }).catch(function (e) { un(); fail(e); });
+  },
+  /*
+   * Bulk confirm must show its work before writing. A dialog listing every
+   * cluster, its target and its amount is the difference between a considered
+   * action and a button that silently moved half the book.
+   */
+  bulkpre: function () {
+    var picks = unassignedGroups().filter(function (g) {
+      return !g.ambiguous && g.suggestions.length &&
+             g.suggestions[0].band === 'VERY_LIKELY';
+    });
+    if (!picks.length) return toast('Nothing is a very likely match right now.', 'e');
+    var total = picks.reduce(function (a, g) { return a + g.gross; }, 0);
+    var rows = picks.reduce(function (a, g) { return a + g.rowCount; }, 0);
+    window._bulkPicks = picks;
+    modal('Confirm ' + picks.length + ' mapping(s)',
+      rows + ' row(s) worth <b>' + rupee(total) + '</b> will be attributed, and every ' +
+      'spelling below remembered for future uploads.',
+      '<div class="twrap" style="max-height:300px;border:1px solid var(--line);border-radius:10px">' +
+      '<table><thead><tr><th>Name in the file</th><th>Goes to</th>' +
+      '<th class="num">Score</th><th class="num">Rows</th><th class="num">Gross</th>' +
+      '</tr></thead><tbody>' +
+      picks.map(function (g) {
+        var t = g.suggestions[0];
+        return '<tr><td>' + esc(g.label) +
+          (g.spellings.length > 1
+            ? '<div class="muted" style="font-size:11px">+ ' + (g.spellings.length - 1) +
+              ' other spelling(s)</div>' : '') + '</td>' +
+          '<td>' + esc(t.name) + ' <span class="mono muted">(' + esc(t.vrmId) + ')</span></td>' +
+          '<td class="num mono">' + t.score.toFixed(2) + '</td>' +
+          '<td class="num">' + g.rowCount + '</td>' +
+          '<td class="num">' + rupee(g.gross) + '</td></tr>';
+      }).join('') + '</tbody></table></div>',
+      '<button class="btn gh" data-act="close">Cancel</button>' +
+      '<button class="btn pri" data-act="bulkgo">Confirm all ' + picks.length + '</button>');
+  },
+  bulkgo: function (btn) {
+    var picks = window._bulkPicks || [];
+    if (!picks.length) return closeModal();
+    var items = picks.map(function (g) {
+      return { aliasKey: g.aliasKey, spellings: g.spellings,
+               vrmId: g.suggestions[0].vrmId,
+               txnDate: (g.rows[g.rows.length - 1] || {}).date || '' };
+    });
+    var un = lock(btn, 'Confirming');
+    api('bulkConfirmMappings', S.session.token, items)
+      .then(function (d) {
+        var r = d.result || {};
+        absorb(d); closeModal();
+        window._bulkPicks = null;
+        toast(r.clusters + ' mapping(s) confirmed, ' + r.moved + ' row(s) (' +
+              rupee(r.amount) + ')' +
+              ((r.refused || []).length ? '. ' + r.refused.length + ' refused — see the log' : '') +
+              '.', (r.refused || []).length ? 'w' : 's');
+      }).catch(function (e) { un(); fail(e); });
+  },
+  gotounassigned: function () {
+    S.tab = 'unassigned'; buildSidebar(); render();
+  },
   assignun: function (btn) {
     var sel = document.getElementById(btn.dataset.sel);
     if (!sel || !sel.value) return toast('Pick a VRM first.', 'e');
@@ -4642,6 +5429,10 @@ var ACT = {
           /* Say when ownership came from the RM column rather than a VRM column. */
           (num(r.attributedFromRm)
             ? ', ' + r.attributedFromRm + ' attributed from RM Name' : '') +
+          (num(r.viaAlias)
+            ? ', ' + r.viaAlias + ' matched a remembered name' : '') +
+          (num(r.excluded)
+            ? ', ' + r.excluded + ' excluded' : '') +
           (num(r.unassigned)
             ? '. ' + r.unassigned + ' row(s) need a VRM — see Unassigned' : '') +
           ((r.createdVrms || []).length ? '. New VRM(s): ' + r.createdVrms.join(', ') : '') +
