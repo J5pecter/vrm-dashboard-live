@@ -4810,6 +4810,7 @@ function importPreviewDialog(rows, skipped, fileName) {
    */
   var noPan = !rows.some(function (r) { return String(r.pan || '').trim(); });
   var sciFolios = rows.filter(function (r) { return isSciNotation(r.folio); }).length;
+  var mixedDates = !!window.__dateTypesMixed;
   var noVrmCol = !rows.some(function (r) { return String(r.vrm || '').trim(); });
   var attribution = noVrmCol
     ? '<br>No VRM column — each row is attributed to the <b>RM Name</b> where that person ' +
@@ -4822,6 +4823,14 @@ function importPreviewDialog(rows, skipped, fileName) {
     delimNote + shape +
     attribution +
     (noPan ? '<br><span class="muted">No PAN in this file — that is fine, PAN is optional.</span>' : '') +
+    (mixedDates
+      ? '<br><span style="color:var(--dan)"><b>This spreadsheet has already had its dates ' +
+        'rewritten.</b> Some rows hold a real date and others hold text, which only happens ' +
+        'when Excel converted part of the column and gave up on the rest — it means the ' +
+        'day and month have been swapped on the converted rows. The dates below are read ' +
+        'from what the cells DISPLAY, which recovers the original in most cases, but the ' +
+        'safe fix is to export this report as CSV instead of opening it in Excel.</span>'
+      : '') +
     (sciFolios
       ? '<br><span style="color:var(--warn)"><b>' + sciFolios + ' folio number(s) have been ' +
         'damaged by Excel</b> — stored as 4.40454E+11 instead of 440453792466. The digits are ' +
@@ -5169,7 +5178,26 @@ function mapColumns(headerRow) {
   return idx;
 }
 
-function rowsFromMatrix(matrix) {
+/*
+ * A spreadsheet read two ways, because no single pass is right for every column.
+ *
+ *   raw       numbers as numbers. A folio of 440453792466 keeps all twelve
+ *             digits; asking for the formatted value would hand back
+ *             "4.40454E+11" and the digits would be gone.
+ *   formatted the string the user SEES. For dates this is the only honest
+ *             source: the underlying value is Excel's interpretation, which on a
+ *             day-first locale turns a month-first export into the wrong month.
+ *
+ * Returns [rawMatrix, formattedMatrix]. rowsFromMatrix takes the date and time
+ * columns from the second and everything else from the first.
+ */
+function twoPassSheet(X, ws) {
+  var raw = X.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+  var fmt = X.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+  return [raw, fmt];
+}
+
+function rowsFromMatrix(matrix, formatted) {
   /* Find the header row: the first row that maps a date AND an amount. Files
      often carry a title or blank rows above the real header. */
   var hi = -1, idx = null;
@@ -5180,6 +5208,27 @@ function rowsFromMatrix(matrix) {
   if (hi < 0) {
     throw new Error('Could not find the expected columns. Download the template — the file needs ' +
                     'TxnDate, TXN Type and Amount at minimum.');
+  }
+
+  /*
+   * Take the date and time from the formatted pass. Everything else stays raw.
+   * Also notice when a date column holds BOTH a real date and a text date —
+   * that mix only happens when a spreadsheet program converted some rows and
+   * gave up on others, which means the file itself is already wrong.
+   */
+  window.__dateTypesMixed = false;
+  if (formatted && formatted.length === matrix.length) {
+    var sawDate = 0, sawText = 0;
+    for (var fr = hi + 1; fr < matrix.length; fr++) {
+      var rawCell = (matrix[fr] || [])[idx.date];
+      if (rawCell !== undefined && rawCell !== '') {
+        if (typeof rawCell === 'number') sawDate++; else sawText++;
+      }
+      if (!matrix[fr] || !formatted[fr]) continue;
+      if (idx.date !== undefined) matrix[fr][idx.date] = formatted[fr][idx.date];
+      if (idx.time !== undefined) matrix[fr][idx.time] = formatted[fr][idx.time];
+    }
+    window.__dateTypesMixed = (sawDate > 0 && sawText > 0);
   }
 
   /* A redemption report carries the type in its "Status" column. */
@@ -5307,19 +5356,21 @@ function handleFile(file) {
   reader.onload = function (e) {
     try {
       if (isCsv) {
-        finish(parseCsv(e.target.result));
+        finish(parseCsv(e.target.result), null);
       } else {
         loadSheetJs().then(function (X) {
-          var wb = X.read(new Uint8Array(e.target.result), { type: 'array', cellDates: true });
+          /* cellDates:false — see the note on twoPassSheet(). A Date object here
+             is Excel's guess at the format, and it is regularly wrong. */
+          var wb = X.read(new Uint8Array(e.target.result), { type: 'array', cellDates: false });
           var ws = wb.Sheets[wb.SheetNames[0]];
-          finish(X.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' }));
+          finish.apply(null, twoPassSheet(X, ws));
         }).catch(fail);
       }
     } catch (err) { fail(err); }
   };
-  function finish(matrix) {
+  function finish(matrix, formatted) {
     try {
-      var res = rowsFromMatrix(matrix);
+      var res = rowsFromMatrix(matrix, formatted);
 
       /*
        * The user told us which kind of file this is by which button they pressed.
