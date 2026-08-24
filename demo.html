@@ -4679,6 +4679,10 @@ function importPreviewDialog(rows, skipped, fileName) {
 
   var ord = window.__dateOrder === 'MDY'
     ? 'month-first (MM-DD-YYYY)' : 'day-first (DD-MM-YYYY)';
+  var delimName = { ',': 'commas', '\t': 'tabs', ';': 'semicolons', '|': 'pipes' };
+  var delimNote = (window.__csvDelim && window.__csvDelim !== ',')
+    ? '<br>Columns split on <b>' + (delimName[window.__csvDelim] || window.__csvDelim) + '</b>.'
+    : '';
   var shape = window.__typeFromStatus
     ? '<br>Read as a <b>redemption report</b> — the "Status" column holds the transaction type.'
     : '';
@@ -4689,6 +4693,7 @@ function importPreviewDialog(rows, skipped, fileName) {
    * people at month end.
    */
   var noPan = !rows.some(function (r) { return String(r.pan || '').trim(); });
+  var sciFolios = rows.filter(function (r) { return isSciNotation(r.folio); }).length;
   var noVrmCol = !rows.some(function (r) { return String(r.vrm || '').trim(); });
   var attribution = noVrmCol
     ? '<br>No VRM column — each row is attributed to the <b>RM Name</b> where that person ' +
@@ -4697,9 +4702,16 @@ function importPreviewDialog(rows, skipped, fileName) {
     : '';
   modal('Upload ' + rows.length + ' row(s)',
     'From <b>' + esc(fileName) + '</b>' + (skipped ? ' — ' + skipped + ' blank row(s) ignored' : '') +
-    '.<br>Dates read as <b>' + ord + '</b> — check the first row below looks right.' + shape +
+    '.<br>Dates read as <b>' + ord + '</b> — check the first row below looks right.' +
+    delimNote + shape +
     attribution +
     (noPan ? '<br><span class="muted">No PAN in this file — that is fine, PAN is optional.</span>' : '') +
+    (sciFolios
+      ? '<br><span style="color:var(--warn)"><b>' + sciFolios + ' folio number(s) have been ' +
+        'damaged by Excel</b> — stored as 4.40454E+11 instead of 440453792466. The digits are ' +
+        'gone from the file, not just reformatted, and folio is part of what makes a ' +
+        'transaction unique. Export as CSV, or format that column as Text before saving.</span>'
+      : '') +
     '<br>' + esc(mix) +
     (isAdmin()
       ? '<br><span class="muted">VRM columns are respected; an unknown VRM name is created.</span>'
@@ -5024,6 +5036,11 @@ function normTxnTypeC(v) { return TYPE_ALIAS_C[keyC(v)] || ''; }
 function normTxnStatusC(v) { return STATUS_ALIAS_C[keyC(v)] || ''; }
 function normHead(h) { return String(h || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
 
+/* True when a cell has been through Excel and come out as 4.40454E+11. */
+function isSciNotation(v) {
+  return /^-?\d(\.\d+)?[eE][+-]?\d+$/.test(String(v || '').trim());
+}
+
 function mapColumns(headerRow) {
   var idx = {};
   var norm = headerRow.map(normHead);
@@ -5115,7 +5132,40 @@ function rowsFromMatrix(matrix) {
 }
 
 /* Minimal RFC-4180 CSV parser so CSV import/export works with no internet. */
-function parseCsv(text) {
+/*
+ * Which character separates the columns? Counted on the first few non-empty
+ * lines, outside quotes, and the winner takes it. Tabs are common — the
+ * redemption report is tab separated, and a .csv saved from a tab-delimited
+ * source keeps its tabs — and semicolons turn up from European locales.
+ */
+function sniffDelimiter(text) {
+  var lines = String(text).split(/\r?\n/).filter(function (l) { return l.trim(); }).slice(0, 5);
+  if (!lines.length) return ',';
+  var cands = [',', '\t', ';', '|'];
+  var best = ',', bestScore = -1;
+  cands.forEach(function (d) {
+    var counts = lines.map(function (l) {
+      var n = 0, q = false;
+      for (var i = 0; i < l.length; i++) {
+        if (l[i] === '"') q = !q;
+        else if (!q && l[i] === d) n++;
+      }
+      return n;
+    });
+    var min = Math.min.apply(null, counts);
+    /* A real delimiter appears the same number of times on every line, and more
+       than once. Consistency matters more than raw frequency: a comma inside one
+       scheme name must not out-vote the tab that actually splits the columns. */
+    var consistent = counts.every(function (c) { return c === counts[0]; });
+    var score = min * (consistent ? 10 : 1);
+    if (min > 0 && score > bestScore) { bestScore = score; best = d; }
+  });
+  return best;
+}
+
+function parseCsv(text, delim) {
+  var d = delim || sniffDelimiter(text);
+  window.__csvDelim = d;
   var rows = [], row = [], cell = '', q = false;
   text = String(text).replace(/^﻿/, '');
   for (var i = 0; i < text.length; i++) {
@@ -5124,7 +5174,7 @@ function parseCsv(text) {
       if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
       else cell += c;
     } else if (c === '"') q = true;
-    else if (c === ',') { row.push(cell); cell = ''; }
+    else if (c === d) { row.push(cell); cell = ''; }
     else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
     else if (c !== '\r') cell += c;
   }
@@ -5133,7 +5183,9 @@ function parseCsv(text) {
 }
 
 function handleFile(file) {
-  var isCsv = /\.csv$/i.test(file.name);
+  /* Anything text-shaped goes through the delimiter sniffer; only real
+     spreadsheets need SheetJS. */
+  var isCsv = /\.(csv|tsv|txt|psv)$/i.test(file.name);
   var reader = new FileReader();
   reader.onerror = function () { toast('Could not read that file.', 'e'); };
   reader.onload = function (e) {
