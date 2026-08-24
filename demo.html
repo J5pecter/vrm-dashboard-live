@@ -4408,9 +4408,18 @@ function leagueTable(rows, met, f) {
     per[v.empCode.toUpperCase()] = { empCode: v.empCode, name: v.name, rows: [], n: 0, clients: {}, cur: 0, prv: 0 };
   });
 
-  /* Split the filtered range in half so "trend" compares like with like. */
+  /*
+   * Split the filtered range in half so "trend" compares like with like.
+   *
+   * This is NOT month over month, and the column must not imply that it is. On a
+   * fortnight of data a VRM who sold nothing in the last seven days shows -100%,
+   * which reads as a collapse when it is just uneven timing inside two weeks.
+   * The header names the basis and the split date so the number can be judged.
+   */
   var dates = rows.map(function (t) { return t.date; }).sort();
   var mid = dates.length ? dates[Math.floor(dates.length / 2)] : '';
+  window.__leagueSplit = mid;
+  window.__leagueSpan = dates.length ? { from: dates[0], to: dates[dates.length - 1] } : null;
 
   rows.forEach(function (t) {
     var k = (t.vrmEmpCode || '-').toUpperCase();
@@ -4454,7 +4463,20 @@ function leagueTable(rows, met, f) {
         '<div class="twrap"><table><thead><tr><th>#</th><th>VRM</th>' +
         '<th class="num">' + esc(met.label) + '</th><th>Share</th>' +
         '<th class="num">Clients</th><th class="num">Txns</th>' +
-        '<th class="num">Avg / txn</th><th class="num">Trend</th></tr></thead><tbody>' +
+        '<th class="num">Avg / txn</th>' +
+        '<th class="num" title="' +
+          (window.__leagueSpan
+            ? 'Business on or after ' + esc(dmy(window.__leagueSplit)) +
+              ' compared with the same metric before it, across ' +
+              esc(dmy(window.__leagueSpan.from)) + ' to ' + esc(dmy(window.__leagueSpan.to)) +
+              '. Not a month-on-month figure.'
+            : 'Second half of the selected range compared with the first half.') + '">' +
+          '2nd half vs 1st' +
+          (window.__leagueSplit
+            ? '<div class="muted" style="font-weight:400;font-size:10.5px">split ' +
+              esc(dmy(window.__leagueSplit)) + '</div>'
+            : '') +
+        '</th></tr></thead><tbody>' +
         list.map(function (r, i) {
           var share = total ? (r.value / total * 100) : 0;
           var barW = best ? Math.max(3, r.value / best * 100) : 0;
