@@ -1710,12 +1710,16 @@ function unassignedClusters_(txns, vrms, ctx) {
         }
         if (s.role === 'ADMIN') {
           /* Not rejected, not auto-created: parked for an admin to map. */
-          if (!owner && !unresolved) {
-            unresolved = wantName ? 'VRM "' + wantName + '" is not on the roster'
-              : rmRaw ? 'no VRM column, and RM "' + rmRaw + '" is not a VRM'
-              : 'no VRM and no RM named on the row';
+          /* An excluded row has no owner but is not waiting for anyone. */
+          var isExcluded = !!(verdict && verdict.outcome === 'EXCLUDED');
+          if (!owner && !isExcluded) {
+            if (!unresolved) {
+              unresolved = wantName ? 'VRM "' + wantName + '" is not on the roster'
+                : rmRaw ? 'no VRM column, and RM "' + rmRaw + '" is not a VRM'
+                : 'no VRM and no RM named on the row';
+            }
+            unassigned++;
           }
-          if (!owner) unassigned++;
         } else {
           var me = find(s.empCode);
           if (!owner && wantName && nameMatch_(wantName, me.name)) owner = me;
