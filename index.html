@@ -3633,17 +3633,80 @@ function rowsFromMatrix(matrix, formatted) {
     var seen = probe ? mapColumns(probe) : {};
     var found = Object.keys(seen).filter(function (k) { return REQUIRED_HINT[k]; });
     var missing = Object.keys(REQUIRED_HINT).filter(function (k) { return seen[k] === undefined; });
-    var headers = probe
-      ? probe.map(function (c) {
-          return String(c === null || c === undefined ? '' : c).trim();
-        }).filter(Boolean).slice(0, 16).join(' | ')
-      : '(no header row found at all)';
+    if (!probe) {
+      throw new Error('This file has no header row that I can find — the first 15 rows all ' +
+                      'look empty or nearly empty. Open it and check the report actually ' +
+                      'exported, then try again.');
+    }
+
+    /*
+     * List every column WITH a sample value from the rows beneath it.
+     *
+     * A header on its own is not enough to diagnose this. An export can leave a
+     * column unnamed while still filling it with figures, and a name can be
+     * present over an empty column. Showing the pair settles in one look whether
+     * the amount is absent, unnamed, or merely spelled unexpectedly — and an
+     * unrecognised column that turns out to hold numbers is worth pointing at
+     * rather than leaving for the reader to notice.
+     */
+    var sampleRows = matrix.slice(probeRow + 1, probeRow + 26);
+    var cellAt = function (row, c) {
+      var v = (row || [])[c];
+      return String(v === null || v === undefined ? '' : v).trim();
+    };
+    var valuesIn = function (c) {
+      var out = [];
+      sampleRows.forEach(function (row) {
+        var v = cellAt(row, c);
+        if (v) out.push(v);
+      });
+      return out;
+    };
+    var looksNumeric = function (vals) {
+      if (!vals.length) return false;
+      var n = 0;
+      vals.forEach(function (v) {
+        var t = v.replace(/[,\s\u20B9]/g, '');
+        if (/^-?\d+(\.\d+)?$/.test(t) && Math.abs(parseFloat(t)) > 0) n++;
+      });
+      return n / vals.length >= 0.6;
+    };
+
+    var byIndex = {};
+    Object.keys(seen).forEach(function (k) { byIndex[seen[k]] = k; });
+
+    var lines = [], numericUnknown = [];
+    var wide = Math.min(probe.length, 24);
+    for (var c = 0; c < wide; c++) {
+      var head = cellAt(probe, c);
+      var vals = valuesIn(c);
+      var role = byIndex[c];
+      if (!role && looksNumeric(vals)) {
+        numericUnknown.push((c + 1) + ' (' + (head || 'no header') + ')');
+      }
+      lines.push('  ' + (c + 1 < 10 ? ' ' : '') + (c + 1) + '. ' +
+                 (head || '(no header)') + '  =  ' + (vals.length ? vals[0] : '(empty)') +
+                 (role ? '   -> read as ' + role : ''));
+    }
+    if (probe.length > wide) lines.push('  ... and ' + (probe.length - wide) + ' more column(s)');
+
+    var tail;
+    if (numericUnknown.length) {
+      tail = 'Column ' + numericUnknown.join(' and ') + ' holds numbers but carries a name I ' +
+             'do not recognise. If that is the amount, rename its header to "Amount" and ' +
+             'upload again.';
+    } else {
+      tail = 'No column here holds amounts at all, so the figure is missing from the export ' +
+             'itself rather than misnamed. Re-run the report with the amount column included — ' +
+             'in most report builders it is a tick-box in the column chooser.';
+    }
+
     throw new Error(
       'This file is missing ' +
       missing.map(function (k) { return REQUIRED_HINT[k]; }).join(' and ') +
-      '.\n\nRow ' + (probeRow + 1) + ' looks like the header and reads:\n' + headers +
-      '\n\nRecognised from it: ' + (found.length ? found.join(', ') : 'nothing') +
-      '.\nRename the missing column to match the template, or download the template to compare.');
+      '.\n\nRow ' + (probeRow + 1) + ' is the header. Its ' + probe.length +
+      ' column(s), each with the first value found under it:\n' + lines.join('\n') +
+      '\n\nRecognised: ' + (found.length ? found.join(', ') : 'nothing') + '.\n\n' + tail);
   }
 
   /*
