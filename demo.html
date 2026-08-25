@@ -1053,6 +1053,51 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
    * with two Sharmas on the roster it stopped being hypothetical. The one-tap
    * confirm is what keeps the cost of that caution low.
    */
+  var COMMON_NAME_TOKENS = (function () {
+    var out = {};
+    ('sharma singh kumar shah patel gupta jain verma yadav mehta agarwal aggarwal ' +
+     'khan das roy reddy rao nair joshi mishra pandey tiwari chauhan prasad devi ' +
+     'lal bai ali ahmed hussain sheikh ansari kaur chandra dubey srivastava jha ' +
+     'pillai iyer menon banerjee chatterjee mukherjee ghosh bose sen kulkarni ' +
+     'deshmukh patil pawar jadhav shinde more naik thakur rathore chopra kapoor ' +
+     'malhotra khanna arora bhatia sethi sood bansal goyal mittal ' +
+     'vijay mahesh hemant ramesh suresh rajesh mukesh dinesh naresh ashok arun ' +
+     'ravi raju raj kiran anil sunil amit rahul rohit sanjay ajay vinod manoj ' +
+     'deepak prakash ganesh gopal shyam mohan krishna ram sita geeta rekha seema ' +
+     'sunita anita kavita meena pooja priya neha')
+      .split(/\s+/).forEach(function (w) { if (w) out[w.toUpperCase()] = 1; });
+    return out;
+  })();
+
+  /*
+   * Ported verbatim from Code.gs. The demo called this in two places without
+   * ever defining it, so anything that touched an unassigned cluster threw a
+   * ReferenceError — which took the acceptance suite down with it.
+   */
+  function unassignedReason_(rawName, ctx, txnDate) {
+    var nm = s_(rawName);
+    if (!nm) return 'no VRM or RM was named on the row';
+    var memoKey = normaliseName_(nm) + '@' + s_(txnDate);
+    if (ctx && ctx.reasonMemo && ctx.reasonMemo[memoKey] !== undefined) {
+      return ctx.reasonMemo[memoKey];
+    }
+    var v = resolveVrmName_(nm, txnDate, ctx);
+    if (v.outcome === 'ASSIGNED') {
+      /* The roster or the alias table has changed since upload. */
+      var msg = 'now resolves to ' + v.vrmId + ' — re-upload or assign to clear it';
+      if (ctx && ctx.reasonMemo) ctx.reasonMemo[memoKey] = msg;
+      return msg;
+    }
+    var text = v.ambiguous
+      ? 'more than one roster name matches closely — choose manually'
+      : v.suggestions.length
+        ? 'closest match ' + v.suggestions[0].name + ' (' + v.suggestions[0].vrmId +
+          ') at ' + v.suggestions[0].score.toFixed(2)
+        : 'not on the roster';
+    if (ctx && ctx.reasonMemo) ctx.reasonMemo[memoKey] = text;
+    return text;
+  }
+
   function resolveVrmName_(rawName, txnDate, ctx) {
     ctx = ctx || resolverContext_();
     var key = normaliseName_(rawName);
@@ -1115,18 +1160,89 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
         byWord[w][s_(v.empCode).toUpperCase()] = v;
       });
     });
-  
+
+    /*
+     * A cell often carries more than one person: "Mukesh Malpani - Khushi" is a
+     * client and a VRM joined by a dash. Split on the separators these exports
+     * use, so a word can be judged by the company it keeps rather than by the
+     * whole cell. The full string stays in the list, because most cells are
+     * simply one name.
+     */
+    var segments = s_(rawName).split(/[\-\/,;&|]+/).map(function (t) {
+      return s_(t);
+    }).filter(function (t) { return t !== ''; });
+    if (!segments.length) segments = [s_(rawName)];
+    var segmentOf = {};
+    segments.forEach(function (seg) {
+      var ws = realWords_(nameWords_(seg));
+      ws.forEach(function (w) {
+        /* keep the SHORTEST segment a word appears in — the most specific one */
+        if (segmentOf[w] === undefined || ws.length < segmentOf[w]) segmentOf[w] = ws.length;
+      });
+    });
+
     var rejectedHere = ctx.neg[key] || {};
     var hits = {}, hitList = [];
     realWords_(nameWords_(rawName)).forEach(function (w) {
       if (w.length < 3 || !byWord[w]) return;
       Object.keys(byWord[w]).forEach(function (code) {
-        if (rejectedHere[code] || hits[code]) return;
-        hits[code] = 1;
-        hitList.push(byWord[w][code]);
+        if (rejectedHere[code]) return;
+        if (!hits[code]) { hits[code] = []; hitList.push(byWord[w][code]); }
+        if (hits[code].indexOf(w) < 0) hits[code].push(w);
       });
     });
-  
+
+    /*
+     * Whether a hit is unique and whether it is strong enough to ACT on are two
+     * different questions, and this tier originally asked only the first.
+     *
+     * "Dhanshree Ramsagar Sharma" shares exactly one word with "Parth Vijay
+     * Sharma", and that word is unique across the roster — so uniqueness alone
+     * handed her business to Parth. She is an entirely different person. Two
+     * rules stop that, and both ask how MUCH of the name agrees:
+     *
+     *   - One shared word counts only when it stands nearly alone. "Aakanksha",
+     *     or "Khushi" as its own segment after a dash, identifies somebody. The
+     *     same word buried among three others does not, because the others belong
+     *     to a person the roster has never heard of.
+     *   - A shared word that half the country carries never identifies anybody
+     *     own, however unique it happens to be among these eight people.
+     *     Distinctive surnames — Soni, Dodiya, Shetty, Saldanha — are precisely
+     *     what this tier exists to catch, so they are left out of that list.
+     *
+     * Two shared words override both rules: "Baranwal Aakanksha Bhanupratap"
+     * agrees with "Aakanksha Baranwal" twice, and the third word is a patronymic
+     * the roster simply omits.
+     */
+    var strong = hitList.filter(function (v) {
+      var words = hits[s_(v.empCode).toUpperCase()] || [];
+
+      /*
+       * At least one word that actually distinguishes somebody has to agree.
+       * "Vijay Sharma Gupta" shares two words with "Parth Vijay Sharma" and is
+       * still a different person, because both shared words are ones half the
+       * country carries. Without this, the count rule below would wave it past.
+       */
+      var telling = words.filter(function (w) { return !COMMON_NAME_TOKENS[w]; });
+      if (!telling.length) return false;
+
+      /* Two agreeing words is enough on its own. */
+      if (words.length >= 2) return true;
+
+      /* One word only counts when it stands nearly alone in its part of the cell. */
+      var w = words[0];
+      return (segmentOf[w] === undefined ? 99 : segmentOf[w]) <= 2;
+    });
+
+    /*
+     * Weak hits are not handled here. They fall through to the scorer below,
+     * which already ranks candidates properly, respects "not this person"
+     * rejections and suppresses suggestions when two names are too close to
+     * separate. Short-circuiting with a flat guessed score would have thrown all
+     * of that away for a worse answer.
+     */
+    hitList = strong;
+
     if (hitList.length === 1) {
       return { outcome: 'ASSIGNED', vrmId: hitList[0].empCode, tier: 2.5,
                matchedVia: 'UNIQUE_WORD', aliasKey: key,
@@ -1325,7 +1441,7 @@ function unassignedClusters_(txns, vrms, ctx) {
           var c = JSON.parse(JSON.stringify(t));
           if (!fullPan) { c.pan = maskPan(c.pan); c.panMasked = true; } else { c.panMasked = false; }
           c.excluded = c.vrmEmpCode ? false : !!rctx.excl[normaliseName_(c.vrm)];
-          c.unassignedReason = c.vrmEmpCode ? '' : reasonFor(c.vrm, rctx, c.date);
+          c.unassignedReason = c.vrmEmpCode ? '' : unassignedReason_(c.vrm, rctx, c.date);
           return c;
         }),
       adminExists: true,
