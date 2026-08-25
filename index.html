@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <title>VRM Revenue Dashboard</title>
 <meta name="description" content="SIP and Lumpsum sales MIS for VRMs and Admin.">
 </head>
@@ -632,6 +633,21 @@ function toIsoOrdered(v, order) {
  * API_URL is empty in the HtmlService build and filled in by tools/build-pages.py
  * for the hosted build, so this one file works either way.
  */
+/*
+ * The build of THIS page, as distinct from the build of the server.
+ *
+ * These two move independently: the frontend ships by pushing to Pages, the
+ * backend by creating a new Apps Script version, and either can be stale on its
+ * own. Worse, GitHub Pages is a single cached HTML file, so a browser can hold
+ * yesterday's app for hours while the server is perfectly current — and an
+ * error message pasted from that stale page is indistinguishable from a genuine
+ * failure of the new code.
+ *
+ * So the number travels with the errors that matter. Anything pasted back names
+ * the build that produced it, and there is nothing left to guess about.
+ */
+var PAGE_BUILD = '2026-08-25d amount-autodetect';
+
 var API_URL = 'https://script.google.com/macros/s/AKfycbzOwsKX0s0QZsoMAPsdzV8KsL64VmvnYMyKV4YD4J4G-X7aN2SFCWATeazE0AZASqwuaw/exec';        /* set by the Pages build */
 
 function useFetch() {
@@ -847,7 +863,10 @@ function loadVrmList() {
     /* Visible before anyone signs in, because a stale deployment is exactly the
        thing you want to notice BEFORE spending ten minutes on an upload. */
     var lb = $('loginBuild');
-    if (lb) lb.textContent = d.build ? 'server build ' + d.build : 'server build unknown (old deployment)';
+    if (lb) {
+      lb.textContent = (d.build ? 'server build ' + d.build : 'server build unknown (old deployment)') +
+                       '  \u00b7  page build ' + PAGE_BUILD;
+    }
     var sel = $('lvrm'), list = d.vrms || [];
     if (!list.length) { sel.innerHTML = '<option value="">No VRMs found in the sheet</option>'; return; }
     /* Duplicate names are disambiguated by emp code, e.g. "Pavan Soni (VRM002)". */
@@ -962,7 +981,10 @@ function enterApp() {
    * deployment — which presents as the app mysteriously lacking a feature.
    */
   var b = $('buildStamp');
-  if (b) b.textContent = (S.data && S.data.build) ? 'server build ' + S.data.build : '';
+  if (b) {
+    b.textContent = ((S.data && S.data.build) ? 'server build ' + S.data.build : '') +
+                    '  \u00b7  page build ' + PAGE_BUILD;
+  }
   buildSidebar();
   render();
   toast('Welcome back, ' + S.session.name.split(' ')[0] + '.', 'i');
@@ -3858,7 +3880,8 @@ function rowsFromMatrix(matrix, formatted) {
         ? '\n\nNote: the header row names only ' + probe.length + ' of those ' + fullWidth +
           ' columns, so the rest arrived unnamed.'
         : '') +
-      '\n\nRecognised: ' + (found.length ? found.join(', ') : 'nothing') + '.\n\n' + tail);
+      '\n\nRecognised: ' + (found.length ? found.join(', ') : 'nothing') + '.\n\n' + tail +
+      '\n\n[page build ' + PAGE_BUILD + ']');
   }
 
   /*
