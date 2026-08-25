@@ -4987,6 +4987,8 @@ function importPreviewDialog(rows, skipped, fileName) {
   var redacted = rows.filter(function (r) {
     return String(r.pan || '').indexOf('*') >= 0;
   }).length;
+  var guessed = window.__amountGuess;
+  var statusAssumed = !!window.__statusAssumed;
   var sciFolios = rows.filter(function (r) { return isSciNotation(r.folio); }).length;
   var mixedDates = !!window.__dateTypesMixed;
   var noVrmCol = !rows.some(function (r) { return String(r.vrm || '').trim(); });
@@ -5001,6 +5003,19 @@ function importPreviewDialog(rows, skipped, fileName) {
     delimNote + shape +
     attribution +
     (noPan ? '<br><span class="muted">No PAN in this file — that is fine, PAN is optional.</span>' : '') +
+    (statusAssumed
+      ? '<br><span style="color:var(--warn)"><b>This file has no status column, so every row ' +
+        'is being treated as Completed.</b> Only completed business counts towards revenue — ' +
+        'if this report can contain pending or rejected transactions, add its status column ' +
+        'and upload again, or the totals will be overstated.</span>'
+      : '') +
+    (guessed
+      ? '<br><span style="color:var(--warn)"><b>The amount was read from column ' + guessed.col +
+        (guessed.header ? ' ("' + esc(guessed.header) + '")' : ' , which has no header') +
+        '.</b> No column named an amount, so it was identified by what it holds — ' +
+        'numbers that vary from row to row, typically around ' + rupee(guessed.median) +
+        '. Check the total below against the source report before importing.</span>'
+      : '') +
     (redacted
       ? '<br><span class="muted"><b>' + redacted + ' PAN(s) redacted in your browser</b> before ' +
         'upload — only the first two and last four characters are sent, so no PAN crosses the ' +
@@ -5416,6 +5431,98 @@ function isSciNotation(v) {
   return /^-?\d(\.\d+)?[eE][+-]?\d+$/.test(String(v || '').trim());
 }
 
+/*
+ * ================= FINDING THE AMOUNT BY ITS VALUES ========================
+ *
+ * Column mapping reads the header row, which fails whenever the header row is
+ * not the whole story: an export can leave the amount column unnamed, name it
+ * something nobody has met, or write a header row narrower than the rows
+ * beneath it so the column is not even counted.
+ *
+ * When the headers do not yield an amount, look at what is actually IN the
+ * columns instead. Money is recognisable: consistently numeric, varying from
+ * row to row, and in a plausible range.
+ *
+ * The rule is deliberately all-or-nothing. Exactly one unclaimed column may
+ * look like money for this to fire — two candidates means guessing between
+ * them, and guessing which column is the revenue is not a thing this should
+ * ever do quietly. When it does fire, the preview says so in as many words so
+ * the figure can be checked before anything is committed.
+ */
+
+/* The widest row, not the header row: an export can write a short header. */
+function tableWidth(matrix, from, limit) {
+  var w = 0, end = Math.min(matrix.length, (from || 0) + (limit || 400));
+  for (var r = from || 0; r < end; r++) w = Math.max(w, (matrix[r] || []).length);
+  return w;
+}
+
+function cellText(row, c) {
+  var v = (row || [])[c];
+  return String(v === null || v === undefined ? '' : v).trim();
+}
+
+/* A number, or null. Anything carrying date, time or percent punctuation is not money. */
+function moneyValue(raw) {
+  var v = String(raw === null || raw === undefined ? '' : raw).trim();
+  if (!v) return null;
+  if (/[\/:%]/.test(v)) return null;            /* 07-31-2026 is caught below */
+  if (/[A-DF-Za-df-z]/.test(v)) return null;    /* letters, except a lone E for exponents */
+  if (/^-?\d{1,2}-\d{1,2}-\d{2,4}$/.test(v)) return null;
+  var t = v.replace(/[,\s\u20B9]/g, '').replace(/^\((.*)\)$/, '-$1');
+  if (!/^-?\d+(\.\d+)?$/.test(t)) return null;
+  var n = parseFloat(t);
+  return isFinite(n) ? n : null;
+}
+
+function looksLikeMoneyColumn(vals) {
+  if (vals.length < 1) return null;
+  var nums = [], distinct = {};
+  for (var i = 0; i < vals.length; i++) {
+    var n = moneyValue(vals[i]);
+    if (n !== null) nums.push(n);
+    distinct[vals[i]] = 1;
+  }
+  /* Nearly every filled cell must be a number — one stray note is tolerable. */
+  if (nums.length / vals.length < 0.8) return null;
+  /*
+   * A column repeating one value carries no information. This is not
+   * hypothetical: these exports write the same Trxn No. on every row once Excel
+   * has rounded it, and that column would otherwise look exactly like money.
+   */
+  if (Object.keys(distinct).length < 2 && vals.length > 3) return null;
+  var sorted = nums.slice().sort(function (a, b) { return a - b; });
+  var med = sorted[Math.floor(sorted.length / 2)];
+  /* Below a hundred is a unit count or a NAV; above a crore-of-crores is an id. */
+  if (!(med >= 100 && med < 1e10)) return null;
+  return med;
+}
+
+/*
+ * Returns {col, header, median} when exactly one unclaimed column looks like
+ * money, or {ambiguous:[...]} when several do, or null when none do.
+ */
+function findAmountByValues(matrix, hi, idx) {
+  var claimed = {};
+  Object.keys(idx).forEach(function (k) { claimed[idx[k]] = k; });
+  var width = tableWidth(matrix, hi, 400);
+  var end = Math.min(matrix.length, hi + 1 + 400);
+  var found = [];
+  for (var c = 0; c < width; c++) {
+    if (claimed[c] !== undefined) continue;
+    var vals = [];
+    for (var r = hi + 1; r < end; r++) {
+      var v = cellText(matrix[r], c);
+      if (v) vals.push(v);
+    }
+    var med = looksLikeMoneyColumn(vals);
+    if (med !== null) found.push({ col: c, header: cellText(matrix[hi], c), median: med });
+  }
+  if (found.length === 1) return found[0];
+  if (found.length > 1) return { ambiguous: found };
+  return null;
+}
+
 function mapColumns(headerRow) {
   var idx = {};
   var norm = headerRow.map(normHead);
@@ -5450,11 +5557,39 @@ function twoPassSheet(X, ws) {
 function rowsFromMatrix(matrix, formatted) {
   /* Find the header row: the first row that maps a date AND an amount. Files
      often carry a title or blank rows above the real header. */
+  window.__amountGuess = null;
   var hi = -1, idx = null;
   for (var r = 0; r < Math.min(matrix.length, 15); r++) {
     var m = mapColumns(matrix[r] || []);
     if (m.date !== undefined && m.amount !== undefined) { hi = r; idx = m; break; }
   }
+
+  /*
+   * No column NAMED an amount. Before giving up, look for one that behaves like
+   * an amount — see findAmountByValues(). A header row carrying a date and a
+   * transaction type is clearly the header even without it.
+   */
+  var amountAmbiguity = null;
+  if (hi < 0) {
+    for (var r2 = 0; r2 < Math.min(matrix.length, 15); r2++) {
+      var m2 = mapColumns(matrix[r2] || []);
+      if (m2.date === undefined || m2.txnType === undefined) continue;
+      var guess = findAmountByValues(matrix, r2, m2);
+      if (guess && guess.ambiguous) { amountAmbiguity = guess.ambiguous; break; }
+      if (guess) {
+        hi = r2;
+        idx = m2;
+        idx.amount = guess.col;
+        window.__amountGuess = {
+          col: guess.col + 1,
+          header: guess.header,
+          median: guess.median
+        };
+        break;
+      }
+    }
+  }
+
   if (hi < 0) {
     /*
      * Say what was actually found. "Could not find the expected columns" sends
@@ -5515,7 +5650,13 @@ function rowsFromMatrix(matrix, formatted) {
     Object.keys(seen).forEach(function (k) { byIndex[seen[k]] = k; });
 
     var lines = [], numericUnknown = [];
-    var wide = Math.min(probe.length, 24);
+    /*
+     * Span the WIDEST row, not the header row. A header shorter than the rows
+     * under it is exactly how a column goes missing, and listing only the named
+     * columns would hide the very thing being looked for.
+     */
+    var fullWidth = Math.max(probe.length, tableWidth(matrix, probeRow, 400));
+    var wide = Math.min(fullWidth, 24);
     for (var c = 0; c < wide; c++) {
       var head = cellAt(probe, c);
       var vals = valuesIn(c);
@@ -5527,10 +5668,17 @@ function rowsFromMatrix(matrix, formatted) {
                  (head || '(no header)') + '  =  ' + (vals.length ? vals[0] : '(empty)') +
                  (role ? '   -> read as ' + role : ''));
     }
-    if (probe.length > wide) lines.push('  ... and ' + (probe.length - wide) + ' more column(s)');
+    if (fullWidth > wide) lines.push('  ... and ' + (fullWidth - wide) + ' more column(s)');
 
     var tail;
-    if (numericUnknown.length) {
+    if (amountAmbiguity) {
+      tail = 'More than one column looks like money — ' +
+             amountAmbiguity.map(function (g) {
+               return 'column ' + (g.col + 1) + ' (' + (g.header || 'no header') + ')';
+             }).join(' and ') +
+             '. Which one is the transaction amount cannot be guessed safely, so name it ' +
+             '"Amount" in the header row and upload again.';
+    } else if (numericUnknown.length) {
       tail = 'Column ' + numericUnknown.join(' and ') + ' holds numbers but carries a name I ' +
              'do not recognise. If that is the amount, rename its header to "Amount" and ' +
              'upload again.';
@@ -5543,8 +5691,12 @@ function rowsFromMatrix(matrix, formatted) {
     throw new Error(
       'This file is missing ' +
       missing.map(function (k) { return REQUIRED_HINT[k]; }).join(' and ') +
-      '.\n\nRow ' + (probeRow + 1) + ' is the header. Its ' + probe.length +
+      '.\n\nRow ' + (probeRow + 1) + ' is the header. Its ' + fullWidth +
       ' column(s), each with the first value found under it:\n' + lines.join('\n') +
+      (fullWidth > probe.length
+        ? '\n\nNote: the header row names only ' + probe.length + ' of those ' + fullWidth +
+          ' columns, so the rest arrived unnamed.'
+        : '') +
       '\n\nRecognised: ' + (found.length ? found.join(', ') : 'nothing') + '.\n\n' + tail);
   }
 
@@ -5573,11 +5725,18 @@ function rowsFromMatrix(matrix, formatted) {
   var typeFromStatus = detectTypeInStatusColumn(matrix, hi, idx);
   window.__typeFromStatus = typeFromStatus;
 
+  /*
+   * A status column is wanted, not required.
+   *
+   * Status decides what counts as revenue — only a completed transaction does —
+   * so a file without one cannot separate settled business from pending. But
+   * refusing the file outright helps nobody: these exports frequently omit the
+   * column, and every row in them has in fact settled. Assume Completed, say so
+   * where it cannot be missed, and let the figures be checked.
+   */
   var required = { date: 'TxnDate', clientCode: 'Client Code', amount: 'Amount' };
-  if (!typeFromStatus) {
-    required.txnType = 'TXN Type';
-    required.status = 'Txn Status';
-  }
+  if (!typeFromStatus) required.txnType = 'TXN Type';
+  window.__statusAssumed = (!typeFromStatus && idx.status === undefined);
   var missing = Object.keys(required).filter(function (k) { return idx[k] === undefined; })
                   .map(function (k) { return required[k]; });
   if (missing.length) {
@@ -5619,7 +5778,8 @@ function rowsFromMatrix(matrix, formatted) {
       amount: num(String(get('amount')).replace(/[,\s₹]/g, '')),
       /* A redemption report has no status column of its own — these are settled
          transactions by the time they appear in it. */
-      status: typeFromStatus ? 'Completed'
+      status: (typeFromStatus || idx.status === undefined)
+              ? 'Completed'
               : String(get('status') == null ? '' : get('status')).trim(),
       reason: String(get('reason') == null ? '' : get('reason')).trim(),
       folio: String(get('folio') == null ? '' : get('folio')).trim()
