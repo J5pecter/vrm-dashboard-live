@@ -4868,6 +4868,9 @@ function importPreviewDialog(rows, skipped, fileName) {
    * people at month end.
    */
   var noPan = !rows.some(function (r) { return String(r.pan || '').trim(); });
+  var redacted = rows.filter(function (r) {
+    return String(r.pan || '').indexOf('*') >= 0;
+  }).length;
   var sciFolios = rows.filter(function (r) { return isSciNotation(r.folio); }).length;
   var mixedDates = !!window.__dateTypesMixed;
   var noVrmCol = !rows.some(function (r) { return String(r.vrm || '').trim(); });
@@ -4882,6 +4885,11 @@ function importPreviewDialog(rows, skipped, fileName) {
     delimNote + shape +
     attribution +
     (noPan ? '<br><span class="muted">No PAN in this file — that is fine, PAN is optional.</span>' : '') +
+    (redacted
+      ? '<br><span class="muted"><b>' + redacted + ' PAN(s) redacted in your browser</b> before ' +
+        'upload — only the first two and last four characters are sent, so no PAN crosses the ' +
+        'network or reaches the sheet.</span>'
+      : '') +
     (mixedDates
       ? '<br><span style="color:var(--dan)"><b>This spreadsheet has already had its dates ' +
         'rewritten.</b> Some rows hold a real date and others hold text, which only happens ' +
@@ -5239,6 +5247,52 @@ var STATUS_ALIAS_C = {
 };
 function normTxnTypeC(v) { return TYPE_ALIAS_C[keyC(v)] || ''; }
 function normTxnStatusC(v) { return STATUS_ALIAS_C[keyC(v)] || ''; }
+/* ========================= PAN, REDACTED IN THE BROWSER ===================
+ *
+ * The network refuses to carry a PAN to a Google domain. That is a DLP rule on
+ * data in transit, and it is a reasonable one: a PAN is the single most
+ * identifying thing in this file.
+ *
+ * So the PAN never leaves this machine. The browser reduces it to a redacted
+ * form BEFORE the upload request is built, and only the redacted value is sent,
+ * stored and displayed. Nothing downstream ever holds a PAN, which means the
+ * rule is satisfied in substance and not merely evaded: there is no PAN in the
+ * sheet, in a backup, in the audit log or in an export.
+ *
+ * What survives redaction is enough to tell clients apart — the first two and
+ * last four characters, which is the same shape the redemption report already
+ * arrives in (HN****574J). Two clients sharing a client code and a surname will
+ * still differ here.
+ *
+ * PAN_MODE, if you ever need to change it:
+ *   MASK  (default) send AB****234F. No PAN crosses the network.
+ *   DROP           send nothing at all. Strictest, loses client distinction.
+ *   FULL           send the PAN as written. Only for an environment with no
+ *                  such rule — it WILL be blocked by a DLP proxy, by design.
+ */
+var PAN_MODE = 'MASK';
+
+function redactPan(raw) {
+  var v = String(raw === null || raw === undefined ? '' : raw)
+    .toUpperCase().replace(/\s+/g, '');
+  if (!v) return '';
+  if (PAN_MODE === 'DROP') return '';
+  if (PAN_MODE === 'FULL') return v;
+
+  /* Already redacted at source — leave it exactly as it came. */
+  if (v.indexOf('*') >= 0) return v;
+
+  /* A real PAN: five letters, four digits, one letter. */
+  if (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(v)) return v.slice(0, 2) + '****' + v.slice(-4);
+
+  /* Anything else that carries no identity is dropped rather than passed on. */
+  if (!/[A-Z0-9]/.test(v)) return '';
+
+  /* Unrecognised but non-empty: redact the middle rather than trust it. */
+  if (v.length > 6) return v.slice(0, 2) + '****' + v.slice(-4);
+  return '';
+}
+
 function normHead(h) { return String(h || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
 
 /* True when a cell has been through Excel and come out as 4.40454E+11. */
@@ -5376,7 +5430,8 @@ function rowsFromMatrix(matrix, formatted) {
       time: get('time'),
       clientCode: String(get('clientCode') == null ? '' : get('clientCode')).trim(),
       clientName: String(get('clientName') == null ? '' : get('clientName')).trim(),
-      pan: String(get('pan') == null ? '' : get('pan')).trim(),
+      /* Redacted here, before anything is sent. See redactPan(). */
+      pan: redactPan(get('pan')),
       vrm: String(get('vrm') == null ? '' : get('vrm')).trim(),
       rmName: String(get('rmName') == null ? '' : get('rmName')).trim(),
       scheme: String(get('scheme') == null ? '' : get('scheme')).trim(),
