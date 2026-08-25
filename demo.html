@@ -1093,24 +1093,58 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
                warnings: warnings.concat(['roster_duplicate']) };
     }
   
+    /*
+     * TIER 2.5 — a word that belongs to exactly one person on the roster.
+     *
+     * Files write "Pavan" where the roster says "Pavan Lekhraj Soni", and a
+     * surname alone turns up just as often. A lone word is normally far too weak
+     * to identify anybody — nameMatch_ refuses it outright, pairwise, because it
+     * cannot see the rest of the roster. It is safe HERE, and only here, because
+     * uniqueness is checked across every eligible VRM: if two people share the
+     * word, nobody is chosen and the row parks naming both.
+     *
+     * Compound cells are handled too: "Mukesh Malpani - Khushi" contributes each
+     * of its words, and only "Khushi" belongs to a single VRM.
+     */
+    var eligibleNow = eligibleVrms_(ctx, txnDate);
+    var byWord = {};
+    eligibleNow.forEach(function (v) {
+      realWords_(nameWords_(v.name)).forEach(function (w) {
+        if (w.length < 3) return;
+        if (!byWord[w]) byWord[w] = {};
+        byWord[w][s_(v.empCode).toUpperCase()] = v;
+      });
+    });
+  
+    var rejectedHere = ctx.neg[key] || {};
+    var hits = {}, hitList = [];
+    realWords_(nameWords_(rawName)).forEach(function (w) {
+      if (w.length < 3 || !byWord[w]) return;
+      Object.keys(byWord[w]).forEach(function (code) {
+        if (rejectedHere[code] || hits[code]) return;
+        hits[code] = 1;
+        hitList.push(byWord[w][code]);
+      });
+    });
+  
+    if (hitList.length === 1) {
+      return { outcome: 'ASSIGNED', vrmId: hitList[0].empCode, tier: 2.5,
+               matchedVia: 'UNIQUE_WORD', aliasKey: key,
+               suggestions: [], ambiguous: false, warnings: warnings };
+    }
+    if (hitList.length > 1) {
+      /* The word is shared. Name the candidates rather than guessing. */
+      return { outcome: 'PARKED', vrmId: '', tier: 3, matchedVia: null, aliasKey: key,
+               suggestions: hitList.slice(0, 3).map(function (v) {
+                 return { vrmId: v.empCode, name: v.name, score: 0, band: 'WEAK' };
+               }),
+               ambiguous: true, warnings: warnings };
+    }
+  
     var sug = suggestionsFor_(key, ctx, txnDate);
     return { outcome: 'PARKED', vrmId: '', tier: sug.suggestions.length ? 3 : 4,
              matchedVia: null, aliasKey: key, suggestions: sug.suggestions,
              ambiguous: sug.ambiguous, warnings: warnings };
-  }
-
-  /* The server's clusterer calls it by this name. */
-  function unassignedReason_(raw, ctx, when) { return reasonFor(raw, ctx, when); }
-
-  function reasonFor(rawName, ctx, when) {
-    var nm = String(rawName || '').trim();
-    if (!nm) return 'no VRM or RM was named on the row';
-    var v = resolveVrmName_(nm, when, ctx || resolverContext_(VRMS));
-    if (v.outcome === 'ASSIGNED') return 'now resolves to ' + v.vrmId;
-    if (v.ambiguous) return 'more than one roster name matches closely - choose manually';
-    if (v.suggestions.length) return 'closest match ' + v.suggestions[0].name +
-      ' (' + v.suggestions[0].vrmId + ') at ' + v.suggestions[0].score.toFixed(2);
-    return 'not on the roster';
   }
 
 function unassignedClusters_(txns, vrms, ctx) {
@@ -3625,9 +3659,8 @@ function viewAllTxns() {
       '<button class="btn sm acc" data-act="uploadred">' + IC.up + ' Upload redemptions</button>' +
       '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Purchase template</button>' +
       '<button class="btn sm" data-act="tplred">' + IC.down + ' Redemption template</button>' +
-      guard('all',
-        '<button class="btn xs dan" data-act="delall">Confirm — delete ALL</button>',
-        '<button class="btn sm dan" data-act="arm">' + IC.trash + ' Delete ALL data</button>')) +
+      '<button class="btn xs gh" data-act="delallask" ' +
+        'title="Delete every transaction">' + IC.trash + ' Delete all</button>') +
     '<div class="panel"><div class="ptop"><div><h3>Filters</h3></div>' +
     '<div class="tools">' + searchBox('alltxns', 'Search any column…') + expBtns('alltxns') + '</div></div>' +
     '<div style="padding:14px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
@@ -5127,22 +5160,43 @@ function exportSpec(what) {
 /* --------------------------- header matching ----------------------------- */
 /* Loose header matching: punctuation and case are ignored, and the aliases cover
    the variations these files arrive with. */
+/*
+ * Every spelling of a column this app has actually met, plus the obvious
+ * neighbours. Headers are compared with punctuation and spaces stripped, so
+ * "Folio No." and "folio_no" both arrive here as "foliono".
+ *
+ * Order matters within a list: the first match wins, so put the specific
+ * spellings ahead of the loose ones. "amount" must not be listed before
+ * "trxnamount", or a file with both columns picks the wrong one.
+ */
 var HEADER_MAP = {
-  date:       ['txndate', 'transactiondate', 'date', 'dateoftransaction', 'trxndate'],
-  time:       ['txntime', 'transactiontime', 'time', 'trxntime'],
-  clientCode: ['clientcode', 'code', 'clcode', 'clientid', 'clientno'],
-  clientName: ['clientname', 'name', 'client', 'investorname'],
-  pan:        ['panno', 'pan', 'pannumber', 'pancard', 'pannum'],
-  vrm:        ['vrm', 'vrmname', 'vrmempname'],
-  rmName:     ['rmname', 'rm', 'relationshipmanager', 'rmmanager'],
-  scheme:     ['schemename', 'scheme', 'fundname', 'schemedescription'],
-  txnType:    ['txntype', 'transactiontype', 'type', 'trxntype', 'transactioncategory'],
-  amount:     ['amount', 'amt', 'transactionamount', 'txnamount', 'grossamount',
-               'transamount', 'transactionamt'],
-  status:     ['txnstatus', 'transactionstatus', 'status', 'trxnstatus'],
-  reason:     ['reasonforrejection', 'rejectionreason', 'reason', 'remarks', 'remark'],
-  folio:      ['folionumber', 'folio', 'foliono', 'foliono.']
+  date:       ['txndate', 'trxndate', 'transactiondate', 'trandate', 'trxdate',
+               'dateoftransaction', 'transdate', 'date'],
+  time:       ['txntime', 'trxntime', 'transactiontime', 'trantime', 'trxtime', 'time'],
+  clientCode: ['clientcode', 'clcode', 'clientid', 'clientno', 'clientcd',
+               'investorcode', 'ucc', 'code'],
+  clientName: ['clientname', 'investorname', 'holdername', 'client', 'name'],
+  pan: ['panno', 'pannumber', 'pancard', 'pannum', 'panno.', 'pan'],
+  vrm: ['vrmname', 'vrmempname', 'vrmemployee', 'vrm'],
+  rmName: ['rmname', 'relationshipmanager', 'rmmanager', 'rmempname', 'rm'],
+  scheme: ['schemename', 'fundname', 'schemedescription', 'schemedesc',
+           'productname', 'scheme'],
+  txnType: ['txntype', 'trxntype', 'transactiontype', 'trantype', 'trxtype',
+            'transactioncategory', 'txncategory', 'type'],
+  amount: ['txnamount', 'trxnamount', 'transactionamount', 'transamount',
+           'transactionamt', 'grossamount', 'netamount', 'tranamount',
+           'amountrs', 'amount', 'amt'],
+  status: ['txnstatus', 'trxnstatus', 'transactionstatus', 'transtatus', 'status'],
+  reason: ['reasonforrejection', 'rejectionreason', 'rejectreason', 'remarks',
+           'remark', 'narration', 'reason'],
+  folio: ['folionumber', 'foliono', 'foliono.', 'folionum', 'folio'],
+  /* Recognised so they are not mistaken for something else, then ignored. */
+  txnNo: ['trxnno', 'txnno', 'transactionno', 'trxnnumber', 'transactionnumber'],
+  phone: ['ph', 'phone', 'mobile', 'mobileno', 'contactno', 'phoneno']
 };
+
+/* Columns the app stores. Anything else is recognised and skipped. */
+var REQUIRED_HINT = { date: 'a date', amount: 'an amount', txnType: 'a transaction type' };
 
 /*
  * The redemption report is a different export with a different shape: no TXN Type
@@ -5232,8 +5286,33 @@ function rowsFromMatrix(matrix, formatted) {
     if (m.date !== undefined && m.amount !== undefined) { hi = r; idx = m; break; }
   }
   if (hi < 0) {
-    throw new Error('Could not find the expected columns. Download the template — the file needs ' +
-                    'TxnDate, TXN Type and Amount at minimum.');
+    /*
+     * Say what was actually found. "Could not find the expected columns" sends
+     * the reader to check columns that are plainly there; naming the headers the
+     * file DOES have, and which required one is missing, points at the real
+     * problem in one read — usually an amount column under an unexpected name.
+     */
+    var probe = null, probeRow = -1;
+    for (var pr = 0; pr < Math.min(matrix.length, 15); pr++) {
+      var cells = (matrix[pr] || []).filter(function (c) {
+        return String(c === null || c === undefined ? '' : c).trim() !== '';
+      });
+      if (cells.length >= 3) { probe = matrix[pr]; probeRow = pr; break; }
+    }
+    var seen = probe ? mapColumns(probe) : {};
+    var found = Object.keys(seen).filter(function (k) { return REQUIRED_HINT[k]; });
+    var missing = Object.keys(REQUIRED_HINT).filter(function (k) { return seen[k] === undefined; });
+    var headers = probe
+      ? probe.map(function (c) {
+          return String(c === null || c === undefined ? '' : c).trim();
+        }).filter(Boolean).slice(0, 16).join(' | ')
+      : '(no header row found at all)';
+    throw new Error(
+      'This file is missing ' +
+      missing.map(function (k) { return REQUIRED_HINT[k]; }).join(' and ') +
+      '.\n\nRow ' + (probeRow + 1) + ' looks like the header and reads:\n' + headers +
+      '\n\nRecognised from it: ' + (found.length ? found.join(', ') : 'nothing') +
+      '.\nRename the missing column to match the template, or download the template to compare.');
   }
 
   /*
@@ -5791,6 +5870,31 @@ var ACT = {
       var n = (d.result || {}).deleted || 0;
       S.sel = {}; absorb(d); toast(n + ' transaction(s) deleted.');
     }).catch(function (e) { un(); fail(e); });
+  },
+
+  /*
+   * Deleting everything deserves more than an inline second click. The dialog
+   * states the row count and the money involved, because "delete all data" is
+   * abstract and "this removes 136 rows and 59 lakh of recorded business" is not.
+   */
+  delallask: function () {
+    var live = (S.data.txns || []).filter(function (t) { return !t.excluded; });
+    var m = metrics(S.data.txns);
+    if (!live.length) return toast('There is nothing to delete.', 'e');
+    modal('Delete every transaction?',
+      'This removes <b>' + live.length + ' transaction(s)</b> covering <b>' +
+      rupee(m.gross) + '</b> of gross business.',
+      '<div class="panel" style="border-left:3px solid var(--dan)"><div style="padding:14px 18px;' +
+      'font-size:13.5px;color:var(--ink2)">' +
+      'Every VRM loses their history, and the dashboard resets to zero.<br><br>' +
+      'The rows are <b>soft-deleted</b>, so they can be brought back from ' +
+      '<b>Restore</b> — but a fresh upload afterwards would then collide with ' +
+      'them as duplicates, so recovery is not always simple.<br><br>' +
+      'If you only want to undo one upload, close this and use ' +
+      '<b>Upload History</b> instead — that removes a single batch cleanly.' +
+      '</div></div>',
+      '<button class="btn gh" data-act="close">Cancel</button>' +
+      '<button class="btn dan" data-act="delall">Delete all ' + live.length + ' row(s)</button>');
   },
 
   delall: function (btn) {
