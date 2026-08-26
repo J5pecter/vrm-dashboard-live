@@ -646,7 +646,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-25d amount-autodetect';
+var PAGE_BUILD = '2026-08-25e sheet-range';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbzOwsKX0s0QZsoMAPsdzV8KsL64VmvnYMyKV4YD4J4G-X7aN2SFCWATeazE0AZASqwuaw/exec';        /* set by the Pages build */
 
@@ -3731,9 +3731,80 @@ function mapColumns(headerRow) {
  * Returns [rawMatrix, formattedMatrix]. rowsFromMatrix takes the date and time
  * columns from the second and everything else from the first.
  */
+/*
+ * What the reader actually saw. Pasted back with an error, this settles in one
+ * line the questions that otherwise cost a round trip each: which build ran,
+ * whether the file was read as text or as a spreadsheet, which sheet of how
+ * many, whether the sheet lied about its own range, and how the text was split.
+ */
+function fileFootnote() {
+  var f = window.__fileInfo || {};
+  var bits = ['page build ' + PAGE_BUILD];
+  if (f.name) bits.push('file ' + f.name);
+  if (f.isCsv) {
+    var d = window.__csvDelim;
+    bits.push('read as text, split on ' +
+      (d === '\t' ? 'TAB' : d === ',' ? 'COMMA' : d === ';' ? 'SEMICOLON' :
+       d === '|' ? 'PIPE' : JSON.stringify(d)));
+  } else if (f.sheet) {
+    bits.push('sheet "' + f.sheet + '" of ' + f.sheets);
+    var r = window.__sheetRange;
+    if (r) {
+      bits.push('range ' + r.actual +
+        (r.claimed && r.claimed !== r.actual ? ' (file claimed ' + r.claimed + ')' : ''));
+    }
+  }
+  return '[' + bits.join(' | ') + ']';
+}
+
+/* Object.assign, for engines that predate it. Used by twoPassSheet(). */
+if (typeof Object.assign !== 'function') {
+  Object.assign = function (t) {
+    for (var i = 1; i < arguments.length; i++) {
+      var src = arguments[i];
+      if (!src) continue;
+      for (var k in src) if (Object.prototype.hasOwnProperty.call(src, k)) t[k] = src[k];
+    }
+    return t;
+  };
+}
+
+/*
+ * The range a sheet CLAIMS is not always the range it has.
+ *
+ * sheet_to_json reads ws['!ref'] to decide how wide the table is, and that
+ * string is written by whatever produced the file. When it is too narrow — a
+ * column appended by a tool that did not update the range, a report generator
+ * that writes a fixed ref — every cell beyond it is dropped in silence. The
+ * column does not arrive empty; it does not arrive at all, which is
+ * indistinguishable from a column the export never included.
+ *
+ * So the range is recomputed from the cell addresses actually present. Cheap,
+ * and it can only ever widen what is read.
+ */
+function trueRange(X, ws) {
+  var maxR = -1, maxC = -1;
+  Object.keys(ws).forEach(function (k) {
+    if (!k || k.charAt(0) === '!') return;
+    try {
+      var a = X.utils.decode_cell(k);
+      if (a.r > maxR) maxR = a.r;
+      if (a.c > maxC) maxC = a.c;
+    } catch (e) { /* not a cell address */ }
+  });
+  if (maxR < 0 || maxC < 0) return null;
+  return X.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } });
+}
+
 function twoPassSheet(X, ws) {
-  var raw = X.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
-  var fmt = X.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+  var claimed = ws['!ref'] || '';
+  var actual = trueRange(X, ws);
+  var opts = { header: 1, defval: '' };
+  if (actual) opts.range = actual;
+  window.__sheetRange = { claimed: claimed, actual: actual || '(none)' };
+
+  var raw = X.utils.sheet_to_json(ws, Object.assign({ raw: true }, opts));
+  var fmt = X.utils.sheet_to_json(ws, Object.assign({ raw: false }, opts));
   return [raw, fmt];
 }
 
@@ -3881,7 +3952,7 @@ function rowsFromMatrix(matrix, formatted) {
           ' columns, so the rest arrived unnamed.'
         : '') +
       '\n\nRecognised: ' + (found.length ? found.join(', ') : 'nothing') + '.\n\n' + tail +
-      '\n\n[page build ' + PAGE_BUILD + ']');
+      '\n\n' + fileFootnote());
   }
 
   /*
@@ -4034,6 +4105,9 @@ function handleFile(file) {
   /* Anything text-shaped goes through the delimiter sniffer; only real
      spreadsheets need SheetJS. */
   var isCsv = /\.(csv|tsv|txt|psv)$/i.test(file.name);
+  /* Kept so the upload error can say what it read, not just what it wanted. */
+  window.__fileInfo = { name: file.name, isCsv: isCsv, sheet: '', sheets: 0 };
+  window.__sheetRange = null;
   var reader = new FileReader();
   reader.onerror = function () { toast('Could not read that file.', 'e'); };
   reader.onload = function (e) {
@@ -4046,6 +4120,8 @@ function handleFile(file) {
              is Excel's guess at the format, and it is regularly wrong. */
           var wb = X.read(new Uint8Array(e.target.result), { type: 'array', cellDates: false });
           var ws = wb.Sheets[wb.SheetNames[0]];
+          window.__fileInfo.sheet = wb.SheetNames[0];
+          window.__fileInfo.sheets = wb.SheetNames.length;
           finish.apply(null, twoPassSheet(X, ws));
         }).catch(fail);
       }
