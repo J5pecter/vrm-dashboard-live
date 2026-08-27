@@ -2485,7 +2485,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-25e sheet-range';
+var PAGE_BUILD = '2026-08-25f template-folio';
 
 var API_URL = '';        /* set by the Pages build */
 
@@ -5108,9 +5108,15 @@ function uploadErrorDialog(res, fileName) {
 /* ======================= IMPORT / EXPORT / TEMPLATE ====================== */
 
 /* The authoritative upload format: the twelve production columns, in order. */
+/*
+ * Folio No. is here because the real exports carry it and duplicate detection
+ * uses it. Leaving it out of the template meant anyone who worked FROM the
+ * template quietly lost the one field that separates two identical-looking
+ * purchases in the same scheme on the same day.
+ */
 var TPL_HEADERS = ['TxnDate', 'TxnTime', 'Client Code', 'Client Name', 'PAN No.',
-                   'VRM', 'RM Name', 'Scheme Name', 'TXN Type', 'Amount',
-                   'Txn Status', 'Reason for Rejection'];
+                   'VRM', 'RM Name', 'Scheme Name', 'Folio No.', 'TXN Type',
+                   'Amount', 'Txn Status', 'Reason for Rejection'];
 
 /* Three example rows covering all three transaction types. The PAN is a
    deliberately fake placeholder — never ship a real one in a template. */
@@ -5119,13 +5125,15 @@ var TPL_SAMPLE = [
      permitted to put a client's PAN into a spreadsheet. */
   ['17-08-2026', '1:47 PM', 'S70810', 'SOMA VIDYA SAGAR', '',
    'Khushi Mahesh Dodiya', 'Rajashri Alkesh Mohandas',
-   'KOTAK EQUITY SAVINGS FUND REGULAR GROWTH', 'Lumpsum', 5000, 'Completed', 'ALLOTMENT DONE'],
+   'KOTAK EQUITY SAVINGS FUND REGULAR GROWTH', '19482075', 'Lumpsum',
+   5000, 'Completed', 'ALLOTMENT DONE'],
   ['17-08-2026', '10:15 AM', 'S70811', 'EXAMPLE CLIENT TWO', '',
    'Khushi Mahesh Dodiya', 'Rajashri Alkesh Mohandas',
-   'HDFC FLEXI CAP FUND GROWTH', 'SIP', 10000, 'Completed', ''],
+   'HDFC FLEXI CAP FUND GROWTH', '43556339/71', 'SIP', 10000, 'Completed', ''],
   ['18-08-2026', '2:30 PM', 'S70812', 'EXAMPLE CLIENT THREE', '',
    'Khushi Mahesh Dodiya', 'Rajashri Alkesh Mohandas',
-   'ICICI PRUDENTIAL BLUECHIP FUND GROWTH', 'Redemption', 20000, 'Completed', '']
+   'ICICI PRUDENTIAL BLUECHIP FUND GROWTH', '44623951/78', 'Redemption',
+   20000, 'Completed', '']
 ];
 
 /*
@@ -5776,9 +5784,17 @@ function rowsFromMatrix(matrix, formatted) {
              'do not recognise. If that is the amount, rename its header to "Amount" and ' +
              'upload again.';
     } else {
-      tail = 'No column here holds amounts at all, so the figure is missing from the export ' +
-             'itself rather than misnamed. Re-run the report with the amount column included — ' +
-             'in most report builders it is a tick-box in the column chooser.';
+      /*
+       * Point at the template's actual headers rather than telling somebody to
+       * go and download it. Comparing two lists side by side is the whole task,
+       * and making the reader fetch one of them first helps nobody.
+       */
+      tail = 'No column here holds amounts at all, and none of them looks like money either, ' +
+             'so the figure is missing from the file rather than misnamed.\n\n' +
+             'The template expects:\n  ' + TPL_HEADERS.join(' | ') + '\n\n' +
+             'Only TxnDate, TXN Type and an amount are required, and the amount can carry any ' +
+             'of the usual names. If this file was made by pasting an export over the ' +
+             'template, check that the amount column came across with it.';
     }
 
     throw new Error(
