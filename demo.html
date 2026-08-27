@@ -2485,7 +2485,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-25f template-folio';
+var PAGE_BUILD = '2026-08-25g template-matches-export';
 
 var API_URL = '';        /* set by the Pages build */
 
@@ -5109,30 +5109,41 @@ function uploadErrorDialog(res, fileName) {
 
 /* The authoritative upload format: the twelve production columns, in order. */
 /*
- * Folio No. is here because the real exports carry it and duplicate detection
- * uses it. Leaving it out of the template meant anyone who worked FROM the
- * template quietly lost the one field that separates two identical-looking
- * purchases in the same scheme on the same day.
+ * The first twelve columns are the purchase export EXACTLY as it arrives —
+ * same names, same order, Ph and Trxn No. included even though nothing reads
+ * them. That is the point: the export can be pasted straight in without
+ * rearranging anything, and the only work left is the column after it.
+ *
+ * Amount is that column, and it is the one thing here with no substitute. Every
+ * figure in this application is a sum of it: gross, net, each VRM's total, the
+ * league table, every chart. A file without it loads a hundred transactions
+ * worth zero rupees each and produces a dashboard of zeroes — which is worse
+ * than a refused upload, because it looks like it worked.
+ *
+ * Txn Status and Reason for Rejection trail behind it and may be left blank. A
+ * missing status means every row is counted as Completed, which is fine when
+ * the report only ever contains settled business.
  */
 var TPL_HEADERS = ['TxnDate', 'TxnTime', 'Client Code', 'Client Name', 'PAN No.',
-                   'VRM', 'RM Name', 'Scheme Name', 'Folio No.', 'TXN Type',
-                   'Amount', 'Txn Status', 'Reason for Rejection'];
+                   'Ph', 'VRM', 'RM Name', 'Scheme Name', 'Folio No.', 'Trxn No.',
+                   'TXN Type', 'Amount', 'Txn Status', 'Reason for Rejection'];
 
 /* Three example rows covering all three transaction types. The PAN is a
    deliberately fake placeholder — never ship a real one in a template. */
 var TPL_SAMPLE = [
   /* PAN deliberately blank: it is optional, and most operators are not
      permitted to put a client's PAN into a spreadsheet. */
-  ['17-08-2026', '1:47 PM', 'S70810', 'SOMA VIDYA SAGAR', '',
+  ['17-08-2026', '1:47 PM', 'S70810', 'SOMA VIDYA SAGAR', '', '',
    'Khushi Mahesh Dodiya', 'Rajashri Alkesh Mohandas',
-   'KOTAK EQUITY SAVINGS FUND REGULAR GROWTH', '19482075', 'Lumpsum',
+   'KOTAK EQUITY SAVINGS FUND REGULAR GROWTH', '19482075', '', 'Lumpsum',
    5000, 'Completed', 'ALLOTMENT DONE'],
-  ['17-08-2026', '10:15 AM', 'S70811', 'EXAMPLE CLIENT TWO', '',
+  ['17-08-2026', '10:15 AM', 'S70811', 'EXAMPLE CLIENT TWO', '', '',
    'Khushi Mahesh Dodiya', 'Rajashri Alkesh Mohandas',
-   'HDFC FLEXI CAP FUND GROWTH', '43556339/71', 'SIP', 10000, 'Completed', ''],
-  ['18-08-2026', '2:30 PM', 'S70812', 'EXAMPLE CLIENT THREE', '',
+   'HDFC FLEXI CAP FUND GROWTH', '43556339/71', '', 'SIP',
+   10000, 'Completed', ''],
+  ['18-08-2026', '2:30 PM', 'S70812', 'EXAMPLE CLIENT THREE', '', '',
    'Khushi Mahesh Dodiya', 'Rajashri Alkesh Mohandas',
-   'ICICI PRUDENTIAL BLUECHIP FUND GROWTH', '44623951/78', 'Redemption',
+   'ICICI PRUDENTIAL BLUECHIP FUND GROWTH', '44623951/78', '', 'Redemption',
    20000, 'Completed', '']
 ];
 
@@ -5789,12 +5800,15 @@ function rowsFromMatrix(matrix, formatted) {
        * go and download it. Comparing two lists side by side is the whole task,
        * and making the reader fetch one of them first helps nobody.
        */
-      tail = 'No column here holds amounts at all, and none of them looks like money either, ' +
-             'so the figure is missing from the file rather than misnamed.\n\n' +
-             'The template expects:\n  ' + TPL_HEADERS.join(' | ') + '\n\n' +
-             'Only TxnDate, TXN Type and an amount are required, and the amount can carry any ' +
-             'of the usual names. If this file was made by pasting an export over the ' +
-             'template, check that the amount column came across with it.';
+      tail = 'No column here holds amounts, and none of them looks like money either.\n\n' +
+             'Every figure in this dashboard is a sum of the amount — gross, net, each VRM\'s ' +
+             'total, the league table, every chart. Without it these rows are worth zero ' +
+             'rupees each, so the upload stops here rather than filling the dashboard with ' +
+             'zeroes.\n\n' +
+             'The fix is one column. Add "Amount" to the right of TXN Type and fill it; ' +
+             'nothing else in this file needs to change, and the column may equally be called ' +
+             'Trxn Amount, Transaction Amount, Gross Amount or Net Amount. The template now ' +
+             'matches this exact layout if it is easier to start from that.';
     }
 
     throw new Error(
