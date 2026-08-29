@@ -43,7 +43,7 @@
  */
 :root{
   /* ink — warm near-black, never navy */
-  --ink:#282825; --ink2:#6b6b64; --ink3:#9a9a91;
+  --ink:#282825; --ink2:#6b6b64; --ink3:#71716a;
 
   /* paper */
   --bg:#fbfbf9; --surf:#ffffff; --surf2:#f4f4f2;
@@ -91,7 +91,7 @@
  * brown, so the coral still reads as warm rather than as a warning.
  */
 html[data-t="dark"]{
-  --ink:#f7f7f4; --ink2:#a9a9a1; --ink3:#7b7b73;
+  --ink:#f7f7f4; --ink2:#a9a9a1; --ink3:#918f86;
   --bg:#141412; --surf:#1c1c1a; --surf2:#232320;
   --line:#33332e; --line2:#2a2a26;
 
@@ -833,7 +833,7 @@ html[data-motion="reduced"] *::after{
    metal, not a yellow: it only reads as one against a warm ground, which is
    why the paper here is #EBE6DD and not #FFF. */
 html[data-theme="bronze"]{
-  --ink:#202020; --ink2:#4d4d4d; --ink3:#828282;
+  --ink:#202020; --ink2:#4d4d4d; --ink3:#6b6b6b;
   --bg:#f3f0ea; --surf:#fbfaf7; --surf2:#ebe6dd;
   --line:#ddd6c8; --line2:#e8e2d6;
   --p:#816729; --p2:#9a7d35; --p3:#655020;
@@ -846,7 +846,7 @@ html[data-theme="bronze"]{
   --grad:linear-gradient(101deg,#816729 0%,#b08b3a 52%,#ff682c 100%);
 }
 html[data-theme="bronze"][data-t="dark"]{
-  --ink:#f2efe8; --ink2:#a8a294; --ink3:#7a7568;
+  --ink:#f2efe8; --ink2:#a8a294; --ink3:#968f80;
   --bg:#17160f; --surf:#201e16; --surf2:#2a2719;
   --line:#3a3628; --line2:#2f2c20;
   --p:#c9a349; --p2:#dcba63; --p3:#a8853a;
@@ -863,7 +863,7 @@ html[data-theme="bronze"][data-t="dark"]{
    headings go uppercase and heavy here, which is the whole personality of that
    site; it is set on the type rule below rather than in the palette. */
 html[data-theme="rebellion"]{
-  --ink:#1d1d1d; --ink2:#55534a; --ink3:#7b7762;
+  --ink:#1d1d1d; --ink2:#55534a; --ink3:#6e6a57;
   --bg:#f5f2ee; --surf:#ffffff; --surf2:#efebe4;
   --line:#ded9d0; --line2:#e9e5dd;
   --p:#fd6504; --p2:#ff8236; --p3:#d24f00;
@@ -876,7 +876,7 @@ html[data-theme="rebellion"]{
   --grad:linear-gradient(101deg,#fd6504 0%,#ff8236 55%,#ffb066 100%);
 }
 html[data-theme="rebellion"][data-t="dark"]{
-  --ink:#f5f2ee; --ink2:#a5a196; --ink3:#7b7762;
+  --ink:#f5f2ee; --ink2:#a5a196; --ink3:#97927f;
   --bg:#111110; --surf:#1a1a18; --surf2:#232320;
   --line:#33322e; --line2:#292826;
   --p:#ff7a29; --p2:#ff9754; --p3:#fd6504;
@@ -893,7 +893,7 @@ html[data-theme="rebellion"][data-t="dark"]{
    own. Nearly no radius and no colour doing decorative work: the only hue on
    screen means something. */
 html[data-theme="mono"]{
-  --ink:#090909; --ink2:#5c5c5c; --ink3:#999999;
+  --ink:#090909; --ink2:#5c5c5c; --ink3:#6e6e6e;
   --bg:#ffffff; --surf:#ffffff; --surf2:#f4f4f4;
   --line:#e2e2e2; --line2:#efefef;
   --p:#0000ee; --p2:#3333ff; --p3:#0000bb;
@@ -908,7 +908,7 @@ html[data-theme="mono"]{
   --sh:0 0 0 1px rgba(0,0,0,.10); --sh2:0 0 0 1px rgba(0,0,0,.12),0 4px 14px rgba(0,0,0,.07);
 }
 html[data-theme="mono"][data-t="dark"]{
-  --ink:#f2f2f2; --ink2:#a0a0a0; --ink3:#777777;
+  --ink:#f2f2f2; --ink2:#a0a0a0; --ink3:#8d8d8d;
   --bg:#000000; --surf:#0b0b0b; --surf2:#141414;
   --line:#262626; --line2:#1c1c1c;
   --p:#6f7dff; --p2:#95a0ff; --p3:#4a5aff;
@@ -925,7 +925,7 @@ html[data-theme="mono"][data-t="dark"]{
    The one theme designed for the dark and merely tolerated in the light, for
    the people who keep this open past nine. */
 html[data-theme="midnight"]{
-  --ink:#141b26; --ink2:#4a5768; --ink3:#7d8b9c;
+  --ink:#141b26; --ink2:#4a5768; --ink3:#66717f;
   --bg:#f4f7fa; --surf:#ffffff; --surf2:#eef2f7;
   --line:#dde4ec; --line2:#e9eef4;
   --p:#0f9d8f; --p2:#1cb5a5; --p3:#0b7d72;
@@ -938,7 +938,7 @@ html[data-theme="midnight"]{
   --grad:linear-gradient(101deg,#0f9d8f 0%,#38b6c9 55%,#7fd4c6 100%);
 }
 html[data-theme="midnight"][data-t="dark"]{
-  --ink:#e8eef6; --ink2:#98a7bb; --ink3:#68788d;
+  --ink:#e8eef6; --ink2:#98a7bb; --ink3:#8698ad;
   --bg:#0b111a; --surf:#121a26; --surf2:#18222f;
   --line:#24313f; --line2:#1c2733;
   --p:#2dd4bf; --p2:#5ee0d0; --p3:#14b8a6;
@@ -3330,7 +3330,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-27e unassigned-clarity';
+var PAGE_BUILD = '2026-08-27f readable-muted';
 
 var API_URL = '';        /* set by the Pages build */
 
