@@ -646,7 +646,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-25h names-and-feedback';
+var PAGE_BUILD = '2026-08-25i instant-login';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbzOwsKX0s0QZsoMAPsdzV8KsL64VmvnYMyKV4YD4J4G-X7aN2SFCWATeazE0AZASqwuaw/exec';        /* set by the Pages build */
 
@@ -884,7 +884,68 @@ $('lpweye').onclick = function () {
 
 function loginErr(msg) { var b = $('lerr'); b.textContent = msg; b.style.display = ''; }
 
+/*
+ * ===================== THE WAIT BEFORE THE LOGIN FORM ======================
+ *
+ * Every call to Apps Script costs roughly two seconds before any of our code
+ * runs — measured, repeatedly, on a call that returns 648 bytes and does
+ * nothing. That is Google's dispatch and the redirect it answers a POST with,
+ * and no amount of tuning on either side of it will help.
+ *
+ * What CAN be removed is waiting for it twice for the same answer. The name
+ * dropdown needs a list of colleagues that changes a few times a year, and it
+ * was fetched fresh on every single page load, leaving the form unusable for
+ * two seconds each time.
+ *
+ * So the list is remembered and shown at once, then quietly re-fetched and
+ * corrected if it has changed. The form is usable immediately and the request
+ * still happens — it simply stops being something to sit and watch.
+ *
+ * Only employee codes and names are kept, which is what the dropdown already
+ * displays to anyone who opens the page. No transaction, no client, no PAN and
+ * no token is stored: those arrive after a password and stay in memory.
+ */
+var VRM_LIST_KEY = 'vrmdash.names.v1';
+
+function cachedVrmList() {
+  try {
+    var raw = window.localStorage && localStorage.getItem(VRM_LIST_KEY);
+    if (!raw) return null;
+    var o = JSON.parse(raw);
+    /* A month is long past any roster change; refuse anything older. */
+    if (!o || !o.list || !o.list.length) return null;
+    if ((new Date().getTime() - (o.at || 0)) > 30 * 24 * 3600 * 1000) return null;
+    return o.list;
+  } catch (e) { return null; }
+}
+
+function rememberVrmList(list) {
+  try {
+    if (!window.localStorage) return;
+    localStorage.setItem(VRM_LIST_KEY, JSON.stringify({
+      at: new Date().getTime(),
+      list: (list || []).map(function (v) { return { empCode: v.empCode, name: v.name }; })
+    }));
+  } catch (e) { /* private mode, or full — the dropdown still works, just slower */ }
+}
+
+function paintVrmList(list, keepChoice) {
+  var sel = $('lvrm');
+  if (!sel) return;
+  var chosen = keepChoice ? sel.value : '';
+  if (!list.length) { sel.innerHTML = '<option value="">No VRMs found in the sheet</option>'; return; }
+  /* Duplicate names are disambiguated by emp code, e.g. "Pavan Soni (VRM002)". */
+  sel.innerHTML = '<option value="">- choose your name -</option>' + list.map(function (v) {
+    return '<option value="' + esc(v.empCode) + '">' + esc(v.name) + ' (' + esc(v.empCode) + ')' +
+           (v.locked ? ' - LOCKED' : '') + '</option>';
+  }).join('');
+  if (chosen) sel.value = chosen;
+}
+
 function loadVrmList() {
+  var cached = cachedVrmList();
+  if (cached) paintVrmList(cached, false);
+
   api('bootstrap').then(function (d) {
     /* Visible before anyone signs in, because a stale deployment is exactly the
        thing you want to notice BEFORE spending ten minutes on an upload. */
@@ -893,16 +954,17 @@ function loadVrmList() {
       lb.textContent = (d.build ? 'server build ' + d.build : 'server build unknown (old deployment)') +
                        '  \u00b7  page build ' + PAGE_BUILD;
     }
-    var sel = $('lvrm'), list = d.vrms || [];
-    if (!list.length) { sel.innerHTML = '<option value="">No VRMs found in the sheet</option>'; return; }
-    /* Duplicate names are disambiguated by emp code, e.g. "Pavan Soni (VRM002)". */
-    sel.innerHTML = '<option value="">- choose your name -</option>' + list.map(function (v) {
-      return '<option value="' + esc(v.empCode) + '">' + esc(v.name) + ' (' + esc(v.empCode) + ')' +
-             (v.locked ? ' - LOCKED' : '') + '</option>';
-    }).join('');
+    var list = d.vrms || [];
+    /* Keep whatever was already picked: the list usually comes back identical,
+       and resetting a selection somebody made while waiting would be rude. */
+    paintVrmList(list, true);
+    rememberVrmList(list);
   }).catch(function (e) {
-    $('lvrm').innerHTML = '<option value="">Could not load VRM list</option>';
-    loginErr(e.message);
+    /* With a cached list the form still works, so an offline blip is not fatal. */
+    if (!cachedVrmList()) {
+      $('lvrm').innerHTML = '<option value="">Could not load VRM list</option>';
+      loginErr(e.message);
+    }
   });
 }
 
