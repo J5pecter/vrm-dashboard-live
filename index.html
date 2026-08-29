@@ -9,6 +9,10 @@
 </head>
 <body>
 <!-- VRM Revenue Dashboard — single-file frontend served by HtmlService -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Newsreader:opsz,wght@6..72,200;6..72,300;6..72,400&display=swap" rel="stylesheet">
+
 <style>
 /* ===========================================================================
    VRM Revenue Dashboard — design system
@@ -16,57 +20,135 @@
    primary, an angled gradient band, tight geometric type, layered soft
    shadows, crisp hairline borders. All hand-written; no third-party assets.
    =========================================================================== */
+/*
+ * Palette drawn from the two references Jayesh chose.
+ *
+ * Ellipsus supplies the temperature: warm paper rather than blue-white, a
+ * near-black that is brown-grey rather than navy, and flatness — almost nothing
+ * on that site casts a shadow. Airbnb supplies the structure: generous corner
+ * radii, hairline borders doing the work shadows used to, and a coral that
+ * carries every accent.
+ *
+ * The two meet almost exactly on that coral — Ellipsus #EB5B55, Airbnb #FF385C
+ * — so it is the accent here, and the calmer of the two was chosen because this
+ * screen is read all day.
+ *
+ * Primary BUTTONS are near-black, which is Ellipsus's own choice and the reason
+ * its coral still registers: if every button were coral, nothing would be.
+ *
+ * Chart series get their own two tokens rather than borrowing the accent and
+ * the danger colour, which in a warm palette sat too close together to read
+ * apart. Deep teal against coral is complementary and survives both themes.
+ */
 :root{
-  /* core palette */
-  --navy:#0a2540; --navy2:#0e2f50;
-  --p:#635bff; --p2:#7a73ff; --p3:#4b45c6;
-  --p-soft:#f0f0ff; --p-ink:#3f3ac9;
-  --cyan:#00d4ff; --mint:#a6ffcb; --violet:#8f6ed5;
-  --a:#09825d; --a2:#24b47e; --a-soft:#e7f7f0;
-  --warn:#bb5504; --warn-soft:#fff6e6;
-  --dan:#df1b41; --dan-soft:#fdeef1; --ok:#09825d;
+  /* ink — warm near-black, never navy */
+  --ink:#282825; --ink2:#6b6b64; --ink3:#9a9a91;
 
-  /* surfaces + text */
-  --bg:#f6f9fc; --surf:#ffffff; --surf2:#fbfcfe; --line:#e6ebf1; --line2:#eff3f8;
-  --ink:#0a2540; --ink2:#425466; --ink3:#8792a2;
+  /* paper */
+  --bg:#fbfbf9; --surf:#ffffff; --surf2:#f4f4f2;
+  --line:#e5e5e1; --line2:#eeeeea;
 
-  /* Stripe-ish layered shadows */
-  --sh:0 2px 5px -1px rgba(50,50,93,.08),0 1px 3px -1px rgba(0,0,0,.05);
-  --sh2:0 13px 27px -5px rgba(50,50,93,.14),0 8px 16px -8px rgba(0,0,0,.10);
-  --sh3:0 30px 60px -12px rgba(50,50,93,.22),0 18px 36px -18px rgba(0,0,0,.18);
-  --shb:0 4px 6px rgba(50,50,93,.11),0 1px 3px rgba(0,0,0,.08);
+  /* accent */
+  --p:#eb5b55; --p2:#f0736e; --p3:#d1443e;
+  --p-soft:#fdeeed; --p-ink:#b8352f;
 
-  --r:8px; --r2:6px; --r3:4px; --topbar:64px; --side:244px;
-  --grad:linear-gradient(101deg,#635bff 0%,#00d4ff 52%,#a6ffcb 100%);
+  /* primary button, Ellipsus-style */
+  --btn-ink:#282825; --btn-ink2:#3d3d39;
+
+  /* status */
+  --a:#4f8f68; --a2:#68a880; --a-soft:#edf4ef;
+  --warn:#b0762c; --warn-soft:#fbf3e6;
+  --dan:#c8443c; --dan-soft:#fbeceb; --ok:#4f8f68;
+
+  /* chart series */
+  --chart1:#2f6f6b; --chart2:#eb5b55;
+
+  /* legacy names kept so nothing referencing them breaks */
+  --navy:#282825; --navy2:#3d3d39;
+  --cyan:#2f6f6b; --mint:#a8cfc2; --violet:#c455eb;
+
+  /*
+   * Shadows, Airbnb-soft. The first layer is a hairline drawn as a shadow so a
+   * card can sit on paper without a hard border; the rest is barely there.
+   */
+  --sh:0 0 0 1px rgba(40,40,37,.045),0 1px 2px rgba(40,40,37,.04);
+  --sh2:0 0 0 1px rgba(40,40,37,.045),0 6px 16px rgba(40,40,37,.07);
+  --sh3:0 18px 44px rgba(40,40,37,.16),0 4px 12px rgba(40,40,37,.07);
+  --shb:0 1px 2px rgba(40,40,37,.10);
+
+  /* Airbnb rounds generously; a pill is a pill */
+  --r:14px; --r2:12px; --r3:10px; --rp:999px;
+  --topbar:64px; --side:244px;
+
+  --grad:linear-gradient(101deg,#eb5b55 0%,#e8845f 52%,#e8b45c 100%);
+
+  --font:'Manrope',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --font-display:'Newsreader','Spectral',Georgia,'Times New Roman',serif;
 }
+/*
+ * Dark is the same paper turned down, not a different palette: the browns stay
+ * brown, so the coral still reads as warm rather than as a warning.
+ */
 html[data-t="dark"]{
-  --navy:#061726; --navy2:#0a2540;
-  --p:#8b85ff; --p2:#a5a0ff; --p3:#635bff;
-  --p-soft:#1b1f4a; --p-ink:#c7c4ff;
-  --a:#24b47e; --a2:#3ddc9a; --a-soft:#0b2f24;
-  --warn:#f7b955; --warn-soft:#2e2109;
-  --dan:#ff6b81; --dan-soft:#331119; --ok:#3ddc9a;
-  --bg:#04101c; --surf:#0a2540; --surf2:#0d2b49; --line:#1b3a5c; --line2:#16324f;
-  --ink:#f6f9fc; --ink2:#adbdcc; --ink3:#7d90a5;
-  --sh:0 2px 5px -1px rgba(0,0,0,.45),0 1px 3px -1px rgba(0,0,0,.3);
-  --sh2:0 13px 27px -5px rgba(0,0,0,.55),0 8px 16px -8px rgba(0,0,0,.4);
-  --sh3:0 30px 60px -12px rgba(0,0,0,.7),0 18px 36px -18px rgba(0,0,0,.5);
-  --shb:0 4px 6px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3);
+  --ink:#f7f7f4; --ink2:#a9a9a1; --ink3:#7b7b73;
+  --bg:#141412; --surf:#1c1c1a; --surf2:#232320;
+  --line:#33332e; --line2:#2a2a26;
+
+  --p:#f2726c; --p2:#f68a85; --p3:#eb5b55;
+  --p-soft:#31201f; --p-ink:#f7a49f;
+
+  --btn-ink:#f7f7f4; --btn-ink2:#e6e6e0;
+
+  --a:#68a880; --a2:#84c09a; --a-soft:#17251c;
+  --warn:#d99a4e; --warn-soft:#2b2113;
+  --dan:#e8635a; --dan-soft:#301715; --ok:#68a880;
+
+  --chart1:#4f9b95; --chart2:#f2726c;
+
+  --navy:#0d0d0c; --navy2:#1c1c1a;
+  --cyan:#4f9b95; --mint:#a8cfc2;
+
+  --sh:0 0 0 1px rgba(255,255,255,.05),0 1px 2px rgba(0,0,0,.4);
+  --sh2:0 0 0 1px rgba(255,255,255,.05),0 6px 16px rgba(0,0,0,.45);
+  --sh3:0 18px 44px rgba(0,0,0,.6),0 4px 12px rgba(0,0,0,.4);
+  --shb:0 1px 2px rgba(0,0,0,.5);
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{
   background:var(--bg); color:var(--ink);
-  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif;
+  font:15px/1.55 var(--font);
   -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
-  letter-spacing:-.01em; transition:background .3s,color .3s;
+  letter-spacing:-.005em; transition:background .3s,color .3s;
 }
+
+/*
+ * Page and panel titles in a light serif. It is the one move that does most of
+ * the work: an interface set entirely in one sans reads as a tool, and the
+ * serif at 300 gives the numbers underneath something to be quiet against.
+ * Everything else — labels, tables, buttons, figures — stays in Manrope, where
+ * a lining sans is simply easier to scan.
+ */
+/*
+ * The serif is for DISPLAY headings only — the login title, page titles, dialog
+ * titles. Panel headers stay in Manrope: at sixteen pixels a serif stops being
+ * editorial and starts looking like a footnote, and those are labels rather
+ * than headlines.
+ *
+ * Weight 300 throughout, and the imported face carries a real 300. Asking for
+ * 700 from a family that stops at 400 makes the browser smear a fake bold,
+ * which is the one thing guaranteed to look worse than the sans it replaced.
+ */
+.lhead h1,.phead h2,.mbox h3{
+  font-family:var(--font-display); font-weight:300; letter-spacing:-.012em;
+}
+.num,.mono,td.num,th.num{ font-variant-numeric:tabular-nums; }
 button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
 button{cursor:pointer;border:0;background:none}
 a{color:var(--p);text-decoration:none}
 ::selection{background:var(--p);color:#fff}
 :focus-visible{outline:3px solid rgba(99,91,255,.45);outline-offset:1px;border-radius:var(--r3)}
-h1,h2,h3{letter-spacing:-.028em;line-height:1.16}
+h1,h2,h3{letter-spacing:-.018em;line-height:1.18}
 
 /* the signature angled gradient band */
 .gband{position:absolute;inset:auto 0 0 0;height:44%;
@@ -75,14 +157,18 @@ h1,h2,h3{letter-spacing:-.028em;line-height:1.16}
 @keyframes drift{from{background-position:0% 50%}to{background-position:100% 50%}}
 
 /* ---------- primitives ---------- */
-.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:var(--r3);
+.btn{display:inline-flex;align-items:center;gap:7px;padding:10px 17px;border-radius:var(--r3);
   background:var(--surf);border:1px solid var(--line);color:var(--ink);font-weight:600;font-size:13.5px;
-  box-shadow:var(--sh);transition:transform .14s cubic-bezier(.2,.9,.25,1),box-shadow .18s,background .18s,border-color .18s,color .18s;
-  white-space:nowrap;letter-spacing:-.01em}
+  box-shadow:none;transition:transform .14s cubic-bezier(.2,.9,.25,1),box-shadow .18s,background .18s,border-color .18s,color .18s;
+  white-space:nowrap;letter-spacing:-.005em}
 .btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:var(--sh2);color:var(--p);border-color:var(--line)}
 .btn:active:not(:disabled){transform:translateY(0);box-shadow:var(--sh)}
 .btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
-.btn.pri{background:var(--p);border-color:transparent;color:#fff;box-shadow:var(--shb)}
+/* Ellipsus's own choice: the primary action is near-black, so the coral
+   accent still means something when it appears. */
+.btn.pri{background:var(--btn-ink);border-color:transparent;
+  color:var(--surf);box-shadow:var(--shb)}
+.btn.pri:hover{background:var(--btn-ink2)}
 .btn.pri:hover:not(:disabled){background:var(--p2);color:#fff;box-shadow:var(--sh2)}
 .btn.acc{background:var(--a);border-color:transparent;color:#fff;box-shadow:var(--shb)}
 .btn.acc:hover:not(:disabled){background:var(--a2);color:#fff;box-shadow:var(--sh2)}
@@ -92,13 +178,13 @@ h1,h2,h3{letter-spacing:-.028em;line-height:1.16}
 .btn.gh:hover:not(:disabled){background:var(--line2);color:var(--ink);box-shadow:none;transform:none}
 .btn.sm{padding:7px 12px;font-size:12.5px}
 .btn.xs{padding:5px 10px;font-size:12px}
-.inp{width:100%;padding:10px 12px;border-radius:var(--r3);border:1px solid var(--line);
-  background:var(--surf);color:var(--ink);box-shadow:0 1px 1px rgba(0,0,0,.02);
+.inp{width:100%;padding:12px 14px;border-radius:var(--r3);border:1px solid var(--line);
+  background:var(--surf);color:var(--ink);box-shadow:none;
   transition:border-color .16s,box-shadow .16s}
 .inp:focus{outline:0;border-color:var(--p);box-shadow:0 0 0 3px rgba(99,91,255,.18)}
 .inp::placeholder{color:var(--ink3)}
 .lbl{display:block;font-size:12px;font-weight:600;color:var(--ink2);margin:0 0 6px;letter-spacing:0}
-.card{background:var(--surf);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh)}
+.card{background:var(--surf);border:1px solid var(--line);border-radius:var(--r);box-shadow:none}
 .pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:11.5px;
   font-weight:600;background:var(--p-soft);color:var(--p-ink);letter-spacing:0;white-space:nowrap}
 .pill.ok{background:var(--a-soft);color:var(--ok)}
@@ -115,17 +201,17 @@ h1,h2,h3{letter-spacing:-.028em;line-height:1.16}
 #login{min-height:100vh;display:grid;place-items:center;padding:24px;position:relative;
   overflow:hidden;background:var(--navy)}
 #login::before{content:"";position:absolute;inset:0;
-  background:radial-gradient(1200px 620px at 15% -10%,rgba(99,91,255,.5),transparent 60%),
-             radial-gradient(900px 520px at 95% 8%,rgba(0,212,255,.28),transparent 62%)}
-#login .gband{height:38%;opacity:.92}
+  background:radial-gradient(1200px 620px at 15% -10%,rgba(235,91,85,.30),transparent 62%),
+             radial-gradient(900px 520px at 95% 8%,rgba(232,180,92,.16),transparent 64%)}
+#login .gband{height:38%;opacity:.30}
 .lbox{width:100%;max-width:430px;position:relative;z-index:2;animation:rise .55s cubic-bezier(.2,.9,.25,1)}
 .lhead{text-align:center;margin-bottom:22px}
 .lmark{width:52px;height:52px;margin:0 auto 14px;border-radius:12px;display:grid;place-items:center;
   background:#fff;color:var(--p);font-weight:800;font-size:15px;letter-spacing:-.04em;
   box-shadow:0 12px 30px -8px rgba(0,0,0,.4)}
-.lhead h1{margin:0;font-size:30px;color:#fff;font-weight:700}
+.lhead h1{margin:0;font-size:34px;color:#fff;font-weight:300;letter-spacing:-.012em}
 .lhead p{margin:8px 0 0;color:rgba(255,255,255,.72);font-size:15px}
-.lcard{padding:26px;border-radius:12px;background:var(--surf);border:1px solid transparent;
+.lcard{padding:30px;border-radius:var(--r);background:var(--surf);border:1px solid transparent;
   box-shadow:var(--sh3)}
 .seg{display:flex;gap:4px;padding:4px;background:var(--bg);border:1px solid var(--line);
   border-radius:var(--r2);margin-bottom:20px}
@@ -199,7 +285,7 @@ h1,h2,h3{letter-spacing:-.028em;line-height:1.16}
 
 main{margin:var(--topbar) 0 0 var(--side);padding:28px;min-height:calc(100vh - var(--topbar))}
 .phead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
-.phead h2{margin:0;font-size:27px;font-weight:700}
+.phead h2{margin:0;font-size:30px;font-weight:300;letter-spacing:-.012em}
 .phead p{margin:7px 0 0;color:var(--ink2);font-size:14px;max-width:76ch}
 .view{animation:rise .32s cubic-bezier(.2,.9,.25,1)}
 
@@ -223,10 +309,10 @@ main{margin:var(--topbar) 0 0 var(--side);padding:28px;min-height:calc(100vh - v
 
 /* ---------- panels / tables ---------- */
 .panel{background:var(--surf);border:1px solid var(--line);border-radius:var(--r);
-  box-shadow:var(--sh);overflow:hidden;margin-bottom:22px}
+  box-shadow:none;overflow:hidden;margin-bottom:22px}
 .ptop{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
   padding:17px 20px;border-bottom:1px solid var(--line);background:var(--surf)}
-.ptop h3{margin:0;font-size:16px;font-weight:600}
+.ptop h3{margin:0;font-size:15.5px;font-weight:700;letter-spacing:-.008em}
 .ptop p{margin:4px 0 0;font-size:12.5px;color:var(--ink3)}
 .tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .search{position:relative;min-width:210px}
@@ -277,7 +363,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--p);cursor:pointer
 .mbox{width:100%;max-width:470px;max-height:92vh;overflow:auto;padding:26px;border-radius:12px;
   background:var(--surf);border:1px solid var(--line);box-shadow:var(--sh3);
   animation:rise .26s cubic-bezier(.2,.9,.25,1)}
-.mbox h3{margin:0 0 6px;font-size:20px;font-weight:700}
+.mbox h3{margin:0 0 6px;font-size:22px;font-weight:300;letter-spacing:-.01em}
 .mbox .msub{margin:0 0 20px;font-size:13.5px;color:var(--ink2);line-height:1.6}
 .f{margin-bottom:15px}
 .mact{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap}
@@ -365,10 +451,10 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
   main{margin-left:0;padding:18px}
   .acctname{display:none}
   .btitle span{display:none}
-  .phead h2{font-size:23px}
+  .phead h2{font-size:25px}
   .kpi .kv{font-size:25px}
   thead th,tbody td,tfoot td{padding-left:14px;padding-right:14px}
-  .lhead h1{font-size:25px}
+  .lhead h1{font-size:27px}
 }
 </style>
 
@@ -646,7 +732,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-25j prefer-direct';
+var PAGE_BUILD = '2026-08-26 warm-theme';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbzOwsKX0s0QZsoMAPsdzV8KsL64VmvnYMyKV4YD4J4G-X7aN2SFCWATeazE0AZASqwuaw/exec';        /* set by the Pages build */
 
@@ -1601,8 +1687,11 @@ function drawChart(id, labels, seriesA, seriesB, names, fullLabels) {
   if (!box) return;
   var ink = getComputedStyle(document.documentElement).getPropertyValue('--ink2').trim() || '#4b5164';
   var line = getComputedStyle(document.documentElement).getPropertyValue('--line').trim() || '#e6e8f0';
-  var p = getComputedStyle(document.documentElement).getPropertyValue('--p').trim() || '#4f46e5';
-  var a = getComputedStyle(document.documentElement).getPropertyValue('--dan').trim() || '#df1b41';
+  /* Series colours are their own tokens: borrowing the accent and the danger
+     colour put two warm reds side by side, which no legend can rescue. */
+  var cs_ = getComputedStyle(document.documentElement);
+  var p = cs_.getPropertyValue('--chart1').trim() || cs_.getPropertyValue('--p').trim() || '#2f6f6b';
+  var a = cs_.getPropertyValue('--chart2').trim() || cs_.getPropertyValue('--dan').trim() || '#eb5b55';
   var surf = getComputedStyle(document.documentElement).getPropertyValue('--surf').trim() || '#fff';
 
   if (!window.Chart) return fallbackBars(box, labels, seriesA, seriesB, p, a);
@@ -2041,8 +2130,8 @@ function viewVrmwise() {
     '<div class="panel"><div class="ptop"><div><h3>VRM comparison</h3></div></div>' +
     (top.length
       ? '<div class="chartbox" id="c2_box"><canvas id="c2"></canvas></div>' +
-        '<div class="legend"><i style="background:var(--p)"></i>Gross Sales' +
-        '<i style="background:var(--dan);margin-left:16px"></i>Redemption</div>'
+        '<div class="legend"><i style="background:var(--chart1)"></i>Gross Sales' +
+        '<i style="background:var(--chart2);margin-left:16px"></i>Redemption</div>'
       : emptyState('Nothing to chart', 'No VRM activity yet.')) + '</div>' +
     '<div class="panel"><div class="ptop"><div><h3>Per-VRM performance</h3></div>' +
     '<div class="tools">' +
@@ -2208,8 +2297,8 @@ function viewScheme() {
     '<div class="panel"><div class="ptop"><div><h3>Top schemes</h3></div></div>' +
     (top.length
       ? '<div class="chartbox" id="c3_box"><canvas id="c3"></canvas></div>' +
-        '<div class="legend"><i style="background:var(--p)"></i>Gross Sales' +
-        '<i style="background:var(--dan);margin-left:16px"></i>Redemption</div>'
+        '<div class="legend"><i style="background:var(--chart1)"></i>Gross Sales' +
+        '<i style="background:var(--chart2);margin-left:16px"></i>Redemption</div>'
       : emptyState('Nothing to chart', 'No schemes in scope.')) + '</div>' +
     '<div class="panel"><div class="ptop"><div><h3>By scheme</h3></div></div>' +
     '<div class="twrap"><table><thead><tr><th>#</th><th>Scheme Name</th>' +
@@ -2708,7 +2797,8 @@ function anRows() {
   return S.data.txns.filter(function (t) {
     if (!t.date) return false;
     if (f.from && t.date < f.from) return false;
-    if (f.to && t.date > f.to) return false;
+    /* An empty "to" still means "up to today", never into the future. */
+    if (t.date > (f.to || today())) return false;
     if (f.vrm && t.vrmEmpCode.toUpperCase() !== f.vrm.toUpperCase()) return false;
     return true;
   });
@@ -2817,8 +2907,15 @@ function viewAnalytics() {
         ? '<div style="min-width:200px"><label class="lbl">VRM</label><select class="inp" data-an="vrm">' +
           '<option value="">All VRMs</option>' + vrmOpts + '</select></div>'
         : '') +
-      '<div><label class="lbl">From</label><input class="inp" type="date" data-an="from" value="' + esc(f.from) + '"></div>' +
-      '<div><label class="lbl">To</label><input class="inp" type="date" data-an="to" value="' + esc(f.to) + '"></div>' +
+      /*
+       * Neither end may run past today. A range ending in the future invents
+       * empty months, and the KPI then reports the last of them: "Net Sales —
+       * Oct-26, down 93%" is a arithmetic on a month that has not happened.
+       */
+      '<div><label class="lbl">From</label><input class="inp" type="date" data-an="from" max="' +
+        esc(today()) + '" value="' + esc(f.from) + '"></div>' +
+      '<div><label class="lbl">To</label><input class="inp" type="date" data-an="to" max="' +
+        esc(today()) + '" value="' + esc(f.to || today()) + '"></div>' +
     '</div></div>';
 
   var cards = [
@@ -2937,8 +3034,8 @@ function leagueTable(rows, met, f) {
   return '<div class="panel"><div class="ptop"><div><h3>VRM performance</h3></div></div>' +
     (list.length
       ? '<div class="chartbox" id="cLeague_box"><canvas id="cLeague"></canvas></div>' +
-        '<div class="legend"><i style="background:var(--p)"></i>Gross Sales' +
-        '<i style="background:var(--dan);margin-left:16px"></i>Redemption</div>' +
+        '<div class="legend"><i style="background:var(--chart1)"></i>Gross Sales' +
+        '<i style="background:var(--chart2);margin-left:16px"></i>Redemption</div>' +
         '<div class="twrap"><table><thead><tr><th>#</th><th>VRM</th>' +
         '<th class="num">' + esc(met.label) + '</th><th>Share</th>' +
         '<th class="num">Clients</th><th class="num">Txns</th>' +
