@@ -456,6 +456,195 @@ body.hasdemo main{margin-top:calc(var(--topbar) + 32px)}
   thead th,tbody td,tfoot td{padding-left:14px;padding-right:14px}
   .lhead h1{font-size:27px}
 }
+
+/* ===========================================================================
+   MOTION
+   ---------------------------------------------------------------------------
+   One easing curve for almost everything, because a screen where each element
+   moves to its own rhythm reads as unfinished rather than as lively. --ease is
+   a fast start that settles gently, which suits things arriving; --pop
+   overshoots slightly and is reserved for things being pressed or confirmed.
+
+   Three durations, and no others: 150ms for a response to a finger, 280ms for
+   something entering, 420ms for a whole page. Anything slower than that starts
+   to feel like latency rather than design — which matters here, where a real
+   two-second wait is already sitting behind every action and animation must not
+   be confused with it.
+
+   Everything below is switched off wholesale under prefers-reduced-motion. It
+   is at the very end of this block.
+   ======================================================================== */
+:root{
+  --ease:cubic-bezier(.22,1,.36,1);
+  --pop:cubic-bezier(.34,1.56,.64,1);
+  --t-fast:150ms; --t-mid:280ms; --t-slow:420ms;
+}
+
+/* ---- the view, and the things inside it, arriving ---------------------- */
+.view{animation:viewIn var(--t-slow) var(--ease) both}
+@keyframes viewIn{
+  from{opacity:0;transform:translateY(12px) scale(.994)}
+  to{opacity:1;transform:none}
+}
+
+/*
+ * Cards arrive in sequence rather than all at once. The delay is small and it
+ * stops at the eighth card: a stagger long enough to notice on a twelve-card
+ * dashboard becomes a queue you have to wait through.
+ */
+.kpis>.kpi,.grid>.panel,.view>.panel{animation:cardIn var(--t-mid) var(--ease) both}
+.kpis>.kpi:nth-child(1),.view>.panel:nth-child(1){animation-delay:20ms}
+.kpis>.kpi:nth-child(2),.view>.panel:nth-child(2){animation-delay:60ms}
+.kpis>.kpi:nth-child(3),.view>.panel:nth-child(3){animation-delay:100ms}
+.kpis>.kpi:nth-child(4),.view>.panel:nth-child(4){animation-delay:140ms}
+.kpis>.kpi:nth-child(5),.view>.panel:nth-child(5){animation-delay:180ms}
+.kpis>.kpi:nth-child(6),.view>.panel:nth-child(6){animation-delay:210ms}
+.kpis>.kpi:nth-child(7){animation-delay:240ms}
+.kpis>.kpi:nth-child(n+8){animation-delay:265ms}
+@keyframes cardIn{
+  from{opacity:0;transform:translateY(14px)}
+  to{opacity:1;transform:none}
+}
+
+/* table rows settle in too, but only the first screenful — beyond that it is
+   scrolling, not arriving */
+tbody tr{animation:rowIn 260ms var(--ease) both}
+tbody tr:nth-child(1){animation-delay:10ms}
+tbody tr:nth-child(2){animation-delay:26ms}
+tbody tr:nth-child(3){animation-delay:42ms}
+tbody tr:nth-child(4){animation-delay:58ms}
+tbody tr:nth-child(5){animation-delay:74ms}
+tbody tr:nth-child(6){animation-delay:90ms}
+tbody tr:nth-child(7){animation-delay:104ms}
+tbody tr:nth-child(8){animation-delay:116ms}
+tbody tr:nth-child(n+9){animation-delay:126ms}
+@keyframes rowIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* ---- KPI cards ---------------------------------------------------------- */
+.kpi{transition:transform var(--t-fast) var(--ease),box-shadow var(--t-fast),border-color var(--t-fast)}
+.kpi:hover{transform:translateY(-3px);box-shadow:var(--sh2);border-color:var(--line)}
+.kpi .kv{transition:color var(--t-fast)}
+/* the accent hairline that was already on ::before now actually animates */
+.kpi::before{transition:opacity var(--t-mid) var(--ease),transform var(--t-mid) var(--ease);
+  transform:scaleX(.2);transform-origin:left}
+.kpi:hover::before{opacity:1;transform:scaleX(1)}
+.kpi .ki{transition:transform var(--t-mid) var(--pop)}
+.kpi:hover .ki{transform:scale(1.12) rotate(-4deg)}
+
+/* ---- navigation --------------------------------------------------------- */
+/*
+ * Smaller than it was, and smaller again once there are enough items to make
+ * the sidebar scroll. The compact class is set from buildSidebar(), which is
+ * the only place that knows how many tabs this role actually has.
+ */
+.snav button{
+  padding:8px 11px;font-size:13.5px;border-radius:var(--r3);
+  transition:background var(--t-fast) var(--ease),color var(--t-fast),
+             transform var(--t-fast) var(--ease),padding var(--t-mid) var(--ease),
+             font-size var(--t-mid) var(--ease);
+}
+.snav.compact button{padding:6px 10px;font-size:12.75px;gap:9px}
+.snav.compact .ic{width:16px;flex:0 0 16px}
+.snav.compact .ic svg{width:15px;height:15px}
+.snav.compact .sgroup,.snav.compact+.sgroup{font-size:10px}
+
+.snav button:hover{transform:translateX(2px)}
+.snav button:active{transform:translateX(1px) scale(.99)}
+
+/* the active marker grows from the middle instead of blinking on */
+.snav button::before{
+  content:"";position:absolute;left:0;top:50%;width:3px;height:60%;
+  border-radius:0 3px 3px 0;background:var(--p);
+  transform:translateY(-50%) scaleY(0);transform-origin:center;
+  transition:transform var(--t-mid) var(--pop);
+}
+.snav button[aria-current="true"]::before{transform:translateY(-50%) scaleY(1)}
+.snav button[aria-current="true"]{transform:none}
+.navbadge{transition:transform var(--t-mid) var(--pop);animation:badgePop 360ms var(--pop) both}
+@keyframes badgePop{from{transform:scale(0)}to{transform:scale(1)}}
+
+/* ---- buttons ------------------------------------------------------------ */
+.btn{position:relative;overflow:hidden;
+  transition:transform var(--t-fast) var(--ease),box-shadow var(--t-fast),
+             background var(--t-fast),border-color var(--t-fast),color var(--t-fast)}
+.btn:hover{transform:translateY(-1px);box-shadow:var(--sh)}
+.btn:active{transform:translateY(0) scale(.975)}
+.btn.pri:hover{box-shadow:0 4px 14px rgba(40,40,37,.18)}
+.btn[disabled]{transform:none!important}
+
+/* the ripple is drawn by JS placing --rx/--ry at the click point */
+.btn .rip{
+  position:absolute;left:var(--rx);top:var(--ry);width:0;height:0;border-radius:50%;
+  transform:translate(-50%,-50%);background:currentColor;opacity:.22;pointer-events:none;
+  animation:rip 520ms var(--ease) forwards;
+}
+@keyframes rip{to{width:230%;padding-bottom:230%;opacity:0}}
+
+/* ---- the brand mark ----------------------------------------------------- */
+.bmark{position:relative;overflow:hidden;
+  animation:markIn 620ms var(--pop) both;
+  transition:transform var(--t-mid) var(--pop)}
+.bmark::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.42) 50%,transparent 65%);
+  transform:translateX(-130%);
+}
+.bmark:hover{transform:rotate(-6deg) scale(1.06)}
+.bmark:hover::after,.bmark.sheen::after{animation:sheen 900ms var(--ease)}
+@keyframes markIn{from{opacity:0;transform:scale(.4) rotate(-14deg)}to{opacity:1;transform:none}}
+@keyframes sheen{from{transform:translateX(-130%)}to{transform:translateX(130%)}}
+
+/* ---- the top progress bar ----------------------------------------------- */
+/* It used to jump to 72% and sit there. Now it creeps, which is what makes a
+   progress bar read as "still working" rather than "stuck". */
+#bar{background:var(--grad);background-size:200% 100%;animation:barflow 1.4s linear infinite}
+#bar.on{box-shadow:0 0 10px rgba(235,91,85,.5)}
+@keyframes barflow{from{background-position:0% 50%}to{background-position:200% 50%}}
+
+/* ---- skeletons ---------------------------------------------------------- */
+.sk{position:relative;overflow:hidden;background:var(--line2);border-radius:var(--r3)}
+.sk::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);
+  animation:shimmer 1.25s infinite}
+html[data-t="dark"] .sk::after{background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent)}
+@keyframes shimmer{to{transform:translateX(100%)}}
+.skwrap{padding:20px;display:flex;flex-direction:column;gap:12px}
+.skrow{display:flex;gap:12px}
+.skrow .sk{height:13px;flex:1}
+.skchart{height:230px;border-radius:var(--r2)}
+
+/* ---- dialogs ------------------------------------------------------------ */
+#modal{transition:opacity var(--t-mid) var(--ease)}
+.mbox{animation:mIn var(--t-mid) var(--pop) both}
+@keyframes mIn{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:none}}
+
+/* ---- toasts ------------------------------------------------------------- */
+.toast{animation:toastIn 340ms var(--pop) both}
+@keyframes toastIn{from{opacity:0;transform:translateY(16px) scale(.96)}to{opacity:1;transform:none}}
+
+/* ---- tables and rows ---------------------------------------------------- */
+tbody tr{transition:background var(--t-fast)}
+.twrap table tbody tr:hover{background:var(--surf2)}
+
+/* ---- sidebar / topbar entrance ------------------------------------------ */
+.side{animation:sideIn var(--t-slow) var(--ease) both}
+@keyframes sideIn{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
+.topbar{animation:topIn var(--t-slow) var(--ease) both}
+@keyframes topIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+
+/* ---------------------------------------------------------------------------
+   Someone who has asked their system for less movement has usually asked for a
+   reason. Everything above collapses to a plain fade, and the count-up is
+   stopped from JS by the same query.
+   ------------------------------------------------------------------------ */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important;
+  }
+  .view{animation:none}
+}
+
 </style>
 
 <div id="login">
@@ -732,7 +921,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-26 warm-theme';
+var PAGE_BUILD = '2026-08-26b motion';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbzOwsKX0s0QZsoMAPsdzV8KsL64VmvnYMyKV4YD4J4G-X7aN2SFCWATeazE0AZASqwuaw/exec';        /* set by the Pages build */
 
@@ -842,6 +1031,46 @@ function apiFetch_(fn, args) {
     throw e;
   });
 }
+/* ============================== MOTION ==================================== *
+ * The parts of the motion layer that CSS cannot express on its own: where a
+ * ripple was clicked, how many tabs this role has, and whether the person using
+ * this has asked for less movement.
+ * ========================================================================= */
+var REDUCED = (function () {
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+  catch (e) { return false; }
+})();
+
+/*
+ * A ripple from the point actually clicked. Delegated, so it applies to every
+ * button that exists now or is rendered later, and removed on animation end so
+ * a long session does not accumulate a thousand dead spans.
+ */
+document.addEventListener('pointerdown', function (e) {
+  if (REDUCED) return;
+  var b = e.target.closest && e.target.closest('.btn');
+  if (!b || b.disabled) return;
+  var r = b.getBoundingClientRect();
+  var sp = document.createElement('span');
+  sp.className = 'rip';
+  sp.style.setProperty('--rx', (e.clientX - r.left) + 'px');
+  sp.style.setProperty('--ry', (e.clientY - r.top) + 'px');
+  b.appendChild(sp);
+  sp.addEventListener('animationend', function () { sp.remove(); });
+  setTimeout(function () { if (sp.parentNode) sp.remove(); }, 900);
+}, true);
+
+/* A sheen across the brand mark whenever fresh data lands — a small, cheap
+   acknowledgement that something happened, in the one place always on screen. */
+function markSheen() {
+  if (REDUCED) return;
+  var m = document.querySelector('.bmark');
+  if (!m) return;
+  m.classList.remove('sheen');
+  void m.offsetWidth;          /* restart the animation */
+  m.classList.add('sheen');
+}
+
 function busy(delta) {
   S.busy = Math.max(0, S.busy + delta);
   var b = $('bar');
@@ -1171,6 +1400,7 @@ function enterApp() {
    * whenever code has been pasted into the editor without updating the
    * deployment — which presents as the app mysteriously lacking a feature.
    */
+  markSheen();
   var b = $('buildStamp');
   if (b) {
     b.textContent = ((S.data && S.data.build) ? 'server build ' + S.data.build : '') +
@@ -1182,9 +1412,17 @@ function enterApp() {
 }
 
 function buildSidebar() {
+  var list = tabs();
+  /*
+   * Past eight entries the sidebar starts to scroll on a laptop, so the items
+   * shrink to keep them all in view. CSS animates padding and font-size, so the
+   * change is something you see happen rather than something that has silently
+   * already happened.
+   */
+  $('snav').classList.toggle('compact', list.length > 8);
   $('snav').innerHTML =
     '<div class="sgroup">' + (isAdmin() ? 'Administration' : 'My dashboard') + '</div>' +
-    tabs().map(function (t) {
+    list.map(function (t) {
       return '<button data-tab="' + t.id + '" aria-current="' + (S.tab === t.id ? 'true' : 'false') + '">' +
              '<span class="ic">' + t.ic + '</span>' + esc(t.label) +
              (t.badge ? '<span class="navbadge">' + t.badge + '</span>' : '') + '</button>';
@@ -1630,7 +1868,7 @@ function animateCounts() {
   var els = document.querySelectorAll('.kv[data-count]');
   Array.prototype.forEach.call(els, function (el) {
     var target = num(el.dataset.count), plain = el.dataset.plain === '1';
-    var dur = 780, t0 = 0, done = false;
+    var dur = REDUCED ? 0 : 780, t0 = 0, done = false;
     function fmt(v) { return plain ? inr(Math.round(v)) : rupee(Math.round(v)); }
     if (!target) { el.textContent = fmt(0); return; }
     function step(ts) {
