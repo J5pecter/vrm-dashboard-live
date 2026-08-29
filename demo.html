@@ -2485,7 +2485,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-25g template-matches-export';
+var PAGE_BUILD = '2026-08-25h names-and-feedback';
 
 var API_URL = '';        /* set by the Pages build */
 
@@ -2586,12 +2586,38 @@ function busy(delta) {
 }
 
 /* Disables the triggering control while its call is in flight. */
+/*
+ * A locked button that counts.
+ *
+ * Every server call costs about two seconds before any of our code runs — Apps
+ * Script's own dispatch plus the redirect hop it answers with — and that is not
+ * something the app can shorten. What it can do is stop a two-second wait from
+ * reading as a dead one: past a second and a half the button starts showing the
+ * elapsed time, so a slow call is visibly working rather than visibly stuck.
+ *
+ * The delay before counting matters. Showing "1s" on every quick action would
+ * make a fast app look slow; the counter only appears once the wait is already
+ * long enough to worry about.
+ */
 function lock(el, label) {
   if (!el) return function () {};
   var html = el.innerHTML;
+  var base = '<span class="spin"></span>' + (label ? ' ' + esc(label) : '');
   el.disabled = true;
-  el.innerHTML = '<span class="spin"></span>' + (label ? ' ' + esc(label) : '');
-  return function () { el.disabled = false; el.innerHTML = html; };
+  el.innerHTML = base;
+
+  var started = new Date().getTime();
+  var tick = setInterval(function () {
+    if (!el.isConnected) { clearInterval(tick); return; }
+    var secs = Math.round((new Date().getTime() - started) / 1000);
+    if (secs >= 2) el.innerHTML = base + ' <span class="muted">' + secs + 's</span>';
+  }, 500);
+
+  return function () {
+    clearInterval(tick);
+    el.disabled = false;
+    el.innerHTML = html;
+  };
 }
 
 /* ------------------------------ toasts ----------------------------------- */
@@ -3300,7 +3326,37 @@ function animateCounts() {
 /* ================================ CHARTS ================================= */
 /* Chart.js when the CDN is reachable, hand-drawn CSS bars when it is not. */
 
-function drawChart(id, labels, seriesA, seriesB, names) {
+/*
+ * Chart labels people can read.
+ *
+ * An axis of VRM002, VRM005, VRM008 asks the reader to hold a codebook in their
+ * head to answer "who is doing well", which is the only question the chart is
+ * for. Full names do not fit — "Swarnarekha Divakar Shetty" against eight peers
+ * turns the axis into wallpaper — so it is the first name plus a surname
+ * initial, which is how these colleagues refer to each other anyway.
+ *
+ * Two people can collapse onto the same short label; when they do, both get
+ * their employee code back, because a wrong name is worse than a code.
+ */
+function shortVrmLabel(name, empCode) {
+  var n = String(name === null || name === undefined ? '' : name).trim();
+  if (!n) return empCode || 'Unassigned';
+  var w = n.split(/\s+/).filter(Boolean);
+  if (w.length === 1) return w[0];
+  var last = w[w.length - 1];
+  return w[0] + ' ' + last.charAt(0).toUpperCase() + '.';
+}
+
+function vrmChartLabels(rows) {
+  var labels = rows.map(function (r) { return shortVrmLabel(r.name, r.empCode); });
+  var seen = {};
+  labels.forEach(function (l) { seen[l] = (seen[l] || 0) + 1; });
+  return labels.map(function (l, i) {
+    return seen[l] > 1 ? l + ' (' + rows[i].empCode + ')' : l;
+  });
+}
+
+function drawChart(id, labels, seriesA, seriesB, names, fullLabels) {
   var box = $(id + '_box');
   if (!box) return;
   var ink = getComputedStyle(document.documentElement).getPropertyValue('--ink2').trim() || '#4b5164';
@@ -3332,7 +3388,15 @@ function drawChart(id, labels, seriesA, seriesB, names) {
         tooltip: {
           backgroundColor: surf, titleColor: ink, bodyColor: ink, borderColor: line, borderWidth: 1,
           padding: 10, cornerRadius: 8, displayColors: true,
-          callbacks: { label: function (c) { return c.dataset.label + ': ' + rupee(c.parsed.y); } }
+          callbacks: {
+            /* the axis is abbreviated, so the tooltip carries the whole name */
+            title: function (items) {
+              var i = items && items[0] ? items[0].dataIndex : -1;
+              if (fullLabels && i >= 0 && fullLabels[i]) return fullLabels[i];
+              return i >= 0 ? labels[i] : '';
+            },
+            label: function (c) { return c.dataset.label + ': ' + rupee(c.parsed.y); }
+          }
         }
       },
       scales: {
@@ -3713,10 +3777,14 @@ function viewVrmwise() {
 
   var top = rows.filter(function (r) { return r.n > 0; }).slice(0, 12);
   after(function () {
-    drawChart('c2', top.map(function (r) { return r.empCode; }),
+    drawChart('c2', vrmChartLabels(top),
       top.map(function (r) { return r.gross; }),
       top.map(function (r) { return r.redemption; }),
-      ['Gross Sales', 'Redemption']);
+      ['Gross Sales', 'Redemption'],
+      /* the tooltip has room for the whole name and the code */
+      top.map(function (r) {
+        return r.name + (r.empCode && r.empCode !== '—' ? ' (' + r.empCode + ')' : '');
+      }));
   });
 
   var tot = { sip: 0, lumpsum: 0, redemption: 0, gross: 0, net: 0, n: 0 };
@@ -6424,6 +6492,14 @@ var ACT = {
     var un = lock(btn, 'Deleting');
     api('deleteAllData', S.session.token).then(function (d) {
       var n = (d.result || {}).deleted || 0;
+      /*
+       * Close the dialog FIRST. Without this the delete succeeded, the data
+       * went, and the dialog stayed open with its button spinning — which reads
+       * as a hang, and invites a second click at the one moment a second click
+       * is least welcome. Every other dialog action already did this; this one
+       * was missed when the confirm moved behind a warning.
+       */
+      closeModal();
       S.sel = {}; absorb(d);
       toast('All transaction data deleted (' + n + ' row(s)). VRMs and the Activity Log are untouched.');
     }).catch(function (e) { un(); fail(e); });
