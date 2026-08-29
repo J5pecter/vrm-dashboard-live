@@ -645,6 +645,48 @@ tbody tr{transition:background var(--t-fast)}
   .view{animation:none}
 }
 
+
+/* ---- the sidebar's "More" group ---------------------------------------- */
+.snav .navmore{
+  display:flex;align-items:center;gap:11px;padding:8px 11px;border-radius:var(--r3);
+  font-size:13.5px;font-weight:500;color:var(--ink3);text-align:left;width:100%;
+  transition:background var(--t-fast),color var(--t-fast);
+}
+.snav .navmore:hover{background:var(--line2);color:var(--ink2)}
+.snav .navmore .chev{
+  margin-left:auto;display:grid;place-items:center;
+  transition:transform var(--t-mid) var(--ease);
+}
+.snav .navmore .chev svg{width:15px;height:15px}
+.snav .navmore[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.snav .navmore[aria-expanded="true"]{color:var(--ink2)}
+
+/*
+ * Collapsed with a grid row rather than max-height, so the open state is the
+ * content's real height — no guessed pixel value to outgrow when a section is
+ * added, and no jump at the end of the transition.
+ */
+.snav .submenu{
+  display:grid;grid-template-rows:0fr;
+  transition:grid-template-rows var(--t-mid) var(--ease),opacity var(--t-mid) var(--ease);
+  opacity:0;
+}
+.snav .submenu.open{grid-template-rows:1fr;opacity:1}
+.snav .subinner{overflow:hidden;min-height:0;display:flex;flex-direction:column;gap:2px}
+.snav .submenu button{
+  padding-left:22px;font-size:13px;
+  animation:subIn var(--t-mid) var(--ease) both;
+}
+.snav .submenu.open .subinner button:nth-child(1){animation-delay:20ms}
+.snav .submenu.open .subinner button:nth-child(2){animation-delay:45ms}
+.snav .submenu.open .subinner button:nth-child(3){animation-delay:70ms}
+.snav .submenu.open .subinner button:nth-child(4){animation-delay:95ms}
+.snav .submenu.open .subinner button:nth-child(n+5){animation-delay:115ms}
+@keyframes subIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){
+  .snav .submenu{transition:none}
+}
+
 </style>
 
 <div id="login">
@@ -921,7 +963,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-26b motion';
+var PAGE_BUILD = '2026-08-26c four-tabs';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbzOwsKX0s0QZsoMAPsdzV8KsL64VmvnYMyKV4YD4J4G-X7aN2SFCWATeazE0AZASqwuaw/exec';        /* set by the Pages build */
 
@@ -1351,23 +1393,38 @@ var IC = {
   unlock:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg>'
 };
 
+/* A VRM already had exactly four, so nothing moves behind the disclosure for
+   them — the flag just lets both roles share one code path. */
 var VRM_TABS = [
-  { id: 'summary',   label: 'Summary',             ic: IC.chart },
-  { id: 'analytics', label: 'Revenue Analysis',    ic: IC.trend },
-  { id: 'data',      label: 'VRM Data',            ic: IC.table },
-  { id: 'clients',   label: 'Client Consolidated', ic: IC.layers }
+  { id: 'summary',   label: 'Summary',             ic: IC.chart,  main: true },
+  { id: 'analytics', label: 'Revenue Analysis',    ic: IC.trend,  main: true },
+  { id: 'data',      label: 'My Data',             ic: IC.table,  main: true },
+  { id: 'clients',   label: 'Client Consolidated', ic: IC.layers, main: true }
 ];
+/*
+ * Four in the sidebar, six behind a disclosure.
+ *
+ * Ten entries down one edge is a menu you read rather than a place you know,
+ * and the four that matter every day were being priced the same as the six
+ * opened once a month. The split is by frequency, not by importance: Restore
+ * and VRMs & Access are not minor, they are simply rare, and a rare thing in
+ * plain sight costs attention every single day it is not needed.
+ *
+ * Nothing is hidden. "More" sits directly beneath the four, remembers whether
+ * it was left open, and opens itself when the current page lives inside it — so
+ * a section is never both active and out of sight.
+ */
 var ADMIN_TABS = [
-  { id: 'overview',  label: 'Consolidated Overview', ic: IC.chart },
-  { id: 'analytics', label: 'Revenue Analysis',      ic: IC.trend },
-  { id: 'vrmwise',   label: 'VRM-wise Summary',      ic: IC.users },
+  { id: 'overview',  label: 'Consolidated Overview', ic: IC.chart,  main: true },
+  { id: 'analytics', label: 'Revenue Analysis',      ic: IC.trend,  main: true },
+  { id: 'vrmwise',   label: 'VRM-wise Summary',      ic: IC.users,  main: true },
+  { id: 'alltxns',   label: 'All Transactions',      ic: IC.table,  main: true },
   { id: 'scheme',    label: 'Scheme Analysis',       ic: IC.layers },
-  { id: 'alltxns',  label: 'All Transactions',      ic: IC.table },
-  { id: 'clients',  label: 'Client Consolidated',   ic: IC.layers },
-  { id: 'batches',  label: 'Upload History',        ic: IC.up },
-  { id: 'restore',  label: 'Restore',               ic: IC.undo },
-  { id: 'access',   label: 'VRMs & Access',         ic: IC.shield },
-  { id: 'activity', label: 'Activity Log',          ic: IC.clock }
+  { id: 'clients',   label: 'Client Consolidated',   ic: IC.layers },
+  { id: 'batches',   label: 'Upload History',        ic: IC.up },
+  { id: 'restore',   label: 'Restore',               ic: IC.undo },
+  { id: 'access',    label: 'VRMs & Access',         ic: IC.shield },
+  { id: 'activity',  label: 'Activity Log',          ic: IC.clock }
 ];
 /*
  * The Unassigned tab appears only when something is waiting there. A permanent
@@ -1381,7 +1438,7 @@ function tabs() {
   var out = ADMIN_TABS.slice();
   var at = 0;
   out.forEach(function (t, i) { if (t.id === 'vrmwise') at = i + 1; });
-  out.splice(at, 0, { id: 'unassigned', label: 'Unassigned', ic: IC.users, badge: n });
+  out.splice(at, 0, { id: 'unassigned', label: 'Unassigned', ic: IC.users, badge: n, main: true });
   return out;
 }
 function isAdmin() { return S.session && S.session.role === 'ADMIN'; }
@@ -1411,25 +1468,41 @@ function enterApp() {
   toast('Welcome back, ' + S.session.name.split(' ')[0] + '.', 'i');
 }
 
+function navButton(t) {
+  return '<button data-tab="' + t.id + '" aria-current="' + (S.tab === t.id ? 'true' : 'false') + '">' +
+         '<span class="ic">' + t.ic + '</span>' + esc(t.label) +
+         (t.badge ? '<span class="navbadge">' + t.badge + '</span>' : '') + '</button>';
+}
+
 function buildSidebar() {
   var list = tabs();
-  /*
-   * Past eight entries the sidebar starts to scroll on a laptop, so the items
-   * shrink to keep them all in view. CSS animates padding and font-size, so the
-   * change is something you see happen rather than something that has silently
-   * already happened.
-   */
-  $('snav').classList.toggle('compact', list.length > 8);
+  var main = list.filter(function (t) { return t.main; });
+  var rest = list.filter(function (t) { return !t.main; });
+
+  /* Open if the person left it open, or if what they are looking at is in it —
+     a page should never be both the current one and out of sight. */
+  var inRest = rest.some(function (t) { return t.id === S.tab; });
+  var open = S.navMore || inRest;
+  S.navMore = open;
+
+  /* Still guards the case of a role that somehow carries a long primary list. */
+  $('snav').classList.toggle('compact', main.length > 8);
+
   $('snav').innerHTML =
     '<div class="sgroup">' + (isAdmin() ? 'Administration' : 'My dashboard') + '</div>' +
-    list.map(function (t) {
-      return '<button data-tab="' + t.id + '" aria-current="' + (S.tab === t.id ? 'true' : 'false') + '">' +
-             '<span class="ic">' + t.ic + '</span>' + esc(t.label) +
-             (t.badge ? '<span class="navbadge">' + t.badge + '</span>' : '') + '</button>';
-    }).join('');
+    main.map(navButton).join('') +
+    (rest.length
+      ? '<button class="navmore" data-more="1" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+        '<span class="ic">' + IC.layers + '</span>More' +
+        '<span class="chev">' + IC.down + '</span></button>' +
+        '<div class="submenu' + (open ? ' open' : '') + '">' +
+        '<div class="subinner">' + rest.map(navButton).join('') + '</div></div>'
+      : '');
 }
 
 $('snav').addEventListener('click', function (e) {
+  var m = e.target.closest('button[data-more]');
+  if (m) { S.navMore = !S.navMore; buildSidebar(); return; }
   var b = e.target.closest('button[data-tab]');
   if (!b) return;
   S.tab = b.dataset.tab; S.confirm = null;
@@ -2186,8 +2259,7 @@ function viewData() {
       '<div class="panel" style="border-left:3px solid var(--p)"><div style="padding:14px 18px;' +
       'font-size:13.5px;color:var(--ink2)">Corrections are handled by Admin. If a transaction is ' +
       'wrong, contact Admin with the client code and transaction date — deletion and editing are ' +
-      'restricted to keep the audit trail intact. <b>Redemption files are uploaded by Admin only</b>; ' +
-      'your redemptions still count against your Net Sales once loaded.</div></div>') +
+      'restricted for VRMs.</div></div>') +
     '<div class="panel"><div class="ptop"><div><h3>Transactions</h3></div>' +
     '<div class="tools">' + searchBox('data', 'Search client, PAN, scheme, amount…') + expBtns('vrmtxns') + '</div></div>' +
     (rows.length
@@ -3011,6 +3083,7 @@ function viewActivity() {
  * ========================================================================== */
 
 S.an = { from: '', to: '', vrm: '', metric: 'net', gran: 'month' };
+S.navMore = false;   /* is the sidebar's "More" group open */
 
 var GRAN = {
   day:   { key: function (d) { return d; },              label: function (k) { return dmy(k); },
