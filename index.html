@@ -687,6 +687,35 @@ tbody tr{transition:background var(--t-fast)}
   .snav .submenu{transition:none}
 }
 
+
+/* ---- four headline cards, then the quiet strip -------------------------- */
+/*
+ * Four across on a wide screen and two on a laptop, rather than the auto-fit
+ * that produced whatever fitted. A row of four reads as a set; a row of five
+ * with three orphans underneath reads as a list that ran out.
+ */
+.kpis.four{grid-template-columns:repeat(4,1fr)}
+/* The sidebar eats 244px, so four across needs more window than it looks.
+   Below this the cards would be narrower than the figures they carry. */
+@media (max-width:1360px){.kpis.four{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:620px){.kpis.four{grid-template-columns:1fr}}
+
+.msgrid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  border-top:1px solid var(--line2);
+}
+.ministat{
+  padding:15px 18px;border-right:1px solid var(--line2);border-bottom:1px solid var(--line2);
+  transition:background var(--t-fast);
+}
+.ministat:hover{background:var(--surf2)}
+.msl{
+  font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--ink3);margin-bottom:5px;
+}
+.kv.msv{font-size:19px;font-weight:700;letter-spacing:-.01em;line-height:1.25;color:var(--ink)}
+.kv.msv.red{color:var(--dan)}
+
 </style>
 
 <div id="login">
@@ -963,7 +992,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-26c four-tabs';
+var PAGE_BUILD = '2026-08-26d four-kpis';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbzOwsKX0s0QZsoMAPsdzV8KsL64VmvnYMyKV4YD4J4G-X7aN2SFCWATeazE0AZASqwuaw/exec';        /* set by the Pages build */
 
@@ -1840,6 +1869,22 @@ function panCell(t) {
  * Ordered as the CR requires: Net Sales first, because it is the figure that
  * represents business actually retained.
  * ========================================================================== */
+/*
+ * Four cards, then everything else in one quiet strip.
+ *
+ * There were twelve, and on a VRM with no SIPs and no redemptions five of them
+ * read 7,40,000 and three read zero. Twelve equally-sized cards say all of this
+ * matters equally, which is never true: what a person opening this wants is
+ * this month's net, what it was made of, and where the year stands.
+ *
+ * SIP and Lumpsum lost their cards because the waterfall directly beneath spells
+ * out SIP + Lumpsum = Gross − Redemption = Net, in proportion. Repeating them as
+ * headline figures two inches above their own breakdown was the clearest
+ * duplication on the page.
+ *
+ * The rest keeps its place, at the size it deserves: a row of small figures
+ * under one heading, still counting up, still exact.
+ */
 function kpiCards(k) {
   /* Spell the period out rather than leaning on a dash-suffix nobody reads. */
   var mLabel = k.refMonth ? monLabel(k.refMonth) : 'no data yet';
@@ -1853,34 +1898,36 @@ function kpiCards(k) {
       s: mLabel + ' · SIP + Lumpsum' },
     { t: 'Redemption', v: k.month.redemption, ic: IC.down, g: 'red',
       s: mLabel + ' · money withdrawn' },
-    { t: 'SIP', v: k.month.sip, ic: IC.repeat, g: 'g2', s: mLabel },
-    { t: 'Lumpsum', v: k.month.lumpsum, ic: IC.rupee, g: 'g2', s: mLabel },
-    { t: 'New clients', v: k.newClients, ic: IC.spark, g: '', plain: true,
-      s: mLabel + ' · first-ever purchase' },
-
-    /* Year to date. Same five metrics, tinted and labelled so the pair cannot be
-       mistaken for the month repeating itself. */
-    { t: 'Net Sales · YTD', v: k.year.net, ic: IC.spark, g: 'net', ytd: true,
-      s: yLabel + ' · year to date' },
-    { t: 'Gross Sales · YTD', v: k.year.gross, ic: IC.cal, g: '', ytd: true,
-      s: yLabel + ' · year to date' },
-    { t: 'Redemption · YTD', v: k.year.redemption, ic: IC.down, g: 'red', ytd: true,
-      s: yLabel + ' · year to date' },
-    { t: 'SIP · YTD', v: k.year.sip, ic: IC.repeat, g: 'g2', ytd: true,
-      s: yLabel + ' · year to date' },
-    { t: 'Lumpsum · YTD', v: k.year.lumpsum, ic: IC.rupee, g: 'g2', ytd: true,
-      s: yLabel + ' · year to date' },
-    { t: 'Clients', v: k.clients, ic: IC.user, g: '', plain: true, ytd: true,
-      s: 'distinct client codes, all time' }
+    { t: 'Net Sales · YTD', v: k.year.net, ic: IC.cal, g: 'net', ytd: true,
+      s: yLabel + ' · year to date' }
   ];
-  return '<div class="kpis">' + cards.map(function (c) {
+
+  var minis = [
+    { t: 'Gross · YTD', v: k.year.gross },
+    { t: 'Redemption · YTD', v: k.year.redemption, red: true },
+    { t: 'SIP · YTD', v: k.year.sip },
+    { t: 'Lumpsum · YTD', v: k.year.lumpsum },
+    { t: 'New clients', v: k.newClients, plain: true },
+    { t: 'Clients', v: k.clients, plain: true }
+  ];
+
+  return '<div class="kpis four">' + cards.map(function (c) {
     return '<div class="kpi ' + c.g + (c.ytd ? ' ytd' : '') + '">' +
       '<div class="kt"><span class="ki">' + c.ic + '</span>' + esc(c.t) + '</div>' +
-      '<div class="kv" data-count="' + num(c.v) + '" data-plain="' + (c.plain ? 1 : 0) + '">' +
-      (c.plain ? '0' : rupee(0)) + '</div>' +
+      '<div class="kv" data-count="' + num(c.v) + '" data-plain="0">' + rupee(0) + '</div>' +
       (c.s ? '<div class="ks">' + esc(c.s) + '</div>' : '') +
       '</div>';
-  }).join('') + '</div>';
+  }).join('') + '</div>' +
+  '<div class="panel"><div class="ptop"><div><h3>The rest of the detail</h3></div>' +
+  '<div class="tools"><span class="muted" style="font-size:12px">' +
+  esc(yLabel === 'no data yet' ? yLabel : 'year to date · ' + yLabel) + '</span></div></div>' +
+  '<div class="msgrid">' + minis.map(function (m) {
+    return '<div class="ministat">' +
+      '<div class="msl">' + esc(m.t) + '</div>' +
+      '<div class="kv msv' + (m.red ? ' red' : '') + '" data-count="' + num(m.v) +
+      '" data-plain="' + (m.plain ? 1 : 0) + '">' + (m.plain ? '0' : rupee(0)) + '</div>' +
+      '</div>';
+  }).join('') + '</div></div>';
 }
 
 /* ============================== WATERFALL ================================= *
