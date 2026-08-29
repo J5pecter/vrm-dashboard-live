@@ -11,7 +11,7 @@
 <!-- VRM Revenue Dashboard — single-file frontend served by HtmlService -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Newsreader:opsz,wght@6..72,200;6..72,300;6..72,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Mona+Sans:ital,wght@0,200..900;1,200..900&display=swap" rel="stylesheet">
 
 <style>
 /* ===========================================================================
@@ -82,8 +82,8 @@
 
   --grad:linear-gradient(101deg,#eb5b55 0%,#e8845f 52%,#e8b45c 100%);
 
-  --font:'Manrope',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
-  --font-display:'Newsreader','Spectral',Georgia,'Times New Roman',serif;
+  --font:'Mona Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --font-display:'Mona Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
 }
 /*
  * Dark is the same paper turned down, not a different palette: the browns stay
@@ -140,7 +140,7 @@ body{
  * which is the one thing guaranteed to look worse than the sans it replaced.
  */
 .lhead h1,.phead h2,.mbox h3{
-  font-family:var(--font-display); font-weight:300; letter-spacing:-.012em;
+  font-family:var(--font-display); font-weight:600; letter-spacing:-.028em;
 }
 .num,.mono,td.num,th.num{ font-variant-numeric:tabular-nums; }
 button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
@@ -209,7 +209,7 @@ h1,h2,h3{letter-spacing:-.018em;line-height:1.18}
 .lmark{width:52px;height:52px;margin:0 auto 14px;border-radius:12px;display:grid;place-items:center;
   background:#fff;color:var(--p);font-weight:800;font-size:15px;letter-spacing:-.04em;
   box-shadow:0 12px 30px -8px rgba(0,0,0,.4)}
-.lhead h1{margin:0;font-size:34px;color:#fff;font-weight:300;letter-spacing:-.012em}
+.lhead h1{margin:0;font-size:34px;color:#fff;font-weight:600;letter-spacing:-.028em}
 .lhead p{margin:8px 0 0;color:rgba(255,255,255,.72);font-size:15px}
 .lcard{padding:30px;border-radius:var(--r);background:var(--surf);border:1px solid transparent;
   box-shadow:var(--sh3)}
@@ -285,7 +285,7 @@ h1,h2,h3{letter-spacing:-.018em;line-height:1.18}
 
 main{margin:var(--topbar) 0 0 var(--side);padding:28px;min-height:calc(100vh - var(--topbar))}
 .phead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
-.phead h2{margin:0;font-size:30px;font-weight:300;letter-spacing:-.012em}
+.phead h2{margin:0;font-size:30px;font-weight:600;letter-spacing:-.028em}
 .phead p{margin:7px 0 0;color:var(--ink2);font-size:14px;max-width:76ch}
 .view{animation:rise .32s cubic-bezier(.2,.9,.25,1)}
 
@@ -363,7 +363,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--p);cursor:pointer
 .mbox{width:100%;max-width:470px;max-height:92vh;overflow:auto;padding:26px;border-radius:12px;
   background:var(--surf);border:1px solid var(--line);box-shadow:var(--sh3);
   animation:rise .26s cubic-bezier(.2,.9,.25,1)}
-.mbox h3{margin:0 0 6px;font-size:22px;font-weight:300;letter-spacing:-.01em}
+.mbox h3{margin:0 0 6px;font-size:22px;font-weight:600;letter-spacing:-.02em}
 .mbox .msub{margin:0 0 20px;font-size:13.5px;color:var(--ink2);line-height:1.6}
 .f{margin-bottom:15px}
 .mact{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap}
@@ -644,6 +644,14 @@ tbody tr{transition:background var(--t-fast)}
   }
   .view{animation:none}
 }
+/* The same switch, chosen deliberately in Settings rather than inherited from
+   the operating system. Someone may want stillness here and motion elsewhere. */
+html[data-motion="reduced"] *,
+html[data-motion="reduced"] *::before,
+html[data-motion="reduced"] *::after{
+  animation-duration:.01ms!important;animation-iteration-count:1!important;
+  transition-duration:.01ms!important;
+}
 
 
 /* ---- the sidebar's "More" group ---------------------------------------- */
@@ -803,6 +811,257 @@ tbody tr{transition:background var(--t-fast)}
 @media (prefers-reduced-motion:reduce){
   .wfbar>div{transition:none}
 }
+
+
+/* ===========================================================================
+   THEMES
+   ---------------------------------------------------------------------------
+   Five palettes, each drawn from somewhere real rather than invented, and each
+   written out in full for light and for dark. Deriving a dark theme by formula
+   from a light one always produces the same muddy grey: the browns go blue and
+   an accent chosen to sit on paper turns luminous on black. Written twice, both
+   are chosen.
+   ...........................................................................
+   :root already carries "paper" — Ellipsus warmth with Airbnb structure — so
+   only the other four need declaring. Selectors are attribute-based and sit
+   after the base dark block, which is what lets them win.
+   ======================================================================== */
+
+/* ---- BRONZE — ventriloc.ca ---------------------------------------------
+   Charcoal and a real bronze, over cream rather than white. The bronze is a
+   metal, not a yellow: it only reads as one against a warm ground, which is
+   why the paper here is #EBE6DD and not #FFF. */
+html[data-theme="bronze"]{
+  --ink:#202020; --ink2:#4d4d4d; --ink3:#828282;
+  --bg:#f3f0ea; --surf:#fbfaf7; --surf2:#ebe6dd;
+  --line:#ddd6c8; --line2:#e8e2d6;
+  --p:#816729; --p2:#9a7d35; --p3:#655020;
+  --p-soft:#f2ebda; --p-ink:#6b551f;
+  --btn-ink:#202020; --btn-ink2:#3a3a3a;
+  --a:#5c7a4a; --a2:#779561; --a-soft:#eaf0e5;
+  --warn:#b06a1e; --warn-soft:#fbf0e2;
+  --dan:#b23a26; --dan-soft:#f9eae7; --ok:#5c7a4a;
+  --chart1:#816729; --chart2:#ff682c;
+  --grad:linear-gradient(101deg,#816729 0%,#b08b3a 52%,#ff682c 100%);
+}
+html[data-theme="bronze"][data-t="dark"]{
+  --ink:#f2efe8; --ink2:#a8a294; --ink3:#7a7568;
+  --bg:#17160f; --surf:#201e16; --surf2:#2a2719;
+  --line:#3a3628; --line2:#2f2c20;
+  --p:#c9a349; --p2:#dcba63; --p3:#a8853a;
+  --p-soft:#2e2716; --p-ink:#e0c37b;
+  --btn-ink:#f2efe8; --btn-ink2:#ddd9cd;
+  --a:#8fae76; --a2:#a7c290; --a-soft:#1d2417;
+  --warn:#d99a4e; --warn-soft:#2b2113;
+  --dan:#d9634c; --dan-soft:#2d1a15; --ok:#8fae76;
+  --chart1:#c9a349; --chart2:#ff8a4d;
+}
+
+/* ---- REBELLION — rblln.fr ----------------------------------------------
+   One electric orange against near-black, and nothing else competing. The
+   headings go uppercase and heavy here, which is the whole personality of that
+   site; it is set on the type rule below rather than in the palette. */
+html[data-theme="rebellion"]{
+  --ink:#1d1d1d; --ink2:#55534a; --ink3:#7b7762;
+  --bg:#f5f2ee; --surf:#ffffff; --surf2:#efebe4;
+  --line:#ded9d0; --line2:#e9e5dd;
+  --p:#fd6504; --p2:#ff8236; --p3:#d24f00;
+  --p-soft:#ffeee3; --p-ink:#c04b00;
+  --btn-ink:#1d1d1d; --btn-ink2:#333;
+  --a:#3f7d55; --a2:#57986e; --a-soft:#e9f2ec;
+  --warn:#b06a1e; --warn-soft:#fbf0e2;
+  --dan:#d13b1e; --dan-soft:#fceae5; --ok:#3f7d55;
+  --chart1:#1d1d1d; --chart2:#fd6504;
+  --grad:linear-gradient(101deg,#fd6504 0%,#ff8236 55%,#ffb066 100%);
+}
+html[data-theme="rebellion"][data-t="dark"]{
+  --ink:#f5f2ee; --ink2:#a5a196; --ink3:#7b7762;
+  --bg:#111110; --surf:#1a1a18; --surf2:#232320;
+  --line:#33322e; --line2:#292826;
+  --p:#ff7a29; --p2:#ff9754; --p3:#fd6504;
+  --p-soft:#2c1a0d; --p-ink:#ffab72;
+  --btn-ink:#f5f2ee; --btn-ink2:#e2ded6;
+  --a:#5fa077; --a2:#7bb891; --a-soft:#16241b;
+  --warn:#d99a4e; --warn-soft:#2b2113;
+  --dan:#e8604a; --dan-soft:#2d1713; --ok:#5fa077;
+  --chart1:#c9c5bb; --chart2:#ff7a29;
+}
+
+/* ---- MONO — overrrides.com ---------------------------------------------
+   Black, white, one grey and a link blue that is deliberately the browser's
+   own. Nearly no radius and no colour doing decorative work: the only hue on
+   screen means something. */
+html[data-theme="mono"]{
+  --ink:#090909; --ink2:#5c5c5c; --ink3:#999999;
+  --bg:#ffffff; --surf:#ffffff; --surf2:#f4f4f4;
+  --line:#e2e2e2; --line2:#efefef;
+  --p:#0000ee; --p2:#3333ff; --p3:#0000bb;
+  --p-soft:#eeeeff; --p-ink:#0000cc;
+  --btn-ink:#090909; --btn-ink2:#2a2a2a;
+  --a:#0a7d3f; --a2:#12a355; --a-soft:#e9f6ee;
+  --warn:#8a6100; --warn-soft:#fdf5e3;
+  --dan:#cc0000; --dan-soft:#ffecec; --ok:#0a7d3f;
+  --chart1:#090909; --chart2:#0000ee;
+  --grad:linear-gradient(101deg,#090909 0%,#5c5c5c 60%,#0000ee 100%);
+  --r:5px; --r2:4px; --r3:4px;
+  --sh:0 0 0 1px rgba(0,0,0,.10); --sh2:0 0 0 1px rgba(0,0,0,.12),0 4px 14px rgba(0,0,0,.07);
+}
+html[data-theme="mono"][data-t="dark"]{
+  --ink:#f2f2f2; --ink2:#a0a0a0; --ink3:#777777;
+  --bg:#000000; --surf:#0b0b0b; --surf2:#141414;
+  --line:#262626; --line2:#1c1c1c;
+  --p:#6f7dff; --p2:#95a0ff; --p3:#4a5aff;
+  --p-soft:#12142b; --p-ink:#aab3ff;
+  --btn-ink:#f2f2f2; --btn-ink2:#dcdcdc;
+  --a:#25b567; --a2:#4bcb85; --a-soft:#0d1f15;
+  --warn:#d9a13c; --warn-soft:#241c0c;
+  --dan:#ff5a5a; --dan-soft:#2a1010; --ok:#25b567;
+  --chart1:#c8c8c8; --chart2:#6f7dff;
+  --sh:0 0 0 1px rgba(255,255,255,.10); --sh2:0 0 0 1px rgba(255,255,255,.12),0 4px 14px rgba(0,0,0,.5);
+}
+
+/* ---- MIDNIGHT — dark first ---------------------------------------------
+   The one theme designed for the dark and merely tolerated in the light, for
+   the people who keep this open past nine. */
+html[data-theme="midnight"]{
+  --ink:#141b26; --ink2:#4a5768; --ink3:#7d8b9c;
+  --bg:#f4f7fa; --surf:#ffffff; --surf2:#eef2f7;
+  --line:#dde4ec; --line2:#e9eef4;
+  --p:#0f9d8f; --p2:#1cb5a5; --p3:#0b7d72;
+  --p-soft:#e4f5f2; --p-ink:#0b7168;
+  --btn-ink:#141b26; --btn-ink2:#27313f;
+  --a:#2c8a5e; --a2:#3daa76; --a-soft:#e7f4ed;
+  --warn:#a8741f; --warn-soft:#fbf2e2;
+  --dan:#c0392b; --dan-soft:#fbeae8; --ok:#2c8a5e;
+  --chart1:#0f9d8f; --chart2:#e0725b;
+  --grad:linear-gradient(101deg,#0f9d8f 0%,#38b6c9 55%,#7fd4c6 100%);
+}
+html[data-theme="midnight"][data-t="dark"]{
+  --ink:#e8eef6; --ink2:#98a7bb; --ink3:#68788d;
+  --bg:#0b111a; --surf:#121a26; --surf2:#18222f;
+  --line:#24313f; --line2:#1c2733;
+  --p:#2dd4bf; --p2:#5ee0d0; --p3:#14b8a6;
+  --p-soft:#0d2b28; --p-ink:#7fe8dc;
+  --btn-ink:#e8eef6; --btn-ink2:#cfd9e6;
+  --a:#3ec98a; --a2:#63d9a3; --a-soft:#0e2419;
+  --warn:#e0a44a; --warn-soft:#2a2113;
+  --dan:#f0705c; --dan-soft:#2e1714; --ok:#3ec98a;
+  --chart1:#2dd4bf; --chart2:#f0705c;
+}
+
+/* ===========================================================================
+   TYPEFACES
+   Each preset sets both faces at once. Choosing a body font and a heading font
+   separately sounds like more control and in practice produces pairings nobody
+   would defend; these five are each internally consistent.
+   ======================================================================== */
+html[data-type="mona"]{
+  --font:'Mona Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --font-display:'Mona Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+html[data-type="mona"] .lhead h1,html[data-type="mona"] .phead h2,html[data-type="mona"] .mbox h3{
+  font-weight:600;letter-spacing:-.028em;
+}
+
+html[data-type="editorial"]{
+  --font:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --font-display:'Newsreader','Spectral',Georgia,serif;
+}
+
+html[data-type="technical"]{
+  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --font-display:'Space Grotesk','Inter',sans-serif;
+}
+html[data-type="technical"] .lhead h1,html[data-type="technical"] .phead h2,html[data-type="technical"] .mbox h3{
+  font-weight:500;letter-spacing:-.03em;
+}
+html[data-type="technical"] .mono,html[data-type="technical"] .kv{
+  font-family:'JetBrains Mono','SFMono-Regular',Consolas,monospace;letter-spacing:-.04em;
+}
+
+/* rblln.fr's own voice: heavy, tight and shouted */
+html[data-type="bold"]{
+  --font:'Mona Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --font-display:'Mona Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+}
+html[data-type="bold"] .lhead h1,html[data-type="bold"] .phead h2,html[data-type="bold"] .mbox h3{
+  font-weight:900;text-transform:uppercase;letter-spacing:-.02em;
+}
+html[data-type="bold"] .ptop h3{font-weight:800;text-transform:uppercase;letter-spacing:.02em;font-size:13px}
+html[data-type="bold"] .msl,html[data-type="bold"] .sgroup{font-weight:800}
+
+html[data-type="system"]{
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;
+  --font-display:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+html[data-type="system"] .lhead h1,html[data-type="system"] .phead h2,html[data-type="system"] .mbox h3{
+  font-weight:700;letter-spacing:-.025em;
+}
+
+/* ===========================================================================
+   DENSITY AND CORNERS
+   ======================================================================== */
+html[data-density="compact"]{--r:10px; --r2:8px; --r3:7px}
+html[data-density="compact"] body{font-size:14px}
+html[data-density="compact"] .kpi{padding:14px}
+html[data-density="compact"] .kv{font-size:26px}
+html[data-density="compact"] td,html[data-density="compact"] th{padding:7px 10px}
+html[data-density="compact"] .ptop{padding:12px 14px}
+html[data-density="compact"] .ministat{padding:11px 14px}
+html[data-density="compact"] .btn{padding:7px 13px;font-size:12.75px}
+html[data-density="compact"] .inp{padding:9px 11px}
+html[data-density="compact"] .panel{margin-bottom:16px}
+
+html[data-corner="sharp"]{--r:3px; --r2:2px; --r3:2px; --rp:3px}
+html[data-corner="round"]{--r:20px; --r2:16px; --r3:14px}
+
+
+/* ========================= SETTINGS CONTROLS ============================= */
+.optgrid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+  gap:12px;padding:16px;
+}
+.optcard{
+  display:flex;flex-direction:column;align-items:flex-start;gap:6px;
+  padding:14px;border:1px solid var(--line);border-radius:var(--r2);
+  background:var(--surf);text-align:left;position:relative;overflow:hidden;
+  transition:transform var(--t-fast) var(--ease),border-color var(--t-fast),
+             box-shadow var(--t-fast),background var(--t-fast);
+}
+.optcard:hover{transform:translateY(-2px);border-color:var(--ink3);box-shadow:var(--sh2)}
+.optcard:active{transform:translateY(0) scale(.99)}
+.optcard.on{border-color:var(--p);background:var(--p-soft)}
+.optcard.on::after{
+  content:"";position:absolute;top:10px;right:10px;width:8px;height:8px;border-radius:50%;
+  background:var(--p);animation:badgePop 320ms var(--pop) both;
+}
+.optname{font-weight:700;font-size:13.5px;color:var(--ink)}
+.optnote{font-size:11.5px;color:var(--ink3);line-height:1.35}
+
+/* three bars of the palette, which says more than its name does */
+.swatch{display:flex;gap:0;border-radius:6px;overflow:hidden;width:100%;height:30px;
+  border:1px solid var(--line)}
+.swatch i{flex:1;display:block}
+
+/* each preview is set in the face it offers, so the choice shows itself */
+.typeprev{
+  font-size:26px;line-height:1;padding:4px 0 2px;color:var(--ink);
+  font-variant-numeric:tabular-nums;
+}
+.tp-mona{font-family:'Mona Sans',sans-serif;font-weight:600;letter-spacing:-.03em}
+.tp-editorial{font-family:'Newsreader',Georgia,serif;font-weight:300}
+.tp-technical{font-family:'Space Grotesk','Inter',sans-serif;font-weight:500;letter-spacing:-.03em}
+.tp-bold{font-family:'Mona Sans',sans-serif;font-weight:900;text-transform:uppercase;letter-spacing:-.02em}
+.tp-system{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-weight:700}
+
+.setrows{display:flex;flex-direction:column}
+.setrow{
+  display:flex;align-items:center;gap:16px;justify-content:space-between;
+  padding:15px 18px;border-bottom:1px solid var(--line2);flex-wrap:wrap;
+}
+.setrow:last-child{border-bottom:0}
+.setrow b{display:block;font-size:13.5px;color:var(--ink)}
+.setrow span{display:block;font-size:12px;color:var(--ink3);margin-top:2px}
 
 </style>
 
@@ -1080,7 +1339,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-26e filter-motion';
+var PAGE_BUILD = '2026-08-27 themes';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbzOwsKX0s0QZsoMAPsdzV8KsL64VmvnYMyKV4YD4J4G-X7aN2SFCWATeazE0AZASqwuaw/exec';        /* set by the Pages build */
 
@@ -1195,10 +1454,14 @@ function apiFetch_(fn, args) {
  * ripple was clicked, how many tabs this role has, and whether the person using
  * this has asked for less movement.
  * ========================================================================= */
-var REDUCED = (function () {
-  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
-  catch (e) { return false; }
-})();
+function reducedMotion() {
+  try {
+    if (appearance().motion === 'reduced') return true;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch (e) { return false; }
+}
+/* Read once for the listeners bound at load; the settings page re-reads it. */
+var REDUCED = reducedMotion();
 
 /*
  * A ripple from the point actually clicked. Delegated, so it applies to every
@@ -1396,6 +1659,112 @@ function loginErr(msg) { var b = $('lerr'); b.textContent = msg; b.style.display
  * displays to anyone who opens the page. No transaction, no client, no PAN and
  * no token is stored: those arrive after a password and stay in memory.
  */
+
+/* ========================== APPEARANCE ==================================== *
+ *
+ * Themes, typefaces, density and corners, applied as attributes on <html> so a
+ * change is one attribute write and the whole stylesheet follows. Kept in
+ * localStorage, which means per browser rather than per account — someone who
+ * prefers the compact layout on their laptop is not asking for it on the shared
+ * machine in the branch.
+ *
+ * Webfonts load ON DEMAND. Six families eagerly loaded would be most of a
+ * megabyte spent so that five of them can go unused; the link tag for a family
+ * is injected the first time that typeface is actually chosen, and the default
+ * is the only one paid for up front.
+ * ========================================================================= */
+var THEMES = [
+  { id: 'paper',     name: 'Warm Paper', note: 'Ellipsus + Airbnb — the current look',
+    swatch: ['#fbfbf9', '#282825', '#eb5b55'] },
+  { id: 'bronze',    name: 'Bronze',     note: 'ventriloc.ca — charcoal, cream and metal',
+    swatch: ['#ebe6dd', '#202020', '#816729'] },
+  { id: 'rebellion', name: 'Rebellion',  note: 'rblln.fr — one electric orange, shouted',
+    swatch: ['#f5f2ee', '#1d1d1d', '#fd6504'] },
+  { id: 'mono',      name: 'Mono',       note: 'overrrides.com — black, white, link blue',
+    swatch: ['#ffffff', '#090909', '#0000ee'] },
+  { id: 'midnight',  name: 'Midnight',   note: 'built for the dark, tolerated in the light',
+    swatch: ['#0b111a', '#e8eef6', '#2dd4bf'] }
+];
+
+var TYPEFACES = [
+  { id: 'mona',      name: 'Mona Sans',  note: "GitHub's own — the default",
+    google: 'Mona+Sans:ital,wght@0,200..900;1,200..900' },
+  { id: 'editorial', name: 'Editorial',  note: 'Manrope with a light serif for titles',
+    google: 'Manrope:wght@400;500;600;700;800&family=Newsreader:opsz,wght@6..72,200;6..72,300;6..72,400' },
+  { id: 'technical', name: 'Technical',  note: 'Inter, Space Grotesk, mono figures',
+    google: 'Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700' },
+  { id: 'bold',      name: 'Bold',       note: 'Mona Sans, heavy and uppercase',
+    google: 'Mona+Sans:ital,wght@0,200..900;1,200..900' },
+  { id: 'system',    name: 'System',     note: 'no webfont at all — fastest to load',
+    google: '' }
+];
+
+var APPEARANCE_KEY = 'vrmdash.appearance.v1';
+var APPEARANCE_DEFAULT = { theme: 'paper', type: 'mona', density: 'cosy', corner: 'default', motion: 'full' };
+
+/*
+ * The chosen appearance is held in memory as well as in storage. Storage can be
+ * unavailable — a private window, a data: URL, a locked-down profile — and
+ * without the memory copy the settings page would appear to do nothing at all
+ * in exactly those cases: the attribute would be written, then the next read
+ * would fall back to the default and undo it. In memory it lasts the session;
+ * in storage it lasts beyond it.
+ */
+var APPEARANCE_NOW = null;
+
+function appearance() {
+  if (APPEARANCE_NOW) return APPEARANCE_NOW;
+  var out = {};
+  for (var k in APPEARANCE_DEFAULT) out[k] = APPEARANCE_DEFAULT[k];
+  try {
+    var raw = window.localStorage && localStorage.getItem(APPEARANCE_KEY);
+    if (raw) {
+      var o = JSON.parse(raw);
+      for (var j in APPEARANCE_DEFAULT) if (o && o[j]) out[j] = o[j];
+    }
+  } catch (e) { /* no storage — memory still carries it for this session */ }
+  APPEARANCE_NOW = out;
+  return out;
+}
+
+var FONTS_LOADED = {};
+function ensureFont(typeId) {
+  var t = TYPEFACES.filter(function (x) { return x.id === typeId; })[0];
+  if (!t || !t.google || FONTS_LOADED[t.google]) return;
+  FONTS_LOADED[t.google] = 1;
+  var l = document.createElement('link');
+  l.rel = 'stylesheet';
+  l.href = 'https://fonts.googleapis.com/css2?family=' + t.google + '&display=swap';
+  document.head.appendChild(l);
+}
+
+function applyAppearance(a) {
+  a = a || appearance();
+  var h = document.documentElement;
+  h.setAttribute('data-theme', a.theme);
+  h.setAttribute('data-type', a.type);
+  h.setAttribute('data-density', a.density);
+  h.setAttribute('data-corner', a.corner);
+  h.setAttribute('data-motion', a.motion);
+  ensureFont(a.type);
+  /* Charts read their colours from the stylesheet, so they have to be told. */
+  if (window._charts) {
+    setTimeout(function () { try { render(); } catch (e) {} }, 60);
+  }
+}
+
+function setAppearance(patch) {
+  var a = appearance();
+  for (var k in patch) a[k] = patch[k];
+  APPEARANCE_NOW = a;
+  try { localStorage.setItem(APPEARANCE_KEY, JSON.stringify(a)); } catch (e) {}
+  applyAppearance(a);
+  return a;
+}
+
+/* Applied before first paint so the app never flashes the default theme. */
+applyAppearance();
+
 var VRM_LIST_KEY = 'vrmdash.names.v1';
 
 function cachedVrmList() {
@@ -1541,7 +1910,8 @@ var ADMIN_TABS = [
   { id: 'batches',   label: 'Upload History',        ic: IC.up },
   { id: 'restore',   label: 'Restore',               ic: IC.undo },
   { id: 'access',    label: 'VRMs & Access',         ic: IC.shield },
-  { id: 'activity',  label: 'Activity Log',          ic: IC.clock }
+  { id: 'activity',  label: 'Activity Log',          ic: IC.clock },
+  { id: 'settings',  label: 'Settings',              ic: IC.key }
 ];
 /*
  * The Unassigned tab appears only when something is waiting there. A permanent
@@ -2689,6 +3059,79 @@ function viewClientDetail() {
 }
 
 /* --------------------------- ADMIN: Overview ------------------------------ */
+
+/* ============================ SETTINGS =================================== */
+function viewSettings() {
+  var a = appearance();
+
+  var themeCards = THEMES.map(function (t) {
+    return '<button class="optcard' + (a.theme === t.id ? ' on' : '') + '" data-set="theme" data-val="' + t.id + '">' +
+      '<span class="swatch">' + t.swatch.map(function (c) {
+        return '<i style="background:' + c + '"></i>';
+      }).join('') + '</span>' +
+      '<span class="optname">' + esc(t.name) + '</span>' +
+      '<span class="optnote">' + esc(t.note) + '</span></button>';
+  }).join('');
+
+  var typeCards = TYPEFACES.map(function (t) {
+    return '<button class="optcard' + (a.type === t.id ? ' on' : '') + '" data-set="type" data-val="' + t.id + '">' +
+      '<span class="typeprev tp-' + t.id + '">Ag</span>' +
+      '<span class="optname">' + esc(t.name) + '</span>' +
+      '<span class="optnote">' + esc(t.note) + '</span></button>';
+  }).join('');
+
+  function seg(field, opts) {
+    return '<div class="pills">' + opts.map(function (o) {
+      return '<button class="pill-btn' + (a[field] === o[0] ? ' on' : '') + '" data-set="' + field +
+             '" data-val="' + o[0] + '">' + esc(o[1]) + '</button>';
+    }).join('') + '</div>';
+  }
+
+  return pageHead('Settings', 'Appearance for this browser', '') +
+    '<div class="panel"><div class="ptop"><div><h3>Theme</h3>' +
+      '<p>Each one is taken from a real site rather than invented</p></div></div>' +
+      '<div class="optgrid">' + themeCards + '</div></div>' +
+
+    '<div class="panel"><div class="ptop"><div><h3>Typeface</h3>' +
+      '<p>Loaded only when chosen, so the ones you skip cost nothing</p></div></div>' +
+      '<div class="optgrid">' + typeCards + '</div></div>' +
+
+    '<div class="panel"><div class="ptop"><div><h3>Layout</h3></div></div>' +
+      '<div class="setrows">' +
+        '<div class="setrow"><div><b>Density</b>' +
+          '<span>How much air between the figures</span></div>' +
+          seg('density', [['cosy', 'Comfortable'], ['compact', 'Compact']]) + '</div>' +
+        '<div class="setrow"><div><b>Corners</b>' +
+          '<span>How round the cards and buttons are</span></div>' +
+          seg('corner', [['sharp', 'Sharp'], ['default', 'Default'], ['round', 'Round']]) + '</div>' +
+        '<div class="setrow"><div><b>Motion</b>' +
+          '<span>Animations, transitions and the counting figures</span></div>' +
+          seg('motion', [['full', 'Full'], ['reduced', 'Reduced']]) + '</div>' +
+      '</div></div>' +
+
+    '<div class="panel"><div class="ptop"><div><h3>Preview</h3>' +
+      '<p>The same components you see everywhere else</p></div></div>' +
+      '<div style="padding:18px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">' +
+        '<button class="btn pri">Primary action</button>' +
+        '<button class="btn">Secondary</button>' +
+        '<button class="btn xs gh">Ghost</button>' +
+        '<span class="pill">A pill</span>' +
+        '<span class="pill" style="background:var(--a-soft);color:var(--a)">Positive</span>' +
+        '<span class="pill" style="background:var(--dan-soft);color:var(--dan)">Negative</span>' +
+      '</div>' +
+      '<div class="msgrid">' +
+        '<div class="ministat"><div class="msl">Net Sales</div><div class="kv msv">' + rupee(2207500) + '</div></div>' +
+        '<div class="ministat"><div class="msl">Gross</div><div class="kv msv">' + rupee(2507500) + '</div></div>' +
+        '<div class="ministat"><div class="msl">Redemption</div><div class="kv msv red">' + rupee(300000) + '</div></div>' +
+      '</div></div>' +
+
+    '<div class="panel"><div class="ptop"><div><h3>Reset</h3></div></div>' +
+      '<div style="padding:16px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">' +
+        '<button class="btn" data-act="apreset">Back to defaults</button>' +
+        '<span class="muted" style="font-size:12.5px">Warm Paper · Mona Sans · Comfortable</span>' +
+      '</div></div>';
+}
+
 function viewOverview() {
   var rows = ovRows();
   var r = ovRange();
@@ -3175,7 +3618,7 @@ function viewUnassigned() {
 var VIEWS = {
   summary: viewSummary, data: viewData, clients: viewClients,
   overview: viewOverview, vrmwise: viewVrmwise, alltxns: viewAllTxns,
-  access: viewAccess, activity: viewActivity, analytics: viewAnalytics,
+  access: viewAccess, activity: viewActivity, settings: viewSettings, analytics: viewAnalytics,
   scheme: viewScheme, clientdetail: viewClientDetail,
   restore: viewRestore, batches: viewBatches, unassigned: viewUnassigned
 };
@@ -5426,6 +5869,15 @@ var ACT = {
    * states the row count and the money involved, because "delete all data" is
    * abstract and "this removes 136 rows and 59 lakh of recorded business" is not.
    */
+  apreset: function () {
+    try { localStorage.removeItem(APPEARANCE_KEY); } catch (e) {}
+    APPEARANCE_NOW = null;
+    applyAppearance();
+    REDUCED = reducedMotion();
+    render();
+    toast('Appearance reset to Warm Paper · Mona Sans.', 'i');
+  },
+
   ovreset: function () {
     S.ov = { range: 'month', from: '', to: '', vrm: '' };
     render();
@@ -5538,6 +5990,23 @@ document.addEventListener('click', function (e) {
   fn(el);
 });
 
+
+
+/*
+ * Appearance controls. Re-rendering after the attribute write is what makes the
+ * chosen card show as chosen and lets the charts pick up the new palette; the
+ * attribute alone would restyle everything except the canvas, which paints its
+ * colours in once and keeps them.
+ */
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('[data-set]');
+  if (!b) return;
+  var patch = {};
+  patch[b.dataset.set] = b.dataset.val;
+  setAppearance(patch);
+  REDUCED = reducedMotion();
+  render();
+});
 
 /* the consolidated view's range pills and selects */
 document.addEventListener('click', function (e) {
