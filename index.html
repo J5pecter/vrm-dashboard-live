@@ -1339,7 +1339,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-27b firm-settings';
+var PAGE_BUILD = '2026-08-27c boot-theme';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbyjWQvuhyAwrYrRnAxGDmuHY4iw37G-BQSm3fNbKJKj5iJAYXa42Q5Au9yMnuyH3dTF/exec';        /* set by the Pages build */
 
@@ -1723,8 +1723,31 @@ var APPEARANCE_NOW = null;
  * do is decide what a machine sees the first time it opens the app — which is
  * the case that actually matters, because most people never open Settings.
  */
+/*
+ * The firm's look, from whichever source has it. After sign-in that is the
+ * payload; before sign-in it is bootstrap; on a return visit it is the copy
+ * remembered from last time, so the first paint is already right rather than
+ * correcting itself a second later.
+ */
+var FIRM_BOOT = null;
+var FIRM_KEY = 'vrmdash.firmlook.v1';
+
+function rememberFirm(look) {
+  if (!look) return;
+  FIRM_BOOT = look;
+  try { localStorage.setItem(FIRM_KEY, JSON.stringify(look)); } catch (e) {}
+}
+function recalledFirm() {
+  if (FIRM_BOOT) return FIRM_BOOT;
+  try {
+    var raw = window.localStorage && localStorage.getItem(FIRM_KEY);
+    if (raw) return (FIRM_BOOT = JSON.parse(raw));
+  } catch (e) {}
+  return null;
+}
+
 function firmAppearance() {
-  var c = S.data && S.data.config && S.data.config.appearance;
+  var c = (S.data && S.data.config && S.data.config.appearance) || recalledFirm();
   var out = {};
   for (var k in APPEARANCE_DEFAULT) out[k] = APPEARANCE_DEFAULT[k];
   if (c) for (var j in APPEARANCE_DEFAULT) if (c[j]) out[j] = c[j];
@@ -1751,6 +1774,8 @@ function appearance() {
 
 /* Called once the payload lands, since the firm's choice arrives with it. */
 function refreshAppearance() {
+  var c = S.data && S.data.config && S.data.config.appearance;
+  if (c) rememberFirm(c);
   APPEARANCE_NOW = null;
   applyAppearance();
 }
@@ -1854,6 +1879,8 @@ function loadVrmList() {
       lb.textContent = (d.build ? 'server build ' + d.build : 'server build unknown (old deployment)') +
                        '  \u00b7  page build ' + PAGE_BUILD;
     }
+    /* The firm's look arrives here too, so the sign-in page wears it. */
+    if (d.appearance) { rememberFirm(d.appearance); refreshAppearance(); }
     var list = d.vrms || [];
     /* Keep whatever was already picked: the list usually comes back identical,
        and resetting a selection somebody made while waiting would be rude. */
