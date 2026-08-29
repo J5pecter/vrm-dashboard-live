@@ -2155,7 +2155,25 @@ function unassignedClusters_(txns, vrms, ctx) {
         maxFailedAttempts: CFG.MAX_FAILED_ATTEMPTS, lockoutMinutes: CFG.LOCKOUT_MINUTES,
         countedStatuses: CFG.COUNTED_STATUSES.slice(),
         txnTypes: ['SIP', 'LUMPSUM', 'REDEMPTION'],
-        statuses: ['COMPLETED', 'IN_PROCESS', 'REJECTED']
+        statuses: ['COMPLETED', 'IN_PROCESS', 'REJECTED'],
+        /* mirrors the server: the firm's default look, and the editable rows */
+        appearance: {
+          theme: CFG.THEME || 'paper', type: CFG.TYPEFACE || 'mona',
+          density: CFG.DENSITY || 'cosy', corner: CFG.CORNER || 'default',
+          motion: CFG.MOTION || 'full'
+        },
+        settings: {
+          VRM_SEES_FULL_PAN: CFG.VRM_SEES_FULL_PAN || 'YES',
+          VRM_CAN_EXPORT: CFG.VRM_CAN_EXPORT || 'NO',
+          STRICT_VRM_UPLOAD: CFG.STRICT_VRM_UPLOAD || 'YES',
+          ADMIN_LOCKOUT: CFG.ADMIN_LOCKOUT || 'NO',
+          COUNTED_STATUSES: (CFG.COUNTED_STATUSES || ['COMPLETED']).join(','),
+          MAX_FAILED_ATTEMPTS: CFG.MAX_FAILED_ATTEMPTS,
+          LOCKOUT_MINUTES: CFG.LOCKOUT_MINUTES,
+          MIN_PASSWORD_LEN: CFG.MIN_PASSWORD_LEN,
+          SUGGEST_GATE: CFG.SUGGEST_GATE || 'NONE',
+          SUGGEST_FLOOR: CFG.SUGGEST_FLOOR
+        }
       },
       serverTime: clock.toISOString().slice(0, 19)
     };
@@ -2818,6 +2836,68 @@ function unassignedClusters_(txns, vrms, ctx) {
       var p = payload(s); p.result = { deleted: n }; return ok(p);
     },
 
+    /*
+     * The server's allow-list AND its value checks, copied rather than
+     * approximated. A mirror that accepts what the real thing rejects is worse
+     * than no mirror: a test against it passes and proves nothing, which is
+     * exactly what happened the first time this was written with the key check
+     * alone.
+     */
+    setAppSettings: function (token, patch) {
+      var sess = adminOnly(token, 'change settings');
+      var SPEC = {
+        THEME:               { type: 'enum', values: ['paper','bronze','rebellion','mono','midnight'] },
+        TYPEFACE:            { type: 'enum', values: ['mona','editorial','technical','bold','system'] },
+        DENSITY:             { type: 'enum', values: ['cosy','compact'] },
+        CORNER:              { type: 'enum', values: ['sharp','default','round'] },
+        MOTION:              { type: 'enum', values: ['full','reduced'] },
+        VRM_SEES_FULL_PAN:   { type: 'enum', values: ['YES','NO'] },
+        VRM_CAN_EXPORT:      { type: 'enum', values: ['YES','NO'] },
+        STRICT_VRM_UPLOAD:   { type: 'enum', values: ['YES','NO'] },
+        ADMIN_LOCKOUT:       { type: 'enum', values: ['YES','NO'] },
+        COUNTED_STATUSES:    { type: 'statuses' },
+        MAX_FAILED_ATTEMPTS: { type: 'int', min: 1, max: 50 },
+        LOCKOUT_MINUTES:     { type: 'int', min: 1, max: 1440 },
+        MIN_PASSWORD_LEN:    { type: 'int', min: 4, max: 64 },
+        SUGGEST_GATE:        { type: 'enum', values: ['NONE','TIERED'] },
+        SUGGEST_FLOOR:       { type: 'num', min: 0, max: 1 }
+      };
+      Object.keys(patch || {}).forEach(function (k) {
+        var K = String(k).toUpperCase();
+        var spec = SPEC[K];
+        if (!spec) throw new Error('That setting cannot be changed here: ' + k);
+        var v = patch[k];
+        if (spec.type === 'enum') {
+          var want = String(v == null ? '' : v).trim();
+          var hit = spec.values.filter(function (x) { return x.toLowerCase() === want.toLowerCase(); })[0];
+          if (!hit) throw new Error(K + ' must be one of: ' + spec.values.join(', '));
+          v = hit;
+        } else if (spec.type === 'int' || spec.type === 'num') {
+          var n = Number(v);
+          if (!isFinite(n)) throw new Error(K + ' must be a number.');
+          if (spec.type === 'int') n = Math.round(n);
+          if (n < spec.min || n > spec.max) {
+            throw new Error(K + ' must be between ' + spec.min + ' and ' + spec.max + '.');
+          }
+          v = n;
+        } else if (spec.type === 'statuses') {
+          var list = String(v == null ? '' : v).toUpperCase().split(/[,\s]+/).filter(Boolean);
+          list.forEach(function (x) {
+            if (['COMPLETED','IN_PROCESS','REJECTED'].indexOf(x) < 0) throw new Error('Unknown status: ' + x);
+          });
+          if (!list.length) throw new Error('At least one status must count towards business figures.');
+          /* The sheet stores this as a comma-separated string and the server
+             parses it back; this in-memory mirror has always held an array, so
+             it keeps one. Same value, different container. */
+          v = list;
+        }
+        CFG[K] = v;
+      });
+      var p = payload(sess);
+      p.result = { saved: Object.keys(patch || {}).length };
+      return ok(p);
+    },
+
     deleteAllData: function (token) {
       var s = adminOnly(token, 'delete all data');
       var n = TX.length; TX = [];
@@ -3178,7 +3258,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-27 themes';
+var PAGE_BUILD = '2026-08-27b firm-settings';
 
 var API_URL = '';        /* set by the Pages build */
 
@@ -3551,19 +3631,47 @@ var APPEARANCE_DEFAULT = { theme: 'paper', type: 'mona', density: 'cosy', corner
  */
 var APPEARANCE_NOW = null;
 
-function appearance() {
-  if (APPEARANCE_NOW) return APPEARANCE_NOW;
+/*
+ * Three layers, in order: the built-in default, then the firm's choice from the
+ * Config sheet, then whatever this browser has picked for itself.
+ *
+ * The firm's setting is a DEFAULT and not a rule. Someone who needs the compact
+ * layout to fit a wide table on a small laptop is not asking for that on
+ * everybody else's screen, and a firm-wide setting that overrode a personal one
+ * would be a worse answer than having no firm-wide setting at all. What it does
+ * do is decide what a machine sees the first time it opens the app — which is
+ * the case that actually matters, because most people never open Settings.
+ */
+function firmAppearance() {
+  var c = S.data && S.data.config && S.data.config.appearance;
   var out = {};
   for (var k in APPEARANCE_DEFAULT) out[k] = APPEARANCE_DEFAULT[k];
+  if (c) for (var j in APPEARANCE_DEFAULT) if (c[j]) out[j] = c[j];
+  return out;
+}
+
+/* What THIS browser has chosen, and nothing else. Empty means "follow the firm". */
+function personalAppearance() {
   try {
     var raw = window.localStorage && localStorage.getItem(APPEARANCE_KEY);
-    if (raw) {
-      var o = JSON.parse(raw);
-      for (var j in APPEARANCE_DEFAULT) if (o && o[j]) out[j] = o[j];
-    }
-  } catch (e) { /* no storage — memory still carries it for this session */ }
+    return raw ? (JSON.parse(raw) || {}) : {};
+  } catch (e) { return APPEARANCE_OWN || {}; }
+}
+var APPEARANCE_OWN = null;      /* the memory copy, for when storage is blocked */
+
+function appearance() {
+  if (APPEARANCE_NOW) return APPEARANCE_NOW;
+  var out = firmAppearance();
+  var mine = personalAppearance();
+  for (var k in APPEARANCE_DEFAULT) if (mine[k]) out[k] = mine[k];
   APPEARANCE_NOW = out;
   return out;
+}
+
+/* Called once the payload lands, since the firm's choice arrives with it. */
+function refreshAppearance() {
+  APPEARANCE_NOW = null;
+  applyAppearance();
 }
 
 var FONTS_LOADED = {};
@@ -3593,12 +3701,24 @@ function applyAppearance(a) {
 }
 
 function setAppearance(patch) {
+  /* Store only what was actually chosen, so anything untouched keeps following
+     the firm rather than being frozen at whatever it happened to be today. */
+  var mine = personalAppearance();
+  for (var k in patch) mine[k] = patch[k];
+  APPEARANCE_OWN = mine;
+  try { localStorage.setItem(APPEARANCE_KEY, JSON.stringify(mine)); } catch (e) {}
+  APPEARANCE_NOW = null;
   var a = appearance();
-  for (var k in patch) a[k] = patch[k];
-  APPEARANCE_NOW = a;
-  try { localStorage.setItem(APPEARANCE_KEY, JSON.stringify(a)); } catch (e) {}
   applyAppearance(a);
   return a;
+}
+
+/* Drop this browser's overrides and go back to following the firm. */
+function clearPersonalAppearance() {
+  try { localStorage.removeItem(APPEARANCE_KEY); } catch (e) {}
+  APPEARANCE_OWN = null;
+  APPEARANCE_NOW = null;
+  applyAppearance();
 }
 
 /* Applied before first paint so the app never flashes the default theme. */
@@ -3678,6 +3798,7 @@ $('lform').onsubmit = function (ev) {
   var un = lock($('lgo'), 'Signing in');
   api('login', S.loginRole, code, pw).then(function (out) {
     S.session = out.session; S.data = out.data;
+    refreshAppearance();
     $('lpw').value = '';
     un();
     enterApp();
@@ -3873,6 +3994,7 @@ function signOut() {
 function refresh(announce) {
   return api('getData', S.session.token).then(function (d) {
     S.data = d; S.creds = null; S.audit = null; S.deleted = null; S.batches = null;
+    refreshAppearance();
     render(); buildSidebar();
     if (announce) toast('Data reloaded from the sheet.', 'i');
   }).catch(function (e) {
@@ -3884,6 +4006,7 @@ function refresh(announce) {
 /* Applies a fresh server payload after any mutating call. */
 function absorb(d) {
   S.data = d; S.confirm = null; S.creds = null; S.audit = null;
+  refreshAppearance();
   S.deleted = null; S.batches = null;
   render(); buildSidebar();
   return d;
@@ -4902,6 +5025,8 @@ function viewClientDetail() {
 /* ============================ SETTINGS =================================== */
 function viewSettings() {
   var a = appearance();
+  var fa = firmAppearance();
+  var mineCount = Object.keys(personalAppearance() || {}).length;
 
   var themeCards = THEMES.map(function (t) {
     return '<button class="optcard' + (a.theme === t.id ? ' on' : '') + '" data-set="theme" data-val="' + t.id + '">' +
@@ -4964,11 +5089,93 @@ function viewSettings() {
         '<div class="ministat"><div class="msl">Redemption</div><div class="kv msv red">' + rupee(300000) + '</div></div>' +
       '</div></div>' +
 
-    '<div class="panel"><div class="ptop"><div><h3>Reset</h3></div></div>' +
+    '<div class="panel"><div class="ptop"><div><h3>This browser</h3></div></div>' +
       '<div style="padding:16px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">' +
-        '<button class="btn" data-act="apreset">Back to defaults</button>' +
-        '<span class="muted" style="font-size:12.5px">Warm Paper · Mona Sans · Comfortable</span>' +
+        '<button class="btn" data-act="apreset">Follow the firm default</button>' +
+        '<span class="muted" style="font-size:12.5px">' +
+          (mineCount
+            ? mineCount + ' setting(s) chosen here, overriding the firm'
+            : 'following the firm default in every setting') +
+        '</span>' +
+      '</div></div>' +
+    (isAdmin() ? firmPanel(fa) + configPanel() : '') +
+    passwordPanel();
+}
+
+/* ---- the firm's default look, written back to the Config sheet ---------- */
+function firmPanel(fa) {
+  function row(field, label, note, opts) {
+    return '<div class="setrow"><div><b>' + esc(label) + '</b><span>' + esc(note) + '</span></div>' +
+      '<div class="pills">' + opts.map(function (o) {
+        return '<button class="pill-btn' + (fa[field] === o[0] ? ' on' : '') +
+               '" data-firm="' + field + '" data-val="' + o[0] + '">' + esc(o[1]) + '</button>';
+      }).join('') + '</div></div>';
+  }
+  return '<div class="panel"><div class="ptop"><div><h3>Firm default look</h3>' +
+    '<p>Saved to the Config sheet — what a browser gets before anyone chooses for themselves</p></div></div>' +
+    '<div class="setrows">' +
+      row('theme', 'Theme', 'Applies to everyone who has not picked their own',
+          THEMES.map(function (t) { return [t.id, t.name]; })) +
+      row('type', 'Typeface', 'Loaded on demand, so unused faces cost nothing',
+          TYPEFACES.map(function (t) { return [t.id, t.name]; })) +
+      row('density', 'Density', 'Comfortable suits a monitor, compact suits a laptop',
+          [['cosy', 'Comfortable'], ['compact', 'Compact']]) +
+      row('corner', 'Corners', 'How round cards and buttons are',
+          [['sharp', 'Sharp'], ['default', 'Default'], ['round', 'Round']]) +
+      row('motion', 'Motion', 'Animations and the counting figures',
+          [['full', 'Full'], ['reduced', 'Reduced']]) +
+    '</div>' +
+    '<div class="fbnote">A personal choice always wins over this. ' +
+      'Use <b>Follow the firm default</b> above to hand control back.</div></div>';
+}
+
+/* ---- the operational Config rows, edited in place ------------------------ */
+function configPanel() {
+  var c = (S.data.config && S.data.config.settings) || null;
+  if (!c) return '';
+  function seg(key, label, note, opts) {
+    return '<div class="setrow"><div><b>' + esc(label) + '</b><span>' + esc(note) + '</span></div>' +
+      '<div class="pills">' + opts.map(function (o) {
+        return '<button class="pill-btn' + (String(c[key]).toUpperCase() === String(o[0]).toUpperCase() ? ' on' : '') +
+               '" data-cfg="' + key + '" data-val="' + esc(o[0]) + '">' + esc(o[1]) + '</button>';
+      }).join('') + '</div></div>';
+  }
+  function numRow(key, label, note, min, max) {
+    return '<div class="setrow"><div><b>' + esc(label) + '</b><span>' + esc(note) + '</span></div>' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+        '<input class="inp sm" style="width:96px" type="number" min="' + min + '" max="' + max +
+          '" value="' + esc(c[key]) + '" data-cfgnum="' + key + '">' +
+        '<button class="btn xs" data-act="cfgsave" data-key="' + key + '">Save</button>' +
       '</div></div>';
+  }
+  return '<div class="panel"><div class="ptop"><div><h3>Access &amp; policy</h3>' +
+    '<p>Config sheet values — these change how the app behaves for everyone</p></div></div>' +
+    '<div class="setrows">' +
+      seg('VRM_SEES_FULL_PAN', 'VRMs see the full PAN',
+          'PAN is redacted in the browser before upload either way', [['YES', 'Yes'], ['NO', 'Masked']]) +
+      seg('VRM_CAN_EXPORT', 'VRMs can export',
+          'Their own rows only, never the whole book', [['YES', 'Allowed'], ['NO', 'Blocked']]) +
+      seg('STRICT_VRM_UPLOAD', 'Strict VRM upload',
+          'Reject rows in a VRM upload that name a different VRM', [['YES', 'Reject'], ['NO', 'Accept']]) +
+      seg('ADMIN_LOCKOUT', 'Lock the admin account',
+          'There is no second admin to unlock it — think before enabling', [['NO', 'Never'], ['YES', 'Enable']]) +
+      seg('SUGGEST_GATE', 'Name-suggestion gate',
+          'TIERED also requires a word-level match before scoring', [['NONE', 'Score only'], ['TIERED', 'Tiered']]) +
+      numRow('MAX_FAILED_ATTEMPTS', 'Failed attempts before lockout', 'Wrong passwords a VRM may try', 1, 50) +
+      numRow('LOCKOUT_MINUTES', 'Lockout length', 'Minutes an account stays locked', 1, 1440) +
+      numRow('MIN_PASSWORD_LEN', 'Minimum password length', 'Characters required for any new password', 4, 64) +
+    '</div></div>';
+}
+
+/* ---- change my own password -------------------------------------------- */
+function passwordPanel() {
+  return '<div class="panel"><div class="ptop"><div><h3>My password</h3>' +
+    '<p>' + esc(isAdmin() ? 'The admin portal password' : 'Your sign-in password') + '</p></div></div>' +
+    '<div style="padding:16px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">' +
+      '<button class="btn" data-act="changepw">Change my password</button>' +
+      '<span class="muted" style="font-size:12.5px">Minimum ' +
+        esc(((S.data.config || {}).minPasswordLen) || 6) + ' characters</span>' +
+    '</div></div>';
 }
 
 function viewOverview() {
@@ -7708,13 +7915,24 @@ var ACT = {
    * states the row count and the money involved, because "delete all data" is
    * abstract and "this removes 136 rows and 59 lakh of recorded business" is not.
    */
+  cfgsave: function (btn) {
+    var key = btn.dataset.key;
+    var input = document.querySelector('[data-cfgnum="' + key + '"]');
+    if (!input) return;
+    var patch = {};
+    patch[key] = input.value;
+    var un = lock(btn, 'Saving');
+    api('setAppSettings', S.session.token, patch).then(function (d) {
+      absorb(d);
+      toast('Saved to the Config sheet.');
+    }).catch(function (e) { un(); fail(e); });
+  },
+
   apreset: function () {
-    try { localStorage.removeItem(APPEARANCE_KEY); } catch (e) {}
-    APPEARANCE_NOW = null;
-    applyAppearance();
+    clearPersonalAppearance();
     REDUCED = reducedMotion();
     render();
-    toast('Appearance reset to Warm Paper · Mona Sans.', 'i');
+    toast('This browser now follows the firm default.', 'i');
   },
 
   ovreset: function () {
@@ -7830,6 +8048,40 @@ document.addEventListener('click', function (e) {
 });
 
 
+
+
+/*
+ * Firm-wide controls. These write to the Config sheet, so unlike the personal
+ * ones they cost a round trip and can fail — the control is locked while the
+ * call is in flight rather than flipping optimistically and lying if the server
+ * refuses the value.
+ */
+var FIRM_KEYS = { theme: 'THEME', type: 'TYPEFACE', density: 'DENSITY',
+                  corner: 'CORNER', motion: 'MOTION' };
+
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('[data-firm]');
+  if (!b) return;
+  var patch = {};
+  patch[FIRM_KEYS[b.dataset.firm]] = b.dataset.val;
+  var un = lock(b, '');
+  api('setAppSettings', S.session.token, patch).then(function (d) {
+    absorb(d);
+    toast('Firm default saved to the Config sheet.');
+  }).catch(function (err) { un(); fail(err); });
+});
+
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('[data-cfg]');
+  if (!b) return;
+  var patch = {};
+  patch[b.dataset.cfg] = b.dataset.val;
+  var un = lock(b, '');
+  api('setAppSettings', S.session.token, patch).then(function (d) {
+    absorb(d);
+    toast('Saved.');
+  }).catch(function (err) { un(); fail(err); });
+});
 
 /*
  * Appearance controls. Re-rendering after the attribute write is what makes the
