@@ -1076,6 +1076,57 @@ html[data-corner="round"]{--r:20px; --r2:16px; --r3:14px}
 /* the panels that change things for other people are marked down the edge */
 .firmpanel{border-left:3px solid var(--p)}
 
+
+/* ===================== UNASSIGNED: ONE DECISION ========================== */
+/*
+ * A cluster used to present four identical disclosure rows — other options,
+ * create a VRM, exclude, show rows — which reads as a checklist of four things
+ * that must be done. It is one decision with alternatives, plus a way to look.
+ * The layout now says so: the decision is in the open, the alternatives are
+ * behind a single "other ways", and looking sits apart from both.
+ */
+.uabody{padding:16px 20px;display:grid;gap:14px}
+
+.uaassign{
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  padding:12px 14px;border:1px solid var(--line);border-radius:var(--r2);
+  background:var(--surf2);
+}
+.uaassign .lbl{margin:0;white-space:nowrap}
+.uaassign .inp{flex:1;min-width:200px;width:auto}
+
+/* one disclosure, and it looks like a disclosure rather than a task */
+.uamore>summary,.uarows>summary{
+  cursor:pointer;font-size:13px;color:var(--ink3);font-weight:600;
+  padding:7px 10px;border-radius:var(--r3);display:inline-flex;align-items:center;gap:7px;
+  transition:background var(--t-fast),color var(--t-fast);list-style:none;
+}
+.uamore>summary::-webkit-details-marker,.uarows>summary::-webkit-details-marker{display:none}
+.uamore>summary::before,.uarows>summary::before{
+  content:"";width:0;height:0;border-left:5px solid currentColor;
+  border-top:4px solid transparent;border-bottom:4px solid transparent;
+  transition:transform var(--t-fast) var(--ease);
+}
+.uamore[open]>summary::before,.uarows[open]>summary::before{transform:rotate(90deg)}
+.uamore>summary:hover,.uarows>summary:hover{background:var(--line2);color:var(--ink2)}
+
+.uamorebody{
+  margin-top:12px;display:grid;gap:12px;
+  padding:14px;border:1px dashed var(--line);border-radius:var(--r2);
+  animation:cardIn var(--t-mid) var(--ease) both;
+}
+.uablock{display:grid;gap:8px}
+.uablocktitle{
+  font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--ink3);
+}
+.uaalt{display:flex;gap:10px;align-items:center;font-size:13px}
+.uahint{margin:2px 0 0;font-size:12px;color:var(--ink3);line-height:1.45}
+
+/* looking, not deciding */
+.uarows{border-top:1px solid var(--line2);padding-top:10px}
+.uarows>summary svg{width:14px;height:14px;opacity:.8}
+
 </style>
 
 <div id="login">
@@ -3279,7 +3330,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-27d scope-labels';
+var PAGE_BUILD = '2026-08-27e unassigned-clarity';
 
 var API_URL = '';        /* set by the Pages build */
 
@@ -5635,68 +5686,83 @@ function viewUnassigned() {
           '<span class="pill">' + g.rowCount + ' rows</span>' +
           '<span class="pill">' + rupee(g.gross) + '</span>' +
         '</div></div>' +
-        '<div style="padding:16px 20px;display:grid;gap:14px">' +
+        '<div class="uabody">' +
           primary +
-          (rest.length || g.ambiguous || !top
-            ? '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
-              'Other options</summary>' +
-              (rest.length
-                ? '<div style="margin-top:10px;display:grid;gap:8px">' +
-                  rest.map(function (o) {
-                    return '<div style="display:flex;gap:10px;align-items:center;font-size:13px">' +
-                      '<span style="color:' + bandColour(o.band) + '">&#9679;</span>' +
-                      esc(o.name) + ' <span class="mono muted">(' + esc(o.vrmId) + ')</span>' +
-                      '<span class="pill mono">' + o.score.toFixed(2) + '</span>' +
-                      '<span style="flex:1"></span>' +
-                      '<button class="btn xs" data-act="confirmmap" data-key="' + esc(g.aliasKey) +
-                        '" data-vrm="' + esc(o.vrmId) + '" data-sp="' +
-                        esc(g.spellings.join('\u0001')) + '">Confirm</button>' +
-                      '<button class="btn xs gh" data-act="rejectmap" data-key="' +
-                        esc(g.aliasKey) + '" data-vrm="' + esc(o.vrmId) + '">Not them</button>' +
-                      '</div>';
-                  }).join('') + '</div>'
-                : '') +
-              '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' +
-                '<div class="f grow" style="min-width:240px"><label class="lbl">Assign to</label>' +
-                  '<select class="inp" id="' + id + '_to">' + opts + '</select></div>' +
-                '<button class="btn" data-act="confirmsel" data-key="' + esc(g.aliasKey) +
-                  '" data-sel="' + id + '_to" data-sp="' + esc(g.spellings.join('\u0001')) +
-                  '">Confirm &amp; remember</button>' +
-              '</div></details>'
-            : '') +
-          '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
-            'Create a new VRM for this name</summary>' +
-            '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' +
-              '<div class="f grow" style="min-width:200px"><label class="lbl">VRM name</label>' +
-                '<input class="inp" id="' + id + '_nm" value="' + esc(g.label) + '"></div>' +
-              '<div class="f grow" style="min-width:180px"><label class="lbl">Password for them</label>' +
-                '<input class="inp" id="' + id + '_pw" type="password" autocomplete="new-password"></div>' +
-              '<button class="btn" data-act="createun" data-key="' + esc(g.spellings.join('\u0001')) +
-                '" data-nm="' + id + '_nm" data-pw="' + id + '_pw">Create &amp; assign</button>' +
+
+          /*
+           * The one control that is always the answer when no suggestion fits:
+           * pick the person. It used to live inside "Other options", which meant
+           * the commonest action on a cluster with no suggestion was two clicks
+           * behind a word that implies it is unusual.
+           */
+          '<div class="uaassign">' +
+            '<label class="lbl" for="' + id + '_to">Assign to</label>' +
+            '<select class="inp" id="' + id + '_to">' + opts + '</select>' +
+            '<button class="btn pri" data-act="confirmsel" data-key="' + esc(g.aliasKey) +
+              '" data-sel="' + id + '_to" data-sp="' + esc(g.spellings.join('\u0001')) +
+              '">Assign &amp; remember</button>' +
+          '</div>' +
+
+          /*
+           * Everything else behind ONE disclosure. Four equal-looking rows read
+           * as four things that must be done; they are alternatives to a single
+           * decision, and only one of them is ever taken.
+           */
+          '<details class="uamore"><summary>Other ways to resolve this</summary>' +
+            '<div class="uamorebody">' +
+
+            (rest.length
+              ? '<div class="uablock"><div class="uablocktitle">Other close matches</div>' +
+                rest.map(function (o) {
+                  return '<div class="uaalt">' +
+                    '<span style="color:' + bandColour(o.band) + '">&#9679;</span>' +
+                    esc(o.name) + ' <span class="mono muted">(' + esc(o.vrmId) + ')</span>' +
+                    '<span class="pill mono">' + o.score.toFixed(2) + '</span>' +
+                    '<span style="flex:1"></span>' +
+                    '<button class="btn xs" data-act="confirmmap" data-key="' + esc(g.aliasKey) +
+                      '" data-vrm="' + esc(o.vrmId) + '" data-sp="' +
+                      esc(g.spellings.join('\u0001')) + '">Assign</button>' +
+                    '<button class="btn xs gh" data-act="rejectmap" data-key="' +
+                      esc(g.aliasKey) + '" data-vrm="' + esc(o.vrmId) + '">Not them</button>' +
+                    '</div>';
+                }).join('') + '</div>'
+              : '') +
+
+            '<div class="uablock"><div class="uablocktitle">This is somebody new</div>' +
+              '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">' +
+                '<div class="f grow" style="min-width:200px"><label class="lbl">VRM name</label>' +
+                  '<input class="inp" id="' + id + '_nm" value="' + esc(g.label) + '"></div>' +
+                '<div class="f grow" style="min-width:180px"><label class="lbl">Password for them</label>' +
+                  '<input class="inp" id="' + id + '_pw" type="password" autocomplete="new-password"></div>' +
+                '<button class="btn" data-act="createun" data-key="' + esc(g.spellings.join('\u0001')) +
+                  '" data-nm="' + id + '_nm" data-pw="' + id + '_pw">Create &amp; assign</button>' +
+              '</div>' +
+              '<p class="uahint">Refused if the name resembles someone already on the roster — ' +
+              'that is how a book gets split in two.</p>' +
             '</div>' +
-            '<p class="muted" style="font-size:12.5px;margin:10px 0 0">Refused if the name ' +
-            'resembles someone already on the roster — that is how a book gets split in two.</p>' +
-          '</details>' +
-          '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
-            'Exclude these rows</summary>' +
-            '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">' +
-              '<div class="f" style="min-width:190px"><label class="lbl">Reason</label>' +
-                '<select class="inp" id="' + id + '_rc">' +
-                  '<option value="TEST_DATA">Test data</option>' +
-                  '<option value="NOT_A_PERSON">Not a person</option>' +
-                  '<option value="OTHER">Other</option></select></div>' +
-              '<div class="f grow" style="min-width:200px"><label class="lbl">Note (required for Other)</label>' +
-                '<input class="inp" id="' + id + '_rn"></div>' +
-              '<button class="btn dan" data-act="excludecl" data-key="' + esc(g.aliasKey) +
-                '" data-sp="' + esc(g.spellings.join('\u0001')) + '" data-rc="' + id +
-                '_rc" data-rn="' + id + '_rn">Exclude ' + g.rowCount + ' row(s)</button>' +
+
+            '<div class="uablock"><div class="uablocktitle">This is not a person</div>' +
+              '<div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">' +
+                '<div class="f" style="min-width:180px"><label class="lbl">Reason</label>' +
+                  '<select class="inp" id="' + id + '_rc">' +
+                    '<option value="TEST_DATA">Test data</option>' +
+                    '<option value="NOT_A_PERSON">Not a person</option>' +
+                    '<option value="OTHER">Other</option></select></div>' +
+                '<div class="f grow" style="min-width:200px"><label class="lbl">Note (required for Other)</label>' +
+                  '<input class="inp" id="' + id + '_rn"></div>' +
+                '<button class="btn dan" data-act="excludecl" data-key="' + esc(g.aliasKey) +
+                  '" data-sp="' + esc(g.spellings.join('\u0001')) + '" data-rc="' + id +
+                  '_rc" data-rn="' + id + '_rn">Exclude ' + g.rowCount + ' row(s)</button>' +
+              '</div>' +
+              '<p class="uahint">The rows stay on the sheet for the record but leave every ' +
+              'figure, including the unassigned share. Reversible.</p>' +
             '</div>' +
-            '<p class="muted" style="font-size:12.5px;margin:10px 0 0">The rows stay on the ' +
-            'sheet for the record but leave every figure, including the unassigned share. ' +
-            'Reversible.</p>' +
-          '</details>' +
-          '<details><summary class="muted" style="cursor:pointer;font-size:13px">' +
-            'Show the ' + g.rowCount + ' row(s)</summary>' +
+
+            '</div></details>' +
+
+          /* Looking is not deciding, so it sits apart from the actions. */
+          '<details class="uarows"><summary>' + IC.table + ' Show the ' + g.rowCount +
+            ' row(s)</summary>' +
             '<div class="twrap" style="max-height:280px;margin-top:12px">' +
             '<table><thead><tr><th>Date</th><th>Client</th><th>Scheme</th>' +
             '<th>Type</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>' +
