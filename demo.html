@@ -1064,6 +1064,18 @@ html[data-corner="round"]{--r:20px; --r2:16px; --r3:14px}
 .setrow b{display:block;font-size:13.5px;color:var(--ink)}
 .setrow span{display:block;font-size:12px;color:var(--ink3);margin-top:2px}
 
+
+/* ---- who a setting reaches, said in the heading ------------------------- */
+.scope{
+  display:inline-block;vertical-align:middle;margin-left:9px;padding:2px 9px;
+  border-radius:var(--rp);font-size:10.5px;font-weight:800;letter-spacing:.05em;
+  text-transform:uppercase;font-family:var(--font);
+}
+.scope.me{background:var(--surf2);color:var(--ink3);border:1px solid var(--line)}
+.scope.all{background:var(--p-soft);color:var(--p-ink);border:1px solid transparent}
+/* the panels that change things for other people are marked down the edge */
+.firmpanel{border-left:3px solid var(--p)}
+
 </style>
 
 <div id="login">
@@ -3267,7 +3279,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-27c boot-theme';
+var PAGE_BUILD = '2026-08-27d scope-labels';
 
 var API_URL = '';        /* set by the Pages build */
 
@@ -5087,16 +5099,22 @@ function viewSettings() {
     }).join('') + '</div>';
   }
 
-  return pageHead('Settings', 'Appearance for this browser', '') +
-    '<div class="panel"><div class="ptop"><div><h3>Theme</h3>' +
-      '<p>Each one is taken from a real site rather than invented</p></div></div>' +
+  var firmName = (THEMES.filter(function (t) { return t.id === fa.theme; })[0] || {}).name || fa.theme;
+
+  return pageHead('Settings', isAdmin()
+      ? 'Your own look, and the firm default everyone starts from'
+      : 'Appearance for this browser', '') +
+    '<div class="panel"><div class="ptop"><div><h3>Theme <span class="scope me">this browser</span></h3>' +
+      '<p>Only you see this. The firm default is <b>' + esc(firmName) + '</b>' +
+      (isAdmin() ? ' — to change that for everyone, use <b>Firm default look</b> below' : '') +
+      '</p></div></div>' +
       '<div class="optgrid">' + themeCards + '</div></div>' +
 
-    '<div class="panel"><div class="ptop"><div><h3>Typeface</h3>' +
+    '<div class="panel"><div class="ptop"><div><h3>Typeface <span class="scope me">this browser</span></h3>' +
       '<p>Loaded only when chosen, so the ones you skip cost nothing</p></div></div>' +
       '<div class="optgrid">' + typeCards + '</div></div>' +
 
-    '<div class="panel"><div class="ptop"><div><h3>Layout</h3></div></div>' +
+    '<div class="panel"><div class="ptop"><div><h3>Layout <span class="scope me">this browser</span></h3></div></div>' +
       '<div class="setrows">' +
         '<div class="setrow"><div><b>Density</b>' +
           '<span>How much air between the figures</span></div>' +
@@ -5147,8 +5165,10 @@ function firmPanel(fa) {
                '" data-firm="' + field + '" data-val="' + o[0] + '">' + esc(o[1]) + '</button>';
       }).join('') + '</div></div>';
   }
-  return '<div class="panel"><div class="ptop"><div><h3>Firm default look</h3>' +
-    '<p>Saved to the Config sheet — what a browser gets before anyone chooses for themselves</p></div></div>' +
+  return '<div class="panel firmpanel"><div class="ptop"><div>' +
+    '<h3>Firm default look <span class="scope all">everyone</span></h3>' +
+    '<p>Written to the Config sheet. This is what every machine gets before anyone ' +
+    'chooses for themselves — including the sign-in page.</p></div></div>' +
     '<div class="setrows">' +
       row('theme', 'Theme', 'Applies to everyone who has not picked their own',
           THEMES.map(function (t) { return [t.id, t.name]; })) +
@@ -5184,7 +5204,8 @@ function configPanel() {
         '<button class="btn xs" data-act="cfgsave" data-key="' + key + '">Save</button>' +
       '</div></div>';
   }
-  return '<div class="panel"><div class="ptop"><div><h3>Access &amp; policy</h3>' +
+  return '<div class="panel firmpanel"><div class="ptop"><div>' +
+    '<h3>Access &amp; policy <span class="scope all">everyone</span></h3>' +
     '<p>Config sheet values — these change how the app behaves for everyone</p></div></div>' +
     '<div class="setrows">' +
       seg('VRM_SEES_FULL_PAN', 'VRMs see the full PAN',
