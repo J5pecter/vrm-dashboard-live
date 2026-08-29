@@ -716,6 +716,94 @@ tbody tr{transition:background var(--t-fast)}
 .kv.msv{font-size:19px;font-weight:700;letter-spacing:-.01em;line-height:1.25;color:var(--ink)}
 .kv.msv.red{color:var(--dan)}
 
+
+/* ======================= THE CONSOLIDATED FILTER ========================= */
+.filterbar{margin-bottom:22px;overflow:visible}
+.fbrow{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:14px 16px}
+.fbend{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.fbend .inp.sm{width:auto;min-width:132px;padding:8px 11px;font-size:13px}
+.fbnote{
+  padding:9px 16px;border-top:1px solid var(--line2);background:var(--surf2);
+  font-size:12.5px;color:var(--ink2);
+}
+.fbnote b{color:var(--ink)}
+
+/*
+ * A segmented control rather than a dropdown. Six ranges that each cost one
+ * click beat six behind a menu that costs two, and the group shows at a glance
+ * which one is on — the thing a dropdown can only tell you by being opened.
+ */
+.pills{display:inline-flex;gap:2px;padding:3px;background:var(--surf2);
+  border:1px solid var(--line);border-radius:var(--rp);flex-wrap:wrap}
+.pill-btn{
+  padding:7px 14px;border-radius:var(--rp);font-size:12.75px;font-weight:600;
+  color:var(--ink2);background:transparent;white-space:nowrap;position:relative;
+  transition:color var(--t-fast),background var(--t-mid) var(--ease),
+             transform var(--t-fast) var(--ease);
+}
+.pill-btn:hover{color:var(--ink);background:var(--line2)}
+.pill-btn:active{transform:scale(.96)}
+.pill-btn.on{
+  background:var(--btn-ink);color:var(--surf);
+  animation:pillOn var(--t-mid) var(--pop);
+}
+@keyframes pillOn{from{transform:scale(.9)}to{transform:scale(1)}}
+
+/* ============================ MORE MOTION =============================== */
+
+/* status boxes arrive in sequence, like the cards above them */
+.statgrid>.statbox{animation:cardIn var(--t-mid) var(--ease) both}
+.statgrid>.statbox:nth-child(1){animation-delay:30ms}
+.statgrid>.statbox:nth-child(2){animation-delay:75ms}
+.statgrid>.statbox:nth-child(3){animation-delay:120ms}
+.statgrid>.statbox:nth-child(4){animation-delay:165ms}
+.statbox{transition:transform var(--t-fast) var(--ease),box-shadow var(--t-fast)}
+.statbox:hover{transform:translateY(-2px);box-shadow:var(--sh2)}
+
+/* the small figures under "the rest of the detail" */
+.msgrid>.ministat{animation:cardIn 240ms var(--ease) both}
+.msgrid>.ministat:nth-child(1){animation-delay:20ms}
+.msgrid>.ministat:nth-child(2){animation-delay:50ms}
+.msgrid>.ministat:nth-child(3){animation-delay:80ms}
+.msgrid>.ministat:nth-child(4){animation-delay:110ms}
+.msgrid>.ministat:nth-child(5){animation-delay:140ms}
+.msgrid>.ministat:nth-child(6){animation-delay:165ms}
+
+/* waterfall rows fade in just ahead of their own bars */
+.wfrow{animation:rowIn 300ms var(--ease) both}
+.wfrow:nth-child(1){animation-delay:40ms}
+.wfrow:nth-child(2){animation-delay:80ms}
+.wfrow:nth-child(3){animation-delay:120ms}
+.wfrow:nth-child(4){animation-delay:160ms}
+.wfrow:nth-child(5){animation-delay:200ms}
+.wfbar>div{transition:width 820ms cubic-bezier(.22,1,.36,1)}
+.wfsum{animation:rowIn 320ms var(--ease) both;animation-delay:340ms}
+
+/* panels lift a little, so a mouse finds them */
+.panel{transition:box-shadow var(--t-mid) var(--ease),border-color var(--t-mid)}
+.panel:hover{box-shadow:var(--sh)}
+
+/* the chart container fades its canvas in once Chart.js has drawn */
+.chartbox{animation:fadeIn var(--t-slow) var(--ease) both;animation-delay:120ms}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+/* the filter bar itself */
+.filterbar{animation:cardIn var(--t-mid) var(--ease) both}
+.fbnote{animation:fadeIn var(--t-mid) var(--ease) both;animation-delay:120ms}
+
+/* segmented tabs and selects respond to touch */
+.inp{transition:border-color var(--t-fast),box-shadow var(--t-fast),transform var(--t-fast) var(--ease)}
+.inp:focus{transform:translateY(-1px)}
+
+/* the page title itself, so a page change is felt at the top too */
+.phead h2,.lhead h1{animation:titleIn var(--t-slow) var(--ease) both}
+@keyframes titleIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.phead p{animation:fadeIn var(--t-slow) var(--ease) both;animation-delay:90ms}
+
+@media (prefers-reduced-motion:reduce){
+  .wfbar>div{transition:none}
+}
+
 </style>
 
 <div id="login">
@@ -992,7 +1080,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-26d four-kpis';
+var PAGE_BUILD = '2026-08-26e filter-motion';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbzOwsKX0s0QZsoMAPsdzV8KsL64VmvnYMyKV4YD4J4G-X7aN2SFCWATeazE0AZASqwuaw/exec';        /* set by the Pages build */
 
@@ -1947,13 +2035,15 @@ function waterfall(m, title) {
     { label: 'Net Sales', v: m.net, cls: 'wf-net', rule: true }
   ];
 
+  after(growBars);
   return '<div class="panel">' +
     '<div class="ptop"><div><h3>' + esc(title || 'How the business adds up') + '</h3></div></div>' +
     '<div class="wf">' +
       bars.map(function (b) {
         return '<div class="wfrow' + (b.rule ? ' wftot' : '') + '">' +
           '<div class="wflab">' + esc(b.label) + '</div>' +
-          '<div class="wfbar"><div class="' + b.cls + '" style="width:' + pctOf(b.v).toFixed(1) + '%"></div></div>' +
+          '<div class="wfbar"><div class="' + b.cls + '" style="width:0" data-w="' +
+            pctOf(b.v).toFixed(1) + '"></div></div>' +
           '<div class="wfval' + (b.v < 0 ? ' neg' : '') + '">' +
             (b.v < 0 ? '− ' : '') + rupee(Math.abs(b.v)) + '</div></div>';
       }).join('') +
@@ -1963,6 +2053,173 @@ function waterfall(m, title) {
         ' = <b class="netbig">' + rupee(m.net) + '</b>' +
       '</div>' +
     '</div></div>';
+}
+
+
+/* ===================== THE CONSOLIDATED VIEW'S FILTER ====================== *
+ *
+ * Everything on that page obeys this one filter, which is the whole point: a
+ * screen where some figures follow the dates and others quietly do not is worse
+ * than a screen with no filter at all.
+ *
+ * The ranges are relative to the newest month WITH DATA, not to today. Uploads
+ * arrive days after the month they describe, so anchoring to the calendar would
+ * show an empty "this month" for the first week of every month.
+ * ========================================================================== */
+var OV_RANGES = [
+  { id: 'month',  label: 'This month' },
+  { id: 'prev',   label: 'Last month' },
+  { id: 'quarter',label: 'Quarter' },
+  { id: 'year',   label: 'This year' },
+  { id: 'all',    label: 'All time' },
+  { id: 'custom', label: 'Custom' }
+];
+
+function monthEnd_(ym) {
+  var y = +ym.slice(0, 4), m = +ym.slice(5, 7);
+  var d = new Date(y, m, 0).getDate();
+  return ym + '-' + ('0' + d).slice(-2);
+}
+function shiftMonth_(ym, by) {
+  var y = +ym.slice(0, 4), m = +ym.slice(5, 7) + by;
+  y += Math.floor((m - 1) / 12);
+  m = ((m - 1) % 12 + 12) % 12 + 1;
+  return y + '-' + ('0' + m).slice(-2);
+}
+
+/* {from, to, label} for whatever is currently selected. */
+function ovRange() {
+  var all = S.data.txns || [];
+  var k = kpis(all);
+  var ref = k.refMonth || (today().slice(0, 7));
+  var f = S.ov;
+
+  if (f.range === 'all') {
+    var ds = all.map(function (t) { return t.date; }).filter(Boolean).sort();
+    return { from: ds[0] || '0000-01-01', to: ds[ds.length - 1] || today(), label: 'all time' };
+  }
+  if (f.range === 'custom') {
+    var a = f.from || '0000-01-01', b = f.to || today();
+    return { from: a, to: b, label: dmy(a) + ' to ' + dmy(b) };
+  }
+  if (f.range === 'year') {
+    var y = ref.slice(0, 4);
+    return { from: y + '-01-01', to: y + '-12-31', label: y + ' · year to date' };
+  }
+  if (f.range === 'quarter') {
+    var m = +ref.slice(5, 7), q0 = Math.floor((m - 1) / 3) * 3 + 1;
+    var ys = ref.slice(0, 4);
+    var start = ys + '-' + ('0' + q0).slice(-2);
+    var end = shiftMonth_(start, 2);
+    return { from: start + '-01', to: monthEnd_(end),
+             label: 'Q' + (Math.floor((m - 1) / 3) + 1) + ' ' + ys };
+  }
+  var mo = f.range === 'prev' ? shiftMonth_(ref, -1) : ref;
+  return { from: mo + '-01', to: monthEnd_(mo), label: monLabel(mo) };
+}
+
+function ovRows() {
+  var r = ovRange(), f = S.ov;
+  return (S.data.txns || []).filter(function (t) {
+    if (!t.date || t.date < r.from || t.date > r.to) return false;
+    if (f.vrm && String(t.vrmEmpCode).toUpperCase() !== f.vrm.toUpperCase()) return false;
+    return true;
+  });
+}
+
+/* How many whole months the range spans, for the per-month average. */
+function ovMonths(rows) {
+  var seen = {};
+  rows.forEach(function (t) { if (t.date) seen[t.date.slice(0, 7)] = 1; });
+  return Math.max(1, Object.keys(seen).length);
+}
+
+function ovFilterBar() {
+  var f = S.ov, r = ovRange();
+  var vrmOpts = (S.data.vrms || []).map(function (v) {
+    return '<option value="' + esc(v.empCode) + '"' + (f.vrm === v.empCode ? ' selected' : '') + '>' +
+           esc(v.name) + '</option>';
+  }).join('');
+  return '<div class="panel filterbar"><div class="fbrow">' +
+    '<div class="pills" role="tablist">' +
+      OV_RANGES.map(function (g) {
+        return '<button class="pill-btn' + (f.range === g.id ? ' on' : '') + '" data-ov="' + g.id + '">' +
+               esc(g.label) + '</button>';
+      }).join('') +
+    '</div>' +
+    '<div class="fbend">' +
+      '<select class="inp sm" data-ovsel="vrm"><option value="">All VRMs</option>' + vrmOpts + '</select>' +
+      (f.range === 'custom'
+        ? '<input class="inp sm" type="date" data-ovsel="from" max="' + esc(today()) + '" value="' + esc(f.from) + '">' +
+          '<input class="inp sm" type="date" data-ovsel="to" max="' + esc(today()) + '" value="' + esc(f.to) + '">'
+        : '') +
+      '<button class="btn xs gh" data-act="ovreset">Reset</button>' +
+    '</div></div>' +
+    '<div class="fbnote">Showing <b>' + esc(r.label) + '</b>' +
+      (f.vrm ? ' · ' + esc(vrmNameByCode(f.vrm)) : ' · all VRMs') + '</div>' +
+  '</div>';
+}
+
+function vrmNameByCode(code) {
+  var v = (S.data.vrms || []).filter(function (x) {
+    return String(x.empCode).toUpperCase() === String(code).toUpperCase();
+  })[0];
+  return v ? v.name : code;
+}
+
+/* The four cards and the strip, driven by the range rather than by the month. */
+function rangeCards(mx, rows, label) {
+  var months = ovMonths(rows);
+  var clients = {}, cards, minis;
+  rows.forEach(function (t) { if (t.clientCode) clients[String(t.clientCode).toUpperCase()] = 1; });
+  var vrmsSeen = {};
+  rows.forEach(function (t) { if (t.vrmEmpCode) vrmsSeen[t.vrmEmpCode.toUpperCase()] = 1; });
+
+  cards = [
+    { t: 'Net Sales', v: mx.net, ic: IC.spark, g: 'net',
+      s: label + ' · gross ' + shortInr(mx.gross) + ' − redemption ' + shortInr(mx.redemption) },
+    { t: 'Gross Sales', v: mx.gross, ic: IC.rupee, g: '', s: label + ' · SIP + Lumpsum' },
+    { t: 'Redemption', v: mx.redemption, ic: IC.down, g: 'red', s: label + ' · money withdrawn' },
+    { t: 'Average / month', v: Math.round(mx.net / months), ic: IC.cal, g: 'net', ytd: true,
+      s: 'net across ' + months + ' month(s)' }
+  ];
+  minis = [
+    { t: 'SIP', v: mx.sip },
+    { t: 'Lumpsum', v: mx.lumpsum },
+    { t: 'Transactions', v: rows.length, plain: true },
+    { t: 'Clients', v: Object.keys(clients).length, plain: true },
+    { t: 'VRMs active', v: Object.keys(vrmsSeen).length, plain: true },
+    { t: 'Months covered', v: months, plain: true }
+  ];
+
+  return '<div class="kpis four">' + cards.map(function (c) {
+    return '<div class="kpi ' + c.g + (c.ytd ? ' ytd' : '') + '">' +
+      '<div class="kt"><span class="ki">' + c.ic + '</span>' + esc(c.t) + '</div>' +
+      '<div class="kv" data-count="' + num(c.v) + '" data-plain="0">' + rupee(0) + '</div>' +
+      '<div class="ks">' + esc(c.s) + '</div></div>';
+  }).join('') + '</div>' +
+  '<div class="panel"><div class="ptop"><div><h3>The rest of the detail</h3></div>' +
+  '<div class="tools"><span class="muted" style="font-size:12px">' + esc(label) + '</span></div></div>' +
+  '<div class="msgrid">' + minis.map(function (m) {
+    return '<div class="ministat"><div class="msl">' + esc(m.t) + '</div>' +
+      '<div class="kv msv" data-count="' + num(m.v) + '" data-plain="' + (m.plain ? 1 : 0) + '">' +
+      (m.plain ? '0' : rupee(0)) + '</div></div>';
+  }).join('') + '</div></div>';
+}
+
+
+/*
+ * Grow every waterfall bar from nothing, staggered down the column so the
+ * arithmetic reads in the order it is written: SIP and Lumpsum arrive, they
+ * make Gross, Redemption takes its cut, Net is what is left.
+ */
+function growBars() {
+  var bars = document.querySelectorAll('.wfbar>[data-w]');
+  Array.prototype.forEach.call(bars, function (el, i) {
+    var w = el.getAttribute('data-w') + '%';
+    if (REDUCED) { el.style.width = w; return; }
+    setTimeout(function () { el.style.width = w; }, 60 + i * 90);
+  });
 }
 
 /* Pending / rejected, kept visible but plainly outside the finalised figures. */
@@ -2433,20 +2690,20 @@ function viewClientDetail() {
 
 /* --------------------------- ADMIN: Overview ------------------------------ */
 function viewOverview() {
-  var t = S.data.txns, k = kpis(t), m = monthly(t);
+  var rows = ovRows();
+  var r = ovRange();
+  var mx = metrics(rows);
+  var m = monthly(rows);
   after(function () { drawTrend('c1', m); });
-  var vw = byVrm(t, S.data.vrms);
-  var active = vw.filter(function (v) { return v.n > 0; }).length;
 
   return pageHead('Consolidated overview',
-      (k.refMonth ? monLabel(k.refMonth) : 'no data yet') +
-      ' · ' + t.length + ' transactions · ' + active + ' of ' +
-      (S.data.vrms || []).length + ' VRMs active', '') +
-    kpiCards(k) +
-    waterfall(k.month, (k.refMonth ? 'How ' + k.refLabel + ' adds up' : 'How the month adds up') +
-      ' — whole business') +
+      r.label + ' · ' + rows.length + ' transaction(s)' +
+      (S.ov.vrm ? ' · ' + vrmNameByCode(S.ov.vrm) : ''), '') +
+    ovFilterBar() +
+    rangeCards(mx, rows, r.label) +
+    waterfall(mx, 'How ' + r.label + ' adds up' + (S.ov.vrm ? '' : ' — whole business')) +
     trendPanel('c1', m) +
-    statusStrip(k.all);
+    statusStrip(metrics(rows));
 }
 
 /* --------------------------- ADMIN: VRM-wise ------------------------------ */
@@ -3131,6 +3388,12 @@ function viewActivity() {
 
 S.an = { from: '', to: '', vrm: '', metric: 'net', gran: 'month' };
 S.navMore = false;   /* is the sidebar's "More" group open */
+/*
+ * The consolidated view's filter. "month" means the newest month that has data
+ * rather than the calendar's current month — a report opened on the 2nd should
+ * not greet you with an empty page because nothing has been uploaded yet.
+ */
+S.ov = { range: 'month', from: '', to: '', vrm: '' };
 
 var GRAN = {
   day:   { key: function (d) { return d; },              label: function (k) { return dmy(k); },
@@ -5163,6 +5426,11 @@ var ACT = {
    * states the row count and the money involved, because "delete all data" is
    * abstract and "this removes 136 rows and 59 lakh of recorded business" is not.
    */
+  ovreset: function () {
+    S.ov = { range: 'month', from: '', to: '', vrm: '' };
+    render();
+  },
+
   delallask: function () {
     var live = (S.data.txns || []).filter(function (t) { return !t.excluded; });
     var m = metrics(S.data.txns);
@@ -5268,6 +5536,21 @@ document.addEventListener('click', function (e) {
   if (!fn) return;
   e.preventDefault();
   fn(el);
+});
+
+
+/* the consolidated view's range pills and selects */
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('[data-ov]');
+  if (!b) return;
+  S.ov.range = b.dataset.ov;
+  render();
+});
+document.addEventListener('change', function (e) {
+  var el = e.target.closest('[data-ovsel]');
+  if (!el) return;
+  S.ov[el.dataset.ovsel] = el.value;
+  render();
 });
 
 /* search boxes */
