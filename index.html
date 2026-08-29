@@ -646,12 +646,29 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-25i instant-login';
+var PAGE_BUILD = '2026-08-25j prefer-direct';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbzOwsKX0s0QZsoMAPsdzV8KsL64VmvnYMyKV4YD4J4G-X7aN2SFCWATeazE0AZASqwuaw/exec';        /* set by the Pages build */
 
+/*
+ * Which way to talk to the server.
+ *
+ * google.script.run exists only when this page was served by Apps Script
+ * itself, and where it exists it is the faster road: a direct call, rather than
+ * a cross-origin POST answered with a redirect to a second host. Measured on
+ * the hosted copy, that redirect path costs about two seconds a click before
+ * any server code runs.
+ *
+ * So it is preferred whenever it is available, INCLUDING when this file carries
+ * an API_URL. It used to be the other way round, and that was a trap: the built
+ * copy has a URL stamped into it, so pasting that copy into the Apps Script
+ * project produced an app that worked perfectly and was needlessly slow, with
+ * nothing on screen to say why. The faster path should not depend on having
+ * picked the right one of two nearly identical files.
+ */
 function useFetch() {
-  return !!API_URL || typeof google === 'undefined' || !google.script || !google.script.run;
+  var direct = (typeof google !== 'undefined') && google.script && google.script.run;
+  return !direct;
 }
 
 /*
