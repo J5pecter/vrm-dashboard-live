@@ -315,9 +315,24 @@ main{margin:var(--topbar) 0 0 var(--side);padding:28px;min-height:calc(100vh - v
 .ptop h3{margin:0;font-size:15.5px;font-weight:700;letter-spacing:-.008em}
 .ptop p{margin:4px 0 0;font-size:12.5px;color:var(--ink3)}
 .tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.search{position:relative;min-width:210px}
-.search .inp{padding-left:36px}
-.search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--ink3);pointer-events:none}
+/*
+ * The icon is a flex item, not an absolutely-positioned overlay clearing a
+ * padding-left. That padding was reset by any later rule using the `padding`
+ * shorthand — the compact-density rule does exactly that — and the icon then
+ * sat on top of the placeholder. Laying them side by side cannot break that
+ * way, whatever else restyles the input.
+ */
+.search{
+  display:flex;align-items:center;gap:8px;min-width:210px;padding-left:12px;
+  background:var(--surf);border:1px solid var(--line);border-radius:var(--r3);
+  transition:border-color var(--t-fast),box-shadow var(--t-fast);
+}
+.search:focus-within{border-color:var(--p);box-shadow:0 0 0 3px var(--p-soft)}
+.search svg{flex:0 0 auto;color:var(--ink3);pointer-events:none}
+.search .inp{
+  border:0;background:transparent;box-shadow:none;padding-left:0;min-width:0;flex:1;
+}
+.search .inp:focus{box-shadow:none;transform:none;border:0}
 .twrap{overflow:auto;max-height:min(66vh,740px)}
 table{width:100%;border-collapse:separate;border-spacing:0;font-size:14px}
 thead th{position:sticky;top:0;z-index:2;background:var(--surf2);text-align:left;padding:11px 20px;
@@ -1126,6 +1141,31 @@ html[data-corner="round"]{--r:20px; --r2:16px; --r3:14px}
 .uarows{border-top:1px solid var(--line2);padding-top:10px}
 .uarows>summary svg{width:14px;height:14px;opacity:.8}
 
+
+/* ---- the quarter / financial-year row ---------------------------------- */
+.fbqrow{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;
+  padding:0 16px 14px;
+}
+.fbqlab{font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3)}
+.fbqrow .inp.sm{width:auto;min-width:132px;padding:8px 11px;font-size:13px}
+.fbqrow .pill-btn{padding:7px 13px}
+
+
+/* ---- somebody waiting on a password ------------------------------------ */
+.panel.waiting{border-left:3px solid var(--p)}
+.panel.waiting .ptop h3{display:flex;align-items:center;gap:8px}
+.panel.waiting .ptop h3 svg{width:16px;height:16px}
+.waitrows{display:flex;flex-direction:column}
+.waitrow{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:14px 18px;border-bottom:1px solid var(--line2);
+}
+.waitrow:last-child{border-bottom:0}
+.waitwho{display:flex;align-items:center;gap:9px;flex-wrap:wrap;min-width:220px}
+.waitwho b{font-size:14px}
+.waitwhen{color:var(--ink3);font-size:12.5px;margin-left:auto;white-space:nowrap}
+
 </style>
 
 <div id="login">
@@ -1402,7 +1442,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-27f readable-muted';
+var PAGE_BUILD = '2026-08-28c reset-requests';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbyjWQvuhyAwrYrRnAxGDmuHY4iw37G-BQSm3fNbKJKj5iJAYXa42Q5Au9yMnuyH3dTF/exec';        /* set by the Pages build */
 
@@ -2040,7 +2080,7 @@ var ADMIN_TABS = [
   { id: 'clients',   label: 'Client Consolidated',   ic: IC.layers },
   { id: 'batches',   label: 'Upload History',        ic: IC.up },
   { id: 'restore',   label: 'Restore',               ic: IC.undo },
-  { id: 'access',    label: 'VRMs & Access',         ic: IC.shield },
+  { id: 'access',    label: 'VRMs & Access',         ic: IC.shield },   /* badge added in tabs() */
   { id: 'activity',  label: 'Activity Log',          ic: IC.clock },
   { id: 'settings',  label: 'Settings',              ic: IC.key }
 ];
@@ -2051,9 +2091,24 @@ var ADMIN_TABS = [
  */
 function tabs() {
   if (!isAdmin()) return VRM_TABS;
+
+  /*
+   * A pending password reset is somebody unable to work, so it is worth a count
+   * on the tab rather than only a panel behind it. VRMs & Access lives under
+   * "More", and buildSidebar opens that group when a badge is showing — a
+   * number nobody can see is not a notification.
+   */
+  var waiting = ((S.data && S.data.resetRequests) || []).length;
+  var withBadge = function (list) {
+    if (!waiting) return list;
+    return list.map(function (t) {
+      return t.id === 'access' ? { id: t.id, label: t.label, ic: t.ic, badge: waiting } : t;
+    });
+  };
+
   var n = unassignedCount();
-  if (!n) return ADMIN_TABS;
-  var out = ADMIN_TABS.slice();
+  if (!n) return withBadge(ADMIN_TABS);
+  var out = withBadge(ADMIN_TABS).slice();
   var at = 0;
   out.forEach(function (t, i) { if (t.id === 'vrmwise') at = i + 1; });
   out.splice(at, 0, { id: 'unassigned', label: 'Unassigned', ic: IC.users, badge: n, main: true });
@@ -2100,7 +2155,9 @@ function buildSidebar() {
   /* Open if the person left it open, or if what they are looking at is in it —
      a page should never be both the current one and out of sight. */
   var inRest = rest.some(function (t) { return t.id === S.tab; });
-  var open = S.navMore || inRest;
+  /* A badge inside a collapsed group is a notification nobody receives. */
+  var badgeInRest = rest.some(function (t) { return t.badge; });
+  var open = S.navMore || inRest || badgeInRest;
   S.navMore = open;
 
   /* Still guards the case of a role that somehow carries a long primary list. */
@@ -2573,10 +2630,62 @@ var OV_RANGES = [
   { id: 'month',  label: 'This month' },
   { id: 'prev',   label: 'Last month' },
   { id: 'quarter',label: 'Quarter' },
-  { id: 'year',   label: 'This year' },
+  { id: 'year',   label: 'Financial year' },
   { id: 'all',    label: 'All time' },
   { id: 'custom', label: 'Custom' }
 ];
+
+/* ---------------------------------------------------------------------------
+ * The year here runs April to March, because that is the year this business is
+ * measured in. Calendar quarters would have put Q1 in January and split every
+ * financial year across two of them — a report that disagrees with the books
+ * it is drawn from is worse than no report.
+ *
+ *   Q1  Apr – Jun        Q3  Oct – Dec
+ *   Q2  Jul – Sep        Q4  Jan – Mar   (of the following calendar year)
+ *
+ * A financial year is named for the calendar year it STARTS in: April 2026 to
+ * March 2027 is FY 2026-27.
+ * ------------------------------------------------------------------------ */
+function fyStartYear(ym) {
+  var y = +String(ym).slice(0, 4), m = +String(ym).slice(5, 7);
+  return m >= 4 ? y : y - 1;
+}
+function fyLabel(y) {
+  return 'FY ' + y + '-' + ('0' + ((y + 1) % 100)).slice(-2);
+}
+function fyQuarterOf(ym) {
+  var m = +String(ym).slice(5, 7);
+  if (m >= 4 && m <= 6) return 1;
+  if (m >= 7 && m <= 9) return 2;
+  if (m >= 10) return 3;
+  return 4;
+}
+/* {from, to} for one quarter of one financial year. */
+function fyQuarterRange(y, q) {
+  var spans = {
+    1: [y, 4, y, 6], 2: [y, 7, y, 9], 3: [y, 10, y, 12], 4: [y + 1, 1, y + 1, 3]
+  };
+  var sp = spans[q] || spans[1];
+  var from = sp[0] + '-' + ('0' + sp[1]).slice(-2) + '-01';
+  return { from: from, to: monthEnd_(sp[2] + '-' + ('0' + sp[3]).slice(-2)) };
+}
+function fyRange(y) {
+  return { from: y + '-04-01', to: monthEnd_((y + 1) + '-03') };
+}
+/* Every financial year the data actually touches, newest first. */
+function fyChoices() {
+  var seen = {};
+  (S.data.txns || []).forEach(function (t) {
+    if (t.date) seen[fyStartYear(t.date.slice(0, 7))] = 1;
+  });
+  var list = Object.keys(seen).map(Number).sort(function (a, b) { return b - a; });
+  if (!list.length) list = [fyStartYear(today().slice(0, 7))];
+  return list;
+}
+function QLABEL(q) {
+  return ({ 1: 'Q1 Apr–Jun', 2: 'Q2 Jul–Sep', 3: 'Q3 Oct–Dec', 4: 'Q4 Jan–Mar' })[q] || ('Q' + q);
+}
 
 function monthEnd_(ym) {
   var y = +ym.slice(0, 4), m = +ym.slice(5, 7);
@@ -2606,16 +2715,15 @@ function ovRange() {
     return { from: a, to: b, label: dmy(a) + ' to ' + dmy(b) };
   }
   if (f.range === 'year') {
-    var y = ref.slice(0, 4);
-    return { from: y + '-01-01', to: y + '-12-31', label: y + ' · year to date' };
+    var fy = f.fy || fyStartYear(ref);
+    var r = fyRange(fy);
+    return { from: r.from, to: r.to, label: fyLabel(fy) + ' · Apr to Mar' };
   }
   if (f.range === 'quarter') {
-    var m = +ref.slice(5, 7), q0 = Math.floor((m - 1) / 3) * 3 + 1;
-    var ys = ref.slice(0, 4);
-    var start = ys + '-' + ('0' + q0).slice(-2);
-    var end = shiftMonth_(start, 2);
-    return { from: start + '-01', to: monthEnd_(end),
-             label: 'Q' + (Math.floor((m - 1) / 3) + 1) + ' ' + ys };
+    var qfy = f.fy || fyStartYear(ref);
+    var q = f.q || fyQuarterOf(ref);
+    var qr = fyQuarterRange(qfy, q);
+    return { from: qr.from, to: qr.to, label: QLABEL(q) + ' · ' + fyLabel(qfy) };
   }
   var mo = f.range === 'prev' ? shiftMonth_(ref, -1) : ref;
   return { from: mo + '-01', to: monthEnd_(mo), label: monLabel(mo) };
@@ -2657,9 +2765,42 @@ function ovFilterBar() {
           '<input class="inp sm" type="date" data-ovsel="to" max="' + esc(today()) + '" value="' + esc(f.to) + '">'
         : '') +
       '<button class="btn xs gh" data-act="ovreset">Reset</button>' +
-    '</div></div>' +
+    '</div>' +
+    /*
+     * The quarter and year pickers appear only for the ranges that use them,
+     * on their own line under the main row and aligned right, beneath the VRM
+     * filter. A control that is always visible but only sometimes meaningful
+     * is a question the reader has to answer before they can ignore it.
+     */
+    ((f.range === 'quarter' || f.range === 'year') ? qtrRow(f) : '') +
+    '</div>' +
     '<div class="fbnote">Showing <b>' + esc(r.label) + '</b>' +
       (f.vrm ? ' · ' + esc(vrmNameByCode(f.vrm)) : ' · all VRMs') + '</div>' +
+  '</div>';
+}
+
+
+/* The quarter / financial-year picker. */
+function qtrRow(f) {
+  var ref = (kpis(S.data.txns || []).refMonth) || today().slice(0, 7);
+  var fy = f.fy || fyStartYear(ref);
+  var q = f.q || fyQuarterOf(ref);
+  var years = fyChoices();
+  if (years.indexOf(fy) < 0) years.unshift(fy);
+
+  return '<div class="fbqrow">' +
+    '<span class="fbqlab">Financial year</span>' +
+    '<select class="inp sm" data-ovsel="fy">' + years.map(function (y) {
+      return '<option value="' + y + '"' + (y === fy ? ' selected' : '') + '>' +
+             esc(fyLabel(y)) + '</option>';
+    }).join('') + '</select>' +
+    (f.range === 'quarter'
+      ? '<span class="fbqlab">Quarter</span>' +
+        '<div class="pills">' + [1, 2, 3, 4].map(function (n) {
+          return '<button class="pill-btn' + (n === q ? ' on' : '') +
+                 '" data-ovq="' + n + '" title="' + esc(QLABEL(n)) + '">Q' + n + '</button>';
+        }).join('') + '</div>'
+      : '') +
   '</div>';
 }
 
@@ -3543,12 +3684,7 @@ function viewScheme() {
     return !q || r.scheme.toLowerCase().indexOf(q) >= 0;
   });
   var top = rows.slice(0, 12);
-  after(function () {
-    drawChart('c3', top.map(function (r) { return r.scheme.slice(0, 22); }),
-      top.map(function (r) { return r.gross; }),
-      top.map(function (r) { return r.redemption; }),
-      ['Gross Sales', 'Redemption']);
-  });
+  /* no chart on this page any more — see the note below */
   var tot = { sip: 0, lumpsum: 0, redemption: 0, gross: 0, net: 0, n: 0 };
   rows.forEach(function (r) {
     tot.sip += r.sip; tot.lumpsum += r.lumpsum; tot.redemption += r.redemption;
@@ -3577,12 +3713,13 @@ function viewScheme() {
         '<option value="">All VRMs</option>' + vrmOpts + '</select></div>' +
       '<button class="btn sm" data-act="clearTf">Clear filters</button>' +
     '</div></div>' +
-    '<div class="panel"><div class="ptop"><div><h3>Top schemes</h3></div></div>' +
-    (top.length
-      ? '<div class="chartbox" id="c3_box"><canvas id="c3"></canvas></div>' +
-        '<div class="legend"><i style="background:var(--chart1)"></i>Gross Sales' +
-        '<i style="background:var(--chart2);margin-left:16px"></i>Redemption</div>'
-      : emptyState('Nothing to chart', 'No schemes in scope.')) + '</div>' +
+    /*
+     * The Top-schemes chart is gone. Twelve bars of scheme names, each truncated
+     * to 22 characters, answered a question the table below answers better and
+     * exactly: the names were unreadable, the ranking was already the table's
+     * first column, and the amounts had to be read off an axis instead of being
+     * printed. The filters and the list do the work.
+     */
     '<div class="panel"><div class="ptop"><div><h3>By scheme</h3></div></div>' +
     '<div class="twrap"><table><thead><tr><th>#</th><th>Scheme Name</th>' +
     '<th class="num">SIP</th><th class="num">Lumpsum</th><th class="num">Gross</th>' +
@@ -3929,6 +4066,65 @@ function loadCreds() {
   }).catch(function (e) { S.loadingCreds = false; fail(e); });
 }
 
+
+/*
+ * Whoever is waiting on a password, at the top of the page that can give them
+ * one. The request already wrote itself to the AuditLog and told the VRM "your
+ * admin has been notified" — which was not true of anybody, because the log is
+ * forty lines nobody reads unless they are already investigating something.
+ *
+ * A request is open until a reset for that VRM is recorded after it, so this
+ * clears itself the moment the work is done and needs no dismiss button to go
+ * stale.
+ */
+function resetRequestPanel() {
+  var reqs = (S.data && S.data.resetRequests) || [];
+  if (!reqs.length) return '';
+  return '<div class="panel waiting"><div class="ptop"><div>' +
+    '<h3>' + IC.key + ' Waiting on a password reset' +
+      '<span class="scope all">' + reqs.length + '</span></h3>' +
+    '<p>Asked from the sign-in page. Clears itself once the password is reset.</p>' +
+    '</div></div>' +
+    '<div class="waitrows">' + reqs.map(function (r) {
+      return '<div class="waitrow">' +
+        '<div class="waitwho">' +
+          '<b>' + esc(r.name || r.empCode) + '</b>' +
+          '<span class="mono muted">' + esc(r.empCode) + '</span>' +
+          (r.locked ? '<span class="pill" style="background:var(--dan-soft);color:var(--dan)">locked out</span>' : '') +
+          (r.known ? '' : '<span class="pill" style="background:var(--warn-soft);color:var(--warn)">not on the roster</span>') +
+        '</div>' +
+        '<div class="waitwhen">' + esc(stampAgo(r.at)) + '</div>' +
+        (r.known
+          ? '<button class="btn sm pri" data-act="resetpw" data-code="' + esc(r.empCode) +
+            '" data-name="' + esc(r.name) + '">' + IC.key + ' Set a new password</button>'
+          : '<span class="muted" style="font-size:12.5px">No such account — nothing to reset</span>') +
+      '</div>';
+    }).join('') + '</div></div>';
+}
+
+/* "2 hours ago", falling back to the date once that stops being useful. */
+function stampAgo(iso) {
+  var t = String(iso || '').replace(' ', 'T');
+  var then = new Date(t).getTime();
+  if (!then || isNaN(then)) return iso || '';
+  var mins = Math.round((new Date().getTime() - then) / 60000);
+  /*
+   * The server stamps IST with no timezone suffix, which a browser reads as its
+   * own local time. In this office those agree; opened from another zone they
+   * would not, and the arithmetic would report a request that has not happened
+   * yet. A stamp that appears to be in the future gets shown as a date instead
+   * of as "in 6 hours", which would be worse than merely unhelpful.
+   */
+  if (mins < -2) return dmy(t.slice(0, 10));
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + ' minute' + (mins === 1 ? '' : 's') + ' ago';
+  var hrs = Math.round(mins / 60);
+  if (hrs < 24) return hrs + ' hour' + (hrs === 1 ? '' : 's') + ' ago';
+  var days = Math.round(hrs / 24);
+  if (days <= 7) return days + ' day' + (days === 1 ? '' : 's') + ' ago';
+  return dmy(t.slice(0, 10));
+}
+
 function viewAccess() {
   if (!S.creds) { after(loadCreds); return loadingPanel('VRMs & Access', 'Reading credentials from the sheet...'); }
   var q = (S.q.access || '').toLowerCase();
@@ -3941,6 +4137,7 @@ function viewAccess() {
   return pageHead('VRMs & access', S.creds.length + ' VRM(s)' +
       (lockedCount ? ' - ' + lockedCount + ' currently locked' : ''),
       '<button class="btn sm pri" data-act="addvrm">' + IC.plus + ' Add VRM</button>') +
+    resetRequestPanel() +
     '<div class="panel"><div class="ptop">' +
     '<div><h3>Accounts &amp; access</h3></div>' +
     '<div class="tools">' + searchBox('access', 'Search VRM...') + '</div></div>' +
@@ -4077,7 +4274,7 @@ S.navMore = false;   /* is the sidebar's "More" group open */
  * rather than the calendar's current month — a report opened on the 2nd should
  * not greet you with an empty page because nothing has been uploaded yet.
  */
-S.ov = { range: 'month', from: '', to: '', vrm: '' };
+S.ov = { range: 'month', from: '', to: '', vrm: '', q: 0, fy: 0 };
 
 var GRAN = {
   day:   { key: function (d) { return d; },              label: function (k) { return dmy(k); },
@@ -4330,10 +4527,14 @@ function leagueTable(rows, met, f) {
   var best = list.length ? list[0].value : 0;
 
   after(function () {
-    drawChart('cLeague', list.slice(0, 12).map(function (r) { return r.empCode; }),
-      list.slice(0, 12).map(function (r) { return r.gross; }),
-      list.slice(0, 12).map(function (r) { return r.redemption; }),
-      ['Gross Sales', 'Redemption']);
+    var lead = list.slice(0, 12);
+    drawChart('cLeague', vrmChartLabels(lead),
+      lead.map(function (r) { return r.gross; }),
+      lead.map(function (r) { return r.redemption; }),
+      ['Gross Sales', 'Redemption'],
+      lead.map(function (r) {
+        return r.name + (r.empCode ? ' (' + r.empCode + ')' : '');
+      }));
   });
 
   return '<div class="panel"><div class="ptop"><div><h3>VRM performance</h3></div></div>' +
@@ -6131,7 +6332,7 @@ var ACT = {
   },
 
   ovreset: function () {
-    S.ov = { range: 'month', from: '', to: '', vrm: '' };
+    S.ov = { range: 'month', from: '', to: '', vrm: '', q: 0, fy: 0 };
     render();
   },
 
@@ -6297,14 +6498,25 @@ document.addEventListener('click', function (e) {
 /* the consolidated view's range pills and selects */
 document.addEventListener('click', function (e) {
   var b = e.target.closest('[data-ov]');
-  if (!b) return;
-  S.ov.range = b.dataset.ov;
-  render();
+  if (b) {
+    S.ov.range = b.dataset.ov;
+    /* Land on the quarter the newest data is in, not on Q1 by default. */
+    if (b.dataset.ov === 'quarter' && !S.ov.q) {
+      var ref = (kpis(S.data.txns || []).refMonth) || today().slice(0, 7);
+      S.ov.q = fyQuarterOf(ref);
+      S.ov.fy = fyStartYear(ref);
+    }
+    render();
+    return;
+  }
+  var q = e.target.closest('[data-ovq]');
+  if (q) { S.ov.q = +q.dataset.ovq; render(); }
 });
 document.addEventListener('change', function (e) {
   var el = e.target.closest('[data-ovsel]');
   if (!el) return;
-  S.ov[el.dataset.ovsel] = el.value;
+  var k = el.dataset.ovsel;
+  S.ov[k] = (k === 'fy') ? +el.value : el.value;
   render();
 });
 
