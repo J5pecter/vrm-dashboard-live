@@ -3444,7 +3444,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-29b baskets';
+var PAGE_BUILD = '2026-08-29c honest-delete';
 
 var API_URL = '';        /* set by the Pages build */
 
@@ -8496,11 +8496,17 @@ var ACT = {
       '<div class="panel" style="border-left:3px solid var(--dan)"><div style="padding:14px 18px;' +
       'font-size:13.5px;color:var(--ink2)">' +
       'Every VRM loses their history, and the dashboard resets to zero.<br><br>' +
-      'The rows are <b>soft-deleted</b>, so they can be brought back from ' +
-      '<b>Restore</b> — but a fresh upload afterwards would then collide with ' +
-      'them as duplicates, so recovery is not always simple.<br><br>' +
+      '<b>This cannot be undone from inside the app.</b> The rows are cleared ' +
+      'from the sheet and the sheet rows removed — they do NOT go to ' +
+      '<b>Restore</b>, which only holds rows deleted one at a time. The single ' +
+      /* No apostrophe in this string, deliberately. It lives inside a
+         single-quoted JS literal, and an unescaped one silently terminates it
+         and takes the whole application down — which is exactly what happened
+         when this text was first written. */
+      'way back is <b>File &rsaquo; Version history</b> in the Google Sheet itself.<br><br>' +
       'If you only want to undo one upload, close this and use ' +
-      '<b>Upload History</b> instead — that removes a single batch cleanly.' +
+      '<b>Upload History</b> instead — that removes a single batch and is ' +
+      'reversible.' +
       '</div></div>',
       '<button class="btn gh" data-act="close">Cancel</button>' +
       '<button class="btn dan" data-act="delall">Delete all ' + live.length + ' row(s)</button>');
