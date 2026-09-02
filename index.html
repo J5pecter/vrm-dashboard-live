@@ -1178,6 +1178,15 @@ html[data-corner="round"]{--r:20px; --r2:16px; --r3:14px}
 .fmtcol i{font-style:normal;font-size:9.5px;font-weight:800;letter-spacing:.05em;
   text-transform:uppercase;opacity:.8}
 
+
+/* a basket is the same kind of money, marked rather than recoloured */
+.pill.bskt{box-shadow:inset 0 0 0 1px currentColor}
+
+
+/* a basket sub-line sits under its parent rather than beside it */
+.wfrow .wflab{transition:none}
+.wfbar>div.sub{opacity:.55}
+
 </style>
 
 <div id="login">
@@ -1454,7 +1463,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-28d vrm-template';
+var PAGE_BUILD = '2026-08-29b baskets';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbyjWQvuhyAwrYrRnAxGDmuHY4iw37G-BQSm3fNbKJKj5iJAYXa42Q5Au9yMnuyH3dTF/exec';        /* set by the Pages build */
 
@@ -2267,10 +2276,55 @@ function absorb(d) {
  * default COMPLETED) and travels in the payload, so the rule is set in one place.
  * ========================================================================== */
 
-var TT = { SIP: 'SIP', LUMPSUM: 'LUMPSUM', REDEMPTION: 'REDEMPTION' };
+var TT = { SIP: 'SIP', LUMPSUM: 'LUMPSUM', REDEMPTION: 'REDEMPTION',
+           SIP_BASKET: 'SIP_BASKET', LUMPSUM_BASKET: 'LUMPSUM_BASKET' };
+
+/*
+ * A basket is a bundle of schemes bought on one instruction. It is a purchase
+ * and counts in gross exactly like its plain form; it is broken out because it
+ * is sold differently and worth seeing on its own line.
+ *
+ * baseType() collapses the compound back to SIP or Lumpsum, and every "does
+ * this count as gross" test goes through isPurchase(). One predicate, so a new
+ * type cannot be half-added: the alternative is hunting every
+ * `=== SIP || === LUMPSUM` in the file, and a missed one does not throw — it
+ * quietly leaves real money out of a total.
+ */
+function baseType(ty) {
+  if (ty === TT.SIP_BASKET) return TT.SIP;
+  if (ty === TT.LUMPSUM_BASKET) return TT.LUMPSUM;
+  return ty;
+}
+function isBasket(ty) { return ty === TT.SIP_BASKET || ty === TT.LUMPSUM_BASKET; }
+
+/* Word-bounded, so a scheme merely containing the letters is not swept in. */
+function schemeIsBasket(scheme) {
+  return /(^|[^A-Za-z])baskets?([^A-Za-z]|$)/i.test(String(scheme == null ? '' : scheme));
+}
+function applyBasketType(ty, scheme) {
+  if (!schemeIsBasket(scheme)) return ty;
+  /*
+   * Compared on a stripped key, not against the canonical token.
+   *
+   * At this point in an upload the type is still the FILE's spelling — "Lumpsum"
+   * from the template, "Purchase" from a platform export — and only the server
+   * canonicalises it. Testing ty === TT.LUMPSUM therefore matched "SIP" (which
+   * happens to be spelt like its token) and missed "Lumpsum" entirely, so a
+   * lumpsum basket previewed as a plain Lumpsum and only became a basket after
+   * committing. The stored figure was right; the screen was not, which is the
+   * worse of the two failures because it is the one somebody acts on.
+   */
+  var k = String(ty == null ? '' : ty).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (k === 'SIP' || k === 'SIPBASKET' || k === 'BASKETSIP') return TT.SIP_BASKET;
+  if (k === 'LUMPSUM' || k === 'LUMPSOM' || k === 'LUMP' || k === 'PURCHASE' ||
+      k === 'FRESHPURCHASE' || k === 'ADDITIONALPURCHASE' || k === 'ONETIME' ||
+      k === 'LUMPSUMBASKET' || k === 'BASKETLUMPSUM') return TT.LUMPSUM_BASKET;
+  return ty;
+}
 var TS = { COMPLETED: 'COMPLETED', IN_PROCESS: 'IN_PROCESS', REJECTED: 'REJECTED' };
 
-var TT_LABEL = { SIP: 'SIP', LUMPSUM: 'Lumpsum', REDEMPTION: 'Redemption' };
+var TT_LABEL = { SIP: 'SIP', LUMPSUM: 'Lumpsum', REDEMPTION: 'Redemption',
+                 SIP_BASKET: 'SIP Basket', LUMPSUM_BASKET: 'Lumpsum Basket' };
 var TS_LABEL = { COMPLETED: 'Completed', IN_PROCESS: 'In Process', REJECTED: 'Rejected' };
 
 /* How "New client transactions" is counted. One constant, easy to switch. */
@@ -2285,7 +2339,10 @@ function countedSet() {
 function isCounted(t) { return !!countedSet()[t.status]; }
 
 /** A purchase, i.e. something that adds business rather than removing it. */
-function isPurchase(t) { return t.txnType === TT.SIP || t.txnType === TT.LUMPSUM; }
+function isPurchase(t) {
+  var b = baseType(t.txnType);
+  return b === TT.SIP || b === TT.LUMPSUM;
+}
 
 /*
  * Rows an admin has marked as not-a-person. They stay in the data for the audit
@@ -2317,6 +2374,7 @@ function metrics(txns) {
   txns = liveRows(txns);
   var counted = countedSet();
   var m = { sip: 0, lumpsum: 0, redemption: 0, gross: 0, net: 0,
+            sipBasket: 0, lumpsumBasket: 0,
             pending: 0, rejected: 0, txns: 0, countedTxns: 0,
             pendingTxns: 0, rejectedTxns: 0 };
   (txns || []).forEach(function (t) {
@@ -2328,8 +2386,16 @@ function metrics(txns) {
     if (t.status === TS.REJECTED) { m.rejectedTxns++; m.rejected += amt; }
     if (!counted[t.status]) return;
     m.countedTxns++;
+    /*
+     * A basket adds to its own bucket AND to the plain one, so `sip` and
+     * `lumpsum` keep meaning "all SIP" and "all lumpsum" — every figure built
+     * on them, and the gross that sums them, is unchanged by this feature.
+     * The basket lines are additional detail, not a reallocation.
+     */
     if (t.txnType === TT.SIP) m.sip += amt;
     else if (t.txnType === TT.LUMPSUM) m.lumpsum += amt;
+    else if (t.txnType === TT.SIP_BASKET) { m.sip += amt; m.sipBasket += amt; }
+    else if (t.txnType === TT.LUMPSUM_BASKET) { m.lumpsum += amt; m.lumpsumBasket += amt; }
     else if (t.txnType === TT.REDEMPTION) m.redemption += amt;
   });
   m.gross = m.sip + m.lumpsum;
@@ -2502,8 +2568,12 @@ function hhmm(t) {
 }
 
 function typePill(t) {
-  var cls = t === TT.REDEMPTION ? 'warn' : (t === TT.SIP ? '' : 'ok');
-  return '<span class="pill ' + cls + '">' + esc(TT_LABEL[t] || t || '?') + '</span>';
+  /* Colour follows the BASE type, so a basket reads as the same kind of money
+     as its plain form, with the word doing the distinguishing. */
+  var b = baseType(t);
+  var cls = b === TT.REDEMPTION ? 'warn' : (b === TT.SIP ? '' : 'ok');
+  return '<span class="pill ' + cls + (isBasket(t) ? ' bskt' : '') + '">' +
+         esc(TT_LABEL[t] || t || '?') + '</span>';
 }
 
 function statusPill(st) {
@@ -2600,12 +2670,18 @@ function waterfall(m, title) {
   var pctOf = function (v) { return Math.max(1.5, Math.abs(v) / max * 100); };
 
   var bars = [
-    { label: 'SIP', v: m.sip, cls: 'wf-sip' },
-    { label: 'Lumpsum', v: m.lumpsum, cls: 'wf-lump' },
+    { label: 'SIP', v: m.sip, cls: 'wf-sip' }
+  ];
+  /* Shown only when they exist. A row that is permanently zero teaches the
+     reader to skip the panel it sits in. */
+  if (m.sipBasket) bars.push({ label: '— of which basket', v: m.sipBasket, cls: 'wf-sip sub' });
+  bars.push({ label: 'Lumpsum', v: m.lumpsum, cls: 'wf-lump' });
+  if (m.lumpsumBasket) bars.push({ label: '— of which basket', v: m.lumpsumBasket, cls: 'wf-lump sub' });
+  bars = bars.concat([
     { label: 'Gross Sales', v: m.gross, cls: 'wf-gross', rule: true },
     { label: 'Redemption', v: -m.redemption, cls: 'wf-red' },
     { label: 'Net Sales', v: m.net, cls: 'wf-net', rule: true }
-  ];
+  ]);
 
   after(growBars);
   return '<div class="panel">' +
@@ -3663,7 +3739,7 @@ function viewAllTxns() {
     '<div style="padding:14px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
       '<div><label class="lbl">TXN Type</label><select class="inp" data-tf="fType">' +
         '<option value="">All types</option>' +
-        [TT.SIP, TT.LUMPSUM, TT.REDEMPTION].map(function (x) {
+        [TT.SIP, TT.LUMPSUM, TT.SIP_BASKET, TT.LUMPSUM_BASKET, TT.REDEMPTION].map(function (x) {
           return '<option value="' + x + '"' + (fType === x ? ' selected' : '') + '>' + TT_LABEL[x] + '</option>';
         }).join('') + '</select></div>' +
       '<div><label class="lbl">Txn Status</label><select class="inp" data-tf="fStatus">' +
@@ -3739,7 +3815,7 @@ function viewScheme() {
     '<div style="padding:14px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
       '<div><label class="lbl">TXN Type</label><select class="inp" data-tf="fType">' +
         '<option value="">All types</option>' +
-        [TT.SIP, TT.LUMPSUM, TT.REDEMPTION].map(function (x) {
+        [TT.SIP, TT.LUMPSUM, TT.SIP_BASKET, TT.LUMPSUM_BASKET, TT.REDEMPTION].map(function (x) {
           return '<option value="' + x + '"' + (fType === x ? ' selected' : '') + '>' + TT_LABEL[x] + '</option>';
         }).join('') + '</select></div>' +
       '<div><label class="lbl">Txn Status</label><select class="inp" data-tf="fStatus">' +
@@ -4805,7 +4881,7 @@ function editTxnDialog(id) {
   S.data.txns.forEach(function (x) { if (x.id === id) t = x; });
   if (!t) return toast('That row is no longer here — refresh.', 'e');
 
-  var typeOpts = [TT.SIP, TT.LUMPSUM, TT.REDEMPTION].map(function (x) {
+  var typeOpts = [TT.SIP, TT.LUMPSUM, TT.SIP_BASKET, TT.LUMPSUM_BASKET, TT.REDEMPTION].map(function (x) {
     return '<option value="' + x + '"' + (t.txnType === x ? ' selected' : '') + '>' + TT_LABEL[x] + '</option>';
   }).join('');
   var statusOpts = [TS.COMPLETED, TS.IN_PROCESS, TS.REJECTED].map(function (x) {
@@ -5884,6 +5960,13 @@ function rowsFromMatrix(matrix, formatted) {
       reason: String(get('reason') == null ? '' : get('reason')).trim(),
       folio: String(get('folio') == null ? '' : get('folio')).trim()
     };
+    /*
+     * A scheme naming a basket makes this a basket purchase, decided here so
+     * the PREVIEW already shows "SIP Basket" — the operator sees the type that
+     * will be stored, rather than finding out after committing. The server
+     * applies the same rule on write, so a row added by any other route agrees.
+     */
+    rec.txnType = applyBasketType(rec.txnType, rec.scheme);
     /* Normalise here so the preview shows exactly what will be stored. */
     rec.date = toIsoOrdered(rec.date, order) || '';
 
