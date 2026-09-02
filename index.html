@@ -1166,6 +1166,18 @@ html[data-corner="round"]{--r:20px; --r2:16px; --r3:14px}
 .waitwho b{font-size:14px}
 .waitwhen{color:var(--ink3);font-size:12.5px;margin-left:auto;white-space:nowrap}
 
+
+/* ---- the file-format strip on the VRM upload page ---------------------- */
+.fmtpanel .fmtcols{display:flex;flex-wrap:wrap;gap:8px;padding:16px 18px}
+.fmtcol{
+  display:inline-flex;align-items:center;gap:6px;padding:6px 11px;
+  border:1px solid var(--line);border-radius:var(--rp);
+  font-size:12.5px;font-weight:600;color:var(--ink2);background:var(--surf2);
+}
+.fmtcol.need{border-color:var(--p);color:var(--p-ink);background:var(--p-soft)}
+.fmtcol i{font-style:normal;font-size:9.5px;font-weight:800;letter-spacing:.05em;
+  text-transform:uppercase;opacity:.8}
+
 </style>
 
 <div id="login">
@@ -1442,7 +1454,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-28c reset-requests';
+var PAGE_BUILD = '2026-08-28d vrm-template';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbyjWQvuhyAwrYrRnAxGDmuHY4iw37G-BQSm3fNbKJKj5iJAYXa42Q5Au9yMnuyH3dTF/exec';        /* set by the Pages build */
 
@@ -3198,6 +3210,8 @@ function viewData() {
   return pageHead('My data', rows.length + ' of ' + S.data.txns.length + ' rows',
       '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload CSV/Excel</button>' +
       '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Upload template</button>' +
+      '<button class="btn xs gh" data-act="tplslimcsv" ' +
+        'title="The same eight columns as a CSV">CSV</button>' +
       /* Redemption uploads are Admin-only, so a VRM is not offered the template. */
       (can('canUploadRedemption')
         ? '<button class="btn sm" data-act="tplred">' + IC.down + ' Redemption template</button>'
@@ -3208,6 +3222,29 @@ function viewData() {
       'font-size:13.5px;color:var(--ink2)">Corrections are handled by Admin. If a transaction is ' +
       'wrong, contact Admin with the client code and transaction date — deletion and editing are ' +
       'restricted for VRMs.</div></div>') +
+
+    /*
+     * The shape of the file, on the page, before anybody picks one. The upload
+     * button opens a file chooser with no explanation, so the format was only
+     * discoverable by downloading the template or by getting the error — and an
+     * error after choosing a file is a worse place to learn it than the page
+     * the button sits on.
+     */
+    '<div class="panel fmtpanel"><div class="ptop"><div><h3>What your file needs</h3>' +
+      '<p>Eight columns, in any order — the names are what matter, not the position</p>' +
+      '</div><div class="tools">' +
+        '<button class="btn xs" data-act="tplxlsx">' + IC.down + ' Excel</button>' +
+        '<button class="btn xs gh" data-act="tplslimcsv">' + IC.down + ' CSV</button>' +
+      '</div></div>' +
+      '<div class="fmtcols">' + VRM_TPL_HEADERS.map(function (h, i) {
+        var need = (i === 0 || h === 'TXN Type' || h === 'Amount');
+        return '<span class="fmtcol' + (need ? ' need' : '') + '">' + esc(h) +
+               (need ? '<i>required</i>' : '') + '</span>';
+      }).join('') + '</div>' +
+      '<div class="fbnote">Dates as <b>DD-MM-YYYY</b>. TXN Type is <b>SIP</b>, ' +
+      '<b>Lumpsum</b> or <b>Redemption</b>. Leave Txn Status blank and every row counts ' +
+      'as Completed. A PAN column is accepted but redacted in your browser before upload.</div>' +
+    '</div>' +
     '<div class="panel"><div class="ptop"><div><h3>Transactions</h3></div>' +
     '<div class="tools">' + searchBox('data', 'Search client, PAN, scheme, amount…') + expBtns('vrmtxns') + '</div></div>' +
     (rows.length
@@ -3617,6 +3654,7 @@ function viewAllTxns() {
       '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload purchases</button>' +
       '<button class="btn sm acc" data-act="uploadred">' + IC.up + ' Upload redemptions</button>' +
       '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Purchase template</button>' +
+      '<button class="btn sm" data-act="tplslim">' + IC.down + ' Short template</button>' +
       '<button class="btn sm" data-act="tplred">' + IC.down + ' Redemption template</button>' +
       '<button class="btn xs gh" data-act="delallask" ' +
         'title="Delete every transaction">' + IC.trash + ' Delete all</button>') +
@@ -5059,6 +5097,33 @@ var TPL_SAMPLE = [
 ];
 
 /*
+ * The VRM template: eight columns, and nothing a VRM cannot answer.
+ *
+ * The full template mirrors the admin's purchase export, which carries TxnTime,
+ * PAN, Ph, RM Name, Folio No., Trxn No. and Reason for Rejection. A VRM keying
+ * their own business has none of that to hand — the RM is not theirs to state,
+ * the folio comes off a statement they may not have, and the PAN is redacted in
+ * the browser regardless. Fifteen columns to fill eight is an invitation to
+ * leave the wrong ones blank.
+ *
+ * Every column the shorter form drops is optional to the parser, so a file made
+ * from this template loads by exactly the same path as the long one. The two are
+ * alternatives, not versions: an admin pasting a platform export wants the shape
+ * that matches it, and a VRM typing three lines wants this.
+ */
+var VRM_TPL_HEADERS = ['TxnDate', 'Client Code', 'Client Name', 'VRM',
+                       'Scheme Name', 'TXN Type', 'Amount', 'Txn Status'];
+
+var VRM_TPL_SAMPLE = [
+  ['17-08-2026', 'S70810', 'SOMA VIDYA SAGAR', 'Khushi Mahesh Dodiya',
+   'KOTAK EQUITY SAVINGS FUND REGULAR GROWTH', 'Lumpsum', 5000, 'Completed'],
+  ['17-08-2026', 'S70811', 'EXAMPLE CLIENT TWO', 'Khushi Mahesh Dodiya',
+   'HDFC FLEXI CAP FUND GROWTH', 'SIP', 10000, 'Completed'],
+  ['18-08-2026', 'S70812', 'EXAMPLE CLIENT THREE', 'Khushi Mahesh Dodiya',
+   'ICICI PRUDENTIAL BLUECHIP FUND GROWTH', 'Redemption', 20000, 'Completed']
+];
+
+/*
  * The redemption report arrives in its own shape: no VRM, no time, the type sits
  * in a column headed "Status", and the PAN comes pre-masked by the source system.
  * It is a separate template because it is a separate export, not a variant.
@@ -6026,8 +6091,29 @@ var ACT = {
   },
   /* TPL_SAMPLE is already a list of rows — wrapping it again produced one
      garbled line instead of three example rows. */
-  tplcsv: function () { saveCsv('VRM-MF_upload-template', TPL_HEADERS, TPL_SAMPLE); },
-  tplxlsx: function () { saveXlsx('VRM-MF_upload-template', 'Template', TPL_HEADERS, TPL_SAMPLE); },
+  /*
+   * Which template depends on who is asking. A VRM gets the eight columns they
+   * can actually fill; an admin gets the shape their platform export already
+   * has, and can ask for the short one explicitly.
+   */
+  tplcsv: function () {
+    var slim = !isAdmin();
+    saveCsv(slim ? 'VRM-MF_vrm-upload-template' : 'VRM-MF_upload-template',
+            slim ? VRM_TPL_HEADERS : TPL_HEADERS,
+            slim ? VRM_TPL_SAMPLE : TPL_SAMPLE);
+  },
+  tplxlsx: function () {
+    var slim = !isAdmin();
+    saveXlsx(slim ? 'VRM-MF_vrm-upload-template' : 'VRM-MF_upload-template',
+             'Template',
+             slim ? VRM_TPL_HEADERS : TPL_HEADERS,
+             slim ? VRM_TPL_SAMPLE : TPL_SAMPLE);
+  },
+  /* The eight-column form, whoever asks. */
+  tplslim: function () { saveXlsx('VRM-MF_vrm-upload-template', 'Template',
+                                  VRM_TPL_HEADERS, VRM_TPL_SAMPLE); },
+  tplslimcsv: function () { saveCsv('VRM-MF_vrm-upload-template',
+                                    VRM_TPL_HEADERS, VRM_TPL_SAMPLE); },
   tplred: function () { saveCsv('VRM-MF_redemption-template', RED_HEADERS, RED_SAMPLE); },
   /* Same file picker; the declared intent is used to sanity-check the file. */
   uploadred: function () { window.__expectShape = 'REDEMPTION'; $('fileIn').click(); },
