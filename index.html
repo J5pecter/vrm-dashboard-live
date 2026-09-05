@@ -1187,6 +1187,38 @@ html[data-corner="round"]{--r:20px; --r2:16px; --r3:14px}
 .wfrow .wflab{transition:none}
 .wfbar>div.sub{opacity:.55}
 
+
+/* ---- All-transactions filter: sortable headers and quick chips ---------- */
+/*
+ * A header that sorts says so before it is clicked. The arrow is faint until
+ * the column is the one in force, so the table reads as a table rather than as
+ * a row of controls.
+ */
+.sortth{cursor:pointer;user-select:none;white-space:nowrap;
+  transition:color var(--t-fast) var(--ease)}
+.sortth:hover{color:var(--ink)}
+.sortth.on{color:var(--ink)}
+.sortth .sarr{font-style:normal;font-size:9px;margin-left:5px;opacity:.3;letter-spacing:0}
+.sortth.on .sarr{opacity:1;color:var(--p-ink)}
+.sortth:hover .sarr{opacity:.75}
+
+.tfgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+  gap:12px 14px;padding:0 16px 14px}
+.tfgrid .inp{width:100%}
+.tfgrid>div{animation:cardIn var(--t-mid) var(--ease) both}
+
+.tfq{display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:0 16px 15px}
+.tfq .lab{font-size:12px;font-weight:600;color:var(--ink3);margin-right:2px}
+.chip{padding:6px 12px;border-radius:999px;border:1px solid var(--line2);
+  background:var(--surf);font-size:12.5px;font-weight:600;color:var(--ink2);
+  white-space:nowrap;
+  transition:color var(--t-fast),background var(--t-fast),
+             border-color var(--t-fast),transform var(--t-fast) var(--ease)}
+.chip:hover{color:var(--ink);border-color:var(--ink3)}
+.chip:active{transform:scale(.95)}
+.chip.on{background:var(--p-soft);border-color:var(--p-ink);color:var(--p-ink);
+  animation:pillOn var(--t-mid) var(--pop)}
+
 </style>
 
 <div id="login">
@@ -1463,7 +1495,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-29c honest-delete';
+var PAGE_BUILD = '2026-08-30 txn-filters';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbyjWQvuhyAwrYrRnAxGDmuHY4iw37G-BQSm3fNbKJKj5iJAYXa42Q5Au9yMnuyH3dTF/exec';        /* set by the Pages build */
 
@@ -2787,12 +2819,17 @@ function shiftMonth_(ym, by) {
   return y + '-' + ('0' + m).slice(-2);
 }
 
-/* {from, to, label} for whatever is currently selected. */
-function ovRange() {
+/*
+ * {from, to, label} for a range selection. Both filter bars pass their own
+ * state object in — the alternative was a second copy of the financial-year
+ * arithmetic, and two copies of a date rule drift in a way nobody notices until
+ * a quarter total on one screen disagrees with the same quarter on another.
+ */
+function ovRange() { return rangeOf(S.ov); }
+function rangeOf(f) {
   var all = S.data.txns || [];
   var k = kpis(all);
   var ref = k.refMonth || (today().slice(0, 7));
-  var f = S.ov;
 
   if (f.range === 'all') {
     var ds = all.map(function (t) { return t.date; }).filter(Boolean).sort();
@@ -2868,8 +2905,10 @@ function ovFilterBar() {
 }
 
 
-/* The quarter / financial-year picker. */
-function qtrRow(f) {
+/* The quarter / financial-year picker. `ns` says which filter it writes to. */
+function qtrRow(f, ns) {
+  var selAttr = (ns === 'tf') ? 'data-tfs' : 'data-ovsel';
+  var qAttr   = (ns === 'tf') ? 'data-tfqtr' : 'data-ovq';
   var ref = (kpis(S.data.txns || []).refMonth) || today().slice(0, 7);
   var fy = f.fy || fyStartYear(ref);
   var q = f.q || fyQuarterOf(ref);
@@ -2878,7 +2917,7 @@ function qtrRow(f) {
 
   return '<div class="fbqrow">' +
     '<span class="fbqlab">Financial year</span>' +
-    '<select class="inp sm" data-ovsel="fy">' + years.map(function (y) {
+    '<select class="inp sm" ' + selAttr + '="fy">' + years.map(function (y) {
       return '<option value="' + y + '"' + (y === fy ? ' selected' : '') + '>' +
              esc(fyLabel(y)) + '</option>';
     }).join('') + '</select>' +
@@ -2886,7 +2925,7 @@ function qtrRow(f) {
       ? '<span class="fbqlab">Quarter</span>' +
         '<div class="pills">' + [1, 2, 3, 4].map(function (n) {
           return '<button class="pill-btn' + (n === q ? ' on' : '') +
-                 '" data-ovq="' + n + '" title="' + esc(QLABEL(n)) + '">Q' + n + '</button>';
+                 '" ' + qAttr + '="' + n + '" title="' + esc(QLABEL(n)) + '">Q' + n + '</button>';
         }).join('') + '</div>'
       : '') +
   '</div>';
@@ -3224,12 +3263,52 @@ function expBtns(what) {
          '<button class="btn sm" data-act="xlsx" data-what="' + what + '">' + IC.down + ' Excel</button>';
 }
 
-/* The twelve source columns, in the file's order. */
-var TXN_COLS =
-  '<th>Txn Date</th><th>Txn Time</th><th>Client Code</th><th>Client Name</th>' +
-  '<th>PAN No.</th><th>VRM</th><th>RM Name</th><th>Scheme Name</th>' +
-  '<th>TXN Type</th><th class="num">Amount</th><th>Txn Status</th>' +
-  '<th>Folio</th><th>Reason for Rejection</th>';
+/*
+ * The source columns, in the file's order.
+ *
+ * `sortable` makes the headers clickable. Only the columns with a defined sort
+ * are offered: a header that looks clickable and does nothing is worse than a
+ * plain one, and Txn Time, PAN, RM Name, Folio and Reason have no ordering
+ * anybody has asked to read a table in.
+ */
+function txnCols(sortable) {
+  function th(label, key, cls) {
+    var c = cls || '';
+    if (!sortable || !key) {
+      return '<th' + (c ? ' class="' + c + '"' : '') + '>' + label + '</th>';
+    }
+    var on = S.tf.sort === key;
+    var arrow = on ? (S.tf.dir === 'asc' ? '\u25B2' : '\u25BC') : '\u21C5';
+    return '<th class="' + (c ? c + ' ' : '') + 'sortth' + (on ? ' on' : '') + '"' +
+           ' data-tsort="' + key + '" title="Sort by ' + label + '">' + label +
+           '<i class="sarr">' + arrow + '</i></th>';
+  }
+  return th('Txn Date', 'date') + th('Txn Time') +
+         th('Client Code', 'client') + th('Client Name', 'name') +
+         th('PAN No.') + th('VRM', 'vrm') + th('RM Name') +
+         th('Scheme Name', 'scheme') + th('TXN Type', 'type') +
+         th('Amount', 'amount', 'num') + th('Txn Status', 'status') +
+         th('Folio') + th('Reason for Rejection');
+}
+
+/*
+ * What each sortable column sorts on. Strings compare with localeCompare so
+ * "Aditya" and "aditya" land together; amounts compare as numbers, because
+ * sorting money as text puts 9,000 above 80,000.
+ */
+var TXN_SORTS = {
+  date:   { label: 'Txn Date',    num: false,
+            get: function (t) { return (t.date || '') + ' ' + (t.time || ''); } },
+  client: { label: 'Client Code', num: false, get: function (t) { return String(t.clientCode || ''); } },
+  name:   { label: 'Client Name', num: false, get: function (t) { return String(t.clientName || ''); } },
+  vrm:    { label: 'VRM',         num: false, get: function (t) { return String(vrmNameOf(t) || ''); } },
+  scheme: { label: 'Scheme Name', num: false, get: function (t) { return String(t.scheme || ''); } },
+  type:   { label: 'TXN Type',    num: false,
+            get: function (t) { return String(TT_LABEL[t.txnType] || t.txnType || ''); } },
+  amount: { label: 'Amount',      num: true,  get: function (t) { return num(t.amount); } },
+  status: { label: 'Txn Status',  num: false,
+            get: function (t) { return String(TS_LABEL[t.status] || t.status || ''); } }
+};
 
 function txnCells(t) {
   return '<td class="mono" style="white-space:nowrap">' + esc(dmy(t.date)) + '</td>' +
@@ -3324,7 +3403,7 @@ function viewData() {
     '<div class="panel"><div class="ptop"><div><h3>Transactions</h3></div>' +
     '<div class="tools">' + searchBox('data', 'Search client, PAN, scheme, amount…') + expBtns('vrmtxns') + '</div></div>' +
     (rows.length
-      ? '<div class="twrap"><table><thead><tr>' + TXN_COLS + '</tr></thead><tbody>' +
+      ? '<div class="twrap"><table><thead><tr>' + txnCols(false) + '</tr></thead><tbody>' +
         rows.map(function (t) { return '<tr>' + txnCells(t) + '</tr>'; }).join('') +
         '</tbody>' + txnFoot(rows, 0) + '</table></div>'
       : emptyState(q ? 'No matching transactions' : 'No transactions yet',
@@ -3704,27 +3783,253 @@ function viewVrmwise() {
     '<td class="num">' + tot.n + '</td><td class="num">100%</td></tr></tfoot></table></div></div>';
 }
 
+/* ---------------------------------------------------------------------------
+ * ALL TRANSACTIONS - one filter, one sort, one list.
+ *
+ * The page and the CSV/Excel export both call allTxnRows(). They used to hold
+ * two copies of the same three-line predicate, which was survivable while there
+ * were three filters and a fixed sort; with a date range, three text matches, an
+ * amount band and a user-chosen sort it stops being survivable. A download that
+ * silently disagrees with the screen it was taken from is the worst kind of bug
+ * in a reporting tool, because nothing about it looks wrong.
+ * ------------------------------------------------------------------------ */
+
+/* {from, to, label} for the date pills. */
+function tfRange() { return rangeOf(S.tf); }
+
+/* Does the row survive every filter except the free-text search? */
+function passesTxnFilters(t) {
+  var f = S.tf;
+  if (S.fType && t.txnType !== S.fType) return false;
+  if (S.fStatus && t.status !== S.fStatus) return false;
+  if (S.fVrm && String(t.vrmEmpCode).toUpperCase() !== S.fVrm.toUpperCase()) return false;
+  if (f.basket && !isBasket(t.txnType)) return false;
+
+  if (f.range !== 'all') {
+    var r = tfRange();
+    /* A row with no date cannot be shown to be inside a date range, so it is
+       out. Counting it would put an unknown date inside a stated period. */
+    if (!t.date || t.date < r.from || t.date > r.to) return false;
+  }
+
+  if (!hasText(t.clientCode, f.client)) return false;
+  if (!hasText(t.clientName, f.name)) return false;
+  if (!hasText(t.scheme, f.scheme)) return false;
+
+  var a = num(t.amount);
+  if (String(f.amtMin) !== '' && a < num(f.amtMin)) return false;
+  if (String(f.amtMax) !== '' && a > num(f.amtMax)) return false;
+  return true;
+}
+
+/* Contains-match, case-blind. An empty needle matches everything. */
+function hasText(hay, needle) {
+  var n = String(needle == null ? '' : needle).trim();
+  if (!n) return true;
+  return String(hay == null ? '' : hay).toUpperCase().indexOf(n.toUpperCase()) >= 0;
+}
+
+function txnSorter() {
+  var spec = TXN_SORTS[S.tf.sort] || TXN_SORTS.date;
+  var dir = S.tf.dir === 'asc' ? 1 : -1;
+  return function (a, b) {
+    var c;
+    if (spec.num) {
+      c = spec.get(a) - spec.get(b);
+    } else {
+      c = String(spec.get(a)).localeCompare(String(spec.get(b)), undefined,
+            { numeric: true, sensitivity: 'base' });
+    }
+    if (c) return c * dir;
+    /* Ties break the same way on every render, so rows do not shuffle under
+       the reader between one click and the next. */
+    return String(a.id).localeCompare(String(b.id));
+  };
+}
+
+function allTxnRows() {
+  var q = S.q.alltxns || '';
+  return (S.data.txns || []).filter(function (t) {
+    return passesTxnFilters(t) && matches(t, q);
+  }).sort(txnSorter());
+}
+
+/* Is anything at all narrowing the list? Drives the empty state's wording. */
+function tfAnyActive() {
+  var f = S.tf;
+  return !!(S.fType || S.fStatus || S.fVrm || f.basket || f.range !== 'all' ||
+            String(f.client).trim() || String(f.name).trim() || String(f.scheme).trim() ||
+            String(f.amtMin) !== '' || String(f.amtMax) !== '');
+}
+
+/*
+ * The values actually present in the data, offered as a datalist so the three
+ * text filters can be picked as well as typed. Client codes and scheme names
+ * are long and easy to mistype, and a filter that silently matches nothing
+ * because of one wrong character is indistinguishable from no data.
+ */
+function tfUnique(get, cap) {
+  var seen = {}, out = [];
+  (S.data.txns || []).forEach(function (t) {
+    var v = String(get(t) || '').trim();
+    if (!v) return;
+    var k = v.toUpperCase();
+    if (seen[k]) return;
+    seen[k] = 1; out.push(v);
+  });
+  out.sort(function (a, b) { return a.localeCompare(b); });
+  return out.slice(0, cap || 400);
+}
+function tfList(id, vals) {
+  return '<datalist id="' + id + '">' +
+    vals.map(function (v) { return '<option value="' + esc(v) + '"></option>'; }).join('') +
+    '</datalist>';
+}
+
+/* One-click combinations, each a toggle so the same chip also clears it. */
+function txnQuick(k) {
+  var f = S.tf;
+  if (k === 'basket') { f.basket = !f.basket; return; }
+  if (k === 'rej')    { S.fStatus = (S.fStatus === TS.REJECTED ? '' : TS.REJECTED); return; }
+  if (k === 'proc')   { S.fStatus = (S.fStatus === TS.IN_PROCESS ? '' : TS.IN_PROCESS); return; }
+  if (k === 'lakh')   { f.amtMin = (String(f.amtMin) === '100000' ? '' : '100000'); return; }
+  if (k === 'sip')    { S.fType = (S.fType === TT.SIP ? '' : TT.SIP); return; }
+  if (k === 'red')    { S.fType = (S.fType === TT.REDEMPTION ? '' : TT.REDEMPTION); return; }
+  if (k === 'big') {
+    var on = (f.sort === 'amount' && f.dir === 'desc');
+    f.sort = on ? 'date' : 'amount';
+    f.dir = 'desc';
+    return;
+  }
+  if (k === 'oldest') {
+    var oldOn = (f.sort === 'date' && f.dir === 'asc');
+    f.sort = 'date';
+    f.dir = oldOn ? 'desc' : 'asc';
+  }
+}
+
+/* A sentence saying what is on, so nobody reads a filtered figure as the whole book. */
+function tfSummary(shown, total) {
+  var f = S.tf, bits = [];
+  if (f.range !== 'all') bits.push(esc(tfRange().label));
+  if (S.fType) bits.push(esc(TT_LABEL[S.fType] || S.fType));
+  if (f.basket) bits.push('baskets only');
+  if (S.fStatus) bits.push(esc(TS_LABEL[S.fStatus] || S.fStatus));
+  if (S.fVrm) bits.push(esc(vrmNameByCode(S.fVrm)));
+  if (String(f.client).trim()) bits.push('code contains <b>' + esc(f.client.trim()) + '</b>');
+  if (String(f.name).trim()) bits.push('name contains <b>' + esc(f.name.trim()) + '</b>');
+  if (String(f.scheme).trim()) bits.push('scheme contains <b>' + esc(f.scheme.trim()) + '</b>');
+  if (String(f.amtMin) !== '' && String(f.amtMax) !== '') {
+    bits.push(rupee(num(f.amtMin)) + ' to ' + rupee(num(f.amtMax)));
+  } else if (String(f.amtMin) !== '') {
+    bits.push(rupee(num(f.amtMin)) + ' and above');
+  } else if (String(f.amtMax) !== '') {
+    bits.push('up to ' + rupee(num(f.amtMax)));
+  }
+  if (String(S.q.alltxns || '').trim()) bits.push('search <b>' + esc(S.q.alltxns.trim()) + '</b>');
+
+  var sp = TXN_SORTS[f.sort] || TXN_SORTS.date;
+  var order = esc(sp.label) + (f.dir === 'asc' ? ' \u2191' : ' \u2193');
+  return '<div class="fbnote">Showing <b>' + shown + '</b> of ' + total + ' rows' +
+    (bits.length ? ' \u00b7 ' + bits.join(' \u00b7 ') : ' \u00b7 no filters') +
+    ' \u00b7 sorted by <b>' + order + '</b></div>';
+}
+
+/* The filter panel itself. */
+function txnFilterBar(shown, total) {
+  var f = S.tf;
+  var vrmOpts = (S.data.vrms || []).map(function (v) {
+    return '<option value="' + esc(v.empCode) + '"' + (S.fVrm === v.empCode ? ' selected' : '') + '>' +
+           esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
+  }).join('');
+  var chip = function (key, label, on) {
+    return '<button class="chip' + (on ? ' on' : '') + '" data-tfquick="' + key + '">' + label + '</button>';
+  };
+
+  return '<div class="panel filterbar">' +
+    '<div class="ptop"><div><h3>Filters</h3></div>' +
+      '<div class="tools">' + searchBox('alltxns', 'Search any column\u2026') + expBtns('alltxns') + '</div></div>' +
+
+    /* the date range, as a segmented control rather than two date boxes */
+    '<div class="fbrow">' +
+      '<span class="fbqlab">Txn Date</span>' +
+      '<div class="pills">' + OV_RANGES.map(function (g) {
+        return '<button class="pill-btn' + (f.range === g.id ? ' on' : '') +
+               '" data-tfr="' + g.id + '">' + esc(g.label) + '</button>';
+      }).join('') + '</div>' +
+      '<div class="fbend">' +
+        (f.range === 'custom'
+          ? '<input class="inp sm" type="date" data-tfs="from" max="' + esc(today()) +
+              '" value="' + esc(f.from) + '">' +
+            '<input class="inp sm" type="date" data-tfs="to" max="' + esc(today()) +
+              '" value="' + esc(f.to) + '">'
+          : '') +
+        '<button class="btn xs gh" data-act="clearTf">Clear filters</button>' +
+      '</div>' +
+      ((f.range === 'quarter' || f.range === 'year') ? qtrRow(f, 'tf') : '') +
+    '</div>' +
+
+    /* everything that narrows by column */
+    '<div class="tfgrid">' +
+      '<div><label class="lbl">TXN Type</label><select class="inp" data-tf="fType">' +
+        '<option value="">All types</option>' +
+        [TT.SIP, TT.LUMPSUM, TT.SIP_BASKET, TT.LUMPSUM_BASKET, TT.REDEMPTION].map(function (x) {
+          return '<option value="' + x + '"' + (S.fType === x ? ' selected' : '') + '>' + TT_LABEL[x] + '</option>';
+        }).join('') + '</select></div>' +
+      '<div><label class="lbl">Txn Status</label><select class="inp" data-tf="fStatus">' +
+        '<option value="">All statuses</option>' +
+        [TS.COMPLETED, TS.IN_PROCESS, TS.REJECTED].map(function (x) {
+          return '<option value="' + x + '"' + (S.fStatus === x ? ' selected' : '') + '>' + TS_LABEL[x] + '</option>';
+        }).join('') + '</select></div>' +
+      '<div><label class="lbl">VRM</label><select class="inp" data-tf="fVrm">' +
+        '<option value="">All VRMs</option>' + vrmOpts + '</select></div>' +
+      '<div><label class="lbl">Client Code</label>' +
+        '<input class="inp" data-tfi="client" list="tfCodes" placeholder="Any code" ' +
+          'value="' + esc(f.client) + '"></div>' +
+      '<div><label class="lbl">Client Name</label>' +
+        '<input class="inp" data-tfi="name" list="tfNames" placeholder="Any name" ' +
+          'value="' + esc(f.name) + '"></div>' +
+      '<div><label class="lbl">Scheme Name</label>' +
+        '<input class="inp" data-tfi="scheme" list="tfSchemes" placeholder="Any scheme" ' +
+          'value="' + esc(f.scheme) + '"></div>' +
+      '<div><label class="lbl">Amount from</label>' +
+        '<input class="inp" type="number" min="0" step="1000" data-tfi="amtMin" ' +
+          'placeholder="No minimum" value="' + esc(f.amtMin) + '"></div>' +
+      '<div><label class="lbl">Amount to</label>' +
+        '<input class="inp" type="number" min="0" step="1000" data-tfi="amtMax" ' +
+          'placeholder="No maximum" value="' + esc(f.amtMax) + '"></div>' +
+    '</div>' +
+
+    /*
+     * Quick select. Each chip is one click for a combination people ask for
+     * every day, and clicking it again takes it back off - a chip that can only
+     * be set and not unset makes the reader hunt for which control it moved.
+     */
+    '<div class="tfq"><span class="lab">Quick select</span>' +
+      chip('sip', 'SIP only', S.fType === TT.SIP) +
+      chip('red', 'Redemptions', S.fType === TT.REDEMPTION) +
+      chip('basket', 'Baskets only', !!f.basket) +
+      chip('rej', 'Rejected', S.fStatus === TS.REJECTED) +
+      chip('proc', 'In process', S.fStatus === TS.IN_PROCESS) +
+      chip('lakh', '\u20B91 L and above', String(f.amtMin) === '100000') +
+      chip('big', 'Largest first', f.sort === 'amount' && f.dir === 'desc') +
+      chip('oldest', 'Oldest first', f.sort === 'date' && f.dir === 'asc') +
+    '</div>' +
+
+    tfSummary(shown, total) +
+    tfList('tfCodes', tfUnique(function (t) { return t.clientCode; }, 500)) +
+    tfList('tfNames', tfUnique(function (t) { return t.clientName; }, 500)) +
+    tfList('tfSchemes', tfUnique(function (t) { return t.scheme; }, 500)) +
+  '</div>';
+}
+
 /* ------------------------- ADMIN: All transactions ------------------------ */
 function viewAllTxns() {
-  var q = S.q.alltxns || '';
-  var fType = S.fType || '', fStatus = S.fStatus || '', fVrm = S.fVrm || '';
-  var rows = S.data.txns.filter(function (t) {
-    if (fType && t.txnType !== fType) return false;
-    if (fStatus && t.status !== fStatus) return false;
-    if (fVrm && String(t.vrmEmpCode).toUpperCase() !== fVrm.toUpperCase()) return false;
-    return matches(t, q);
-  }).sort(function (a, b) {
-    return (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || '');
-  });
+  var rows = allTxnRows();
 
   var selIds = Object.keys(S.sel).filter(function (k) { return S.sel[k]; });
   var shownSel = rows.filter(function (r) { return S.sel[r.id]; }).length;
   var allShown = rows.length > 0 && shownSel === rows.length;
-
-  var vrmOpts = (S.data.vrms || []).map(function (v) {
-    return '<option value="' + esc(v.empCode) + '"' + (fVrm === v.empCode ? ' selected' : '') + '>' +
-           esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
-  }).join('');
 
   return pageHead('All transactions', rows.length + ' of ' + S.data.txns.length + ' rows',
       '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload purchases</button>' +
@@ -3734,23 +4039,7 @@ function viewAllTxns() {
       '<button class="btn sm" data-act="tplred">' + IC.down + ' Redemption template</button>' +
       '<button class="btn xs gh" data-act="delallask" ' +
         'title="Delete every transaction">' + IC.trash + ' Delete all</button>') +
-    '<div class="panel"><div class="ptop"><div><h3>Filters</h3></div>' +
-    '<div class="tools">' + searchBox('alltxns', 'Search any column…') + expBtns('alltxns') + '</div></div>' +
-    '<div style="padding:14px 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
-      '<div><label class="lbl">TXN Type</label><select class="inp" data-tf="fType">' +
-        '<option value="">All types</option>' +
-        [TT.SIP, TT.LUMPSUM, TT.SIP_BASKET, TT.LUMPSUM_BASKET, TT.REDEMPTION].map(function (x) {
-          return '<option value="' + x + '"' + (fType === x ? ' selected' : '') + '>' + TT_LABEL[x] + '</option>';
-        }).join('') + '</select></div>' +
-      '<div><label class="lbl">Txn Status</label><select class="inp" data-tf="fStatus">' +
-        '<option value="">All statuses</option>' +
-        [TS.COMPLETED, TS.IN_PROCESS, TS.REJECTED].map(function (x) {
-          return '<option value="' + x + '"' + (fStatus === x ? ' selected' : '') + '>' + TS_LABEL[x] + '</option>';
-        }).join('') + '</select></div>' +
-      '<div style="min-width:200px"><label class="lbl">VRM</label><select class="inp" data-tf="fVrm">' +
-        '<option value="">All VRMs</option>' + vrmOpts + '</select></div>' +
-      '<button class="btn sm" data-act="clearTf">Clear filters</button>' +
-    '</div></div>' +
+    txnFilterBar(rows.length, (S.data.txns || []).length) +
     '<div class="panel">' +
     (selIds.length
       ? '<div class="selbar"><div class="row"><b>' + selIds.length + ' selected</b>' +
@@ -3765,7 +4054,7 @@ function viewAllTxns() {
     (rows.length
       ? '<div class="twrap"><table><thead><tr>' +
         '<th style="width:34px"><input type="checkbox" data-act="selall" ' + (allShown ? 'checked' : '') + '></th>' +
-        TXN_COLS + '<th></th></tr></thead><tbody>' +
+        txnCols(true) + '<th></th></tr></thead><tbody>' +
         rows.map(function (t) {
           return '<tr class="' + (S.sel[t.id] ? 'sel' : '') + '">' +
             '<td><input type="checkbox" data-act="togsel" data-id="' + esc(t.id) + '" ' +
@@ -3779,8 +4068,11 @@ function viewAllTxns() {
             '</div></td></tr>';
         }).join('') +
         '</tbody>' + txnFoot(rows, 2) + '</table></div>'
-      : emptyState(q || fType || fStatus || fVrm ? 'No matching transactions' : 'No transactions yet',
-          'Adjust the filters, or upload a file.')) +
+      : emptyState(tfAnyActive() || (S.q.alltxns || '')
+            ? 'No matching transactions' : 'No transactions yet',
+          tfAnyActive() || (S.q.alltxns || '')
+            ? 'Nothing survives the filters above. Clear filters puts them all back.'
+            : 'Upload a file to get started.')) +
     '</div>';
 }
 
@@ -4389,6 +4681,23 @@ S.navMore = false;   /* is the sidebar's "More" group open */
  * not greet you with an empty page because nothing has been uploaded yet.
  */
 S.ov = { range: 'month', from: '', to: '', vrm: '', q: 0, fy: 0 };
+
+/*
+ * The All-transactions filter.
+ *
+ * TXN Type, Status and VRM are deliberately NOT here: they live on
+ * S.fType / S.fStatus / S.fVrm because Scheme analysis shows the same three and
+ * carrying them between the two pages is the point. Everything this page adds
+ * on top is its own, so a filter that only All-transactions understands cannot
+ * quietly empty a page that has never heard of it.
+ *
+ * `q` and `fy` are the quarter and financial year, named to match S.ov so the
+ * one picker in qtrRow() can drive either.
+ */
+S.tf = { range: 'all', from: '', to: '', q: 0, fy: 0,
+         client: '', name: '', scheme: '', amtMin: '', amtMax: '',
+         basket: false, sort: 'date', dir: 'desc' };
+var TF_DEFAULT = JSON.stringify(S.tf);
 
 var GRAN = {
   day:   { key: function (d) { return d; },              label: function (k) { return dmy(k); },
@@ -5281,24 +5590,25 @@ function exportSpec(what) {
 
   var rows;
   if (what === 'vrmtxns' || what === 'alltxns' || what === 'clientdetail') {
-    var q = S.q[what === 'vrmtxns' ? 'data' : 'alltxns'] || '';
-    var src = S.data.txns;
-    if (what === 'clientdetail') {
-      src = src.filter(function (t) {
-        return String(t.clientCode).toUpperCase() === String(S.clientCode).toUpperCase();
-      });
-      q = '';
-    } else if (what === 'alltxns') {
-      src = src.filter(function (t) {
-        if (S.fType && t.txnType !== S.fType) return false;
-        if (S.fStatus && t.status !== S.fStatus) return false;
-        if (S.fVrm && String(t.vrmEmpCode).toUpperCase() !== S.fVrm.toUpperCase()) return false;
-        return true;
-      });
+    /*
+     * All transactions exports exactly the rows on the screen, in the order
+     * they are on the screen - it calls the very function the table is built
+     * from, so the two cannot drift apart as filters are added.
+     */
+    if (what === 'alltxns') {
+      rows = allTxnRows().map(txnRow);
+    } else {
+      var q = what === 'clientdetail' ? '' : (S.q.data || '');
+      var src = S.data.txns;
+      if (what === 'clientdetail') {
+        src = src.filter(function (t) {
+          return String(t.clientCode).toUpperCase() === String(S.clientCode).toUpperCase();
+        });
+      }
+      rows = src.filter(function (t) { return matches(t, q); })
+        .sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); })
+        .map(txnRow);
     }
-    rows = src.filter(function (t) { return matches(t, q); })
-      .sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); })
-      .map(txnRow);
     return {
       file: 'VRM-MF_' + (what === 'clientdetail' ? 'client-' + S.clientCode :
              (what === 'vrmtxns' ? S.session.empCode + '_transactions' : 'all-transactions')),
@@ -6224,7 +6534,11 @@ var ACT = {
   },
   client: function (btn) { S.clientCode = btn.dataset.code; S.tab = 'clientdetail'; buildSidebar(); render(); },
   back: function () { S.tab = 'clients'; buildSidebar(); render(); },
-  clearTf: function () { S.fType = ''; S.fStatus = ''; S.fVrm = ''; render(); },
+  clearTf: function () {
+    S.fType = ''; S.fStatus = ''; S.fVrm = '';
+    S.tf = JSON.parse(TF_DEFAULT);
+    render();
+  },
   restore: function (btn) {
     var un = lock(btn, '');
     api('restoreTxn', S.session.token, btn.dataset.id).then(function (d) {
@@ -6722,6 +7036,60 @@ document.addEventListener('click', function (e) {
   var k = el.dataset.trend;
   S.trendOn[k] = !S.trendOn[k];
   render();
+});
+
+/* the All-transactions filter bar: range pills, quick chips, sortable headers */
+document.addEventListener('click', function (e) {
+  var r = e.target.closest('[data-tfr]');
+  if (r) {
+    S.tf.range = r.dataset.tfr;
+    /* Land on the quarter the newest data is in, not on Q1 by default. */
+    if (S.tf.range === 'quarter' && !S.tf.q) {
+      var ref = (kpis(S.data.txns || []).refMonth) || today().slice(0, 7);
+      S.tf.q = fyQuarterOf(ref);
+      S.tf.fy = fyStartYear(ref);
+    }
+    render();
+    return;
+  }
+  var qq = e.target.closest('[data-tfqtr]');
+  if (qq) { S.tf.q = +qq.dataset.tfqtr; render(); return; }
+
+  var ch = e.target.closest('[data-tfquick]');
+  if (ch) { txnQuick(ch.dataset.tfquick); render(); return; }
+
+  var th = e.target.closest('[data-tsort]');
+  if (th) {
+    var k = th.dataset.tsort;
+    if (S.tf.sort === k) {
+      S.tf.dir = (S.tf.dir === 'asc' ? 'desc' : 'asc');
+    } else {
+      S.tf.sort = k;
+      /* Money and dates read newest/biggest first; names read A to Z. */
+      S.tf.dir = (TXN_SORTS[k] && (TXN_SORTS[k].num || k === 'date')) ? 'desc' : 'asc';
+    }
+    render();
+  }
+});
+document.addEventListener('change', function (e) {
+  var el = e.target.closest('[data-tfs]');
+  if (!el) return;
+  var k = el.dataset.tfs;
+  S.tf[k] = (k === 'fy' || k === 'q') ? +el.value : el.value;
+  render();
+});
+document.addEventListener('input', function (e) {
+  var el = e.target.closest('[data-tfi]');
+  if (!el) return;
+  var k = el.dataset.tfi, pos = null;
+  S.tf[k] = el.value;
+  try { pos = el.selectionStart; } catch (err) {}
+  render();
+  var again = document.querySelector('[data-tfi="' + k + '"]');
+  if (again) {
+    again.focus();
+    if (pos !== null) { try { again.setSelectionRange(pos, pos); } catch (err2) {} }
+  }
 });
 
 /* transaction-table filters and the VRM-wise sort */
