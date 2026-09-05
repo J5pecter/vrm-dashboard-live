@@ -1299,6 +1299,23 @@ html[data-corner="round"]{--r:20px; --r2:16px; --r3:14px}
 #main.still .view .spin{animation:spin .7s linear infinite!important}
 #main.still .view .sk::after{animation:shimmer 1.25s infinite!important}
 
+
+/* ---- password status ---------------------------------------------------- */
+.pwsum{margin-bottom:22px}
+.pwsumrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+  gap:1px;background:var(--line);border-radius:var(--r3) var(--r3) 0 0;overflow:hidden}
+.pwstat{background:var(--surf);padding:16px 18px;display:flex;flex-direction:column;gap:3px}
+.pwstat b{font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.pwstat span{font-size:12.5px;color:var(--ink3);line-height:1.45}
+.pwstat.warn b{color:var(--p-ink)}
+
+/* The revealed value: monospaced, spaced out and selectable, because it is
+   about to be read aloud or copied and both go wrong with tight text. */
+.pwreveal{margin:4px 0 0;padding:16px;border-radius:var(--r3);
+  background:var(--p-soft);border:1px solid var(--p-ink);text-align:center}
+.pwreveal code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:22px;font-weight:600;
+  letter-spacing:.08em;color:var(--p-ink);user-select:all}
+
 </style>
 
 <div id="login">
@@ -1411,7 +1428,10 @@ html[data-corner="round"]{--r:20px; --r2:16px; --r3:14px}
     ['VRM005', 'Manisha Hemant Mahante'], ['VRM006', 'Khushi Mahesh Dodiya'],
     ['VRM007', 'Parth Vijay Sharma'], ['VRM008', 'Lavina Saldanha']
   ].map(function (v) {
+    /* VRM008 has never signed in, so the demo has one account in the state
+       where an issued password can still be handed over. */
     return { empCode: v[0], name: v[1], password: DEMO_PW, failed: 0,
+             neverUsed: v[0] === 'VRM008',
              lockedUntil: '', lockedUntilMs: 0 };
   });
 
@@ -3290,13 +3310,73 @@ function unassignedClusters_(txns, vrms, ctx) {
       return ok(payload(s));
     },
 
+    /*
+     * Password history, derived from the log exactly as the server does it. The
+     * demo carries the same four states so the screen can be judged here before
+     * it reaches real accounts - including NEVER_USED, which the seed data
+     * arranges for one VRM so the reveal path is reachable at all.
+     */
     getVrmCredentials: function (token) {
       adminOnly(token, 'view accounts');
+      var facts = {};
+      function slot(code) {
+        var k = String(code || '').toUpperCase();
+        if (!k) return null;
+        if (!facts[k]) facts[k] = { lastLogin: '', lastChanged: '', lastReset: '',
+                                    lastRequest: '', logins: 0 };
+        return facts[k];
+      }
+      LOG.forEach(function (r) {
+        var ts = String(r.timestamp || ''), a = r.action;
+        if (a === 'LOGIN_SUCCESS') {
+          var x = slot(r.actor);
+          if (x) { x.logins++; if (ts > x.lastLogin) x.lastLogin = ts; }
+        } else if (a === 'CHANGE_PASSWORD') {
+          var c = slot(r.actor); if (c && ts > c.lastChanged) c.lastChanged = ts;
+        } else if (a === 'PASSWORD_RESET_REQUESTED') {
+          var q = slot(r.actor); if (q && ts > q.lastRequest) q.lastRequest = ts;
+        } else if (a === 'RESET_VRM_PASSWORD') {
+          var m = String(r.details || '').match(/\b(VRM\d{3,})\b/i);
+          if (m) { var v = slot(m[1]); if (v && ts > v.lastReset) v.lastReset = ts; }
+        }
+      });
+
       return ok({ vrms: VRMS.map(function (v) {
-        return { empCode: v.empCode, name: v.name, hashed: true, failedAttempts: v.failed,
+        var f = facts[v.empCode.toUpperCase()] || {};
+        var everUsed = !!(f.lastLogin || f.lastReset);
+        var state, since;
+        if (!everUsed && v.neverUsed) { state = 'NEVER_USED'; since = ''; }
+        else if (f.lastChanged && (!f.lastReset || f.lastChanged >= f.lastReset)) {
+          state = 'OWN'; since = f.lastChanged;
+        } else if (f.lastReset) { state = 'ADMIN_SET'; since = f.lastReset; }
+        else { state = 'ISSUED'; since = ''; }
+
+        return { empCode: v.empCode, name: v.name, hashed: state !== 'NEVER_USED',
+                 failedAttempts: v.failed,
                  locked: locked(v), lockedUntil: locked(v) ? v.lockedUntil : '',
                  entries: TX.filter(function (t) { return t.vrmEmpCode === v.empCode; }).length,
-                 createdAt: '' }; }) });
+                 createdAt: '',
+                 pwState: state, pwSince: since, canReveal: state === 'NEVER_USED',
+                 lastLogin: f.lastLogin || '', logins: f.logins || 0,
+                 lastChanged: f.lastChanged || '', lastReset: f.lastReset || '',
+                 lastRequest: f.lastRequest || '' }; }) });
+    },
+
+    revealIssuedPassword: function (token, empCode) {
+      adminOnly(token, 'view an issued password');
+      var v = VRMS.filter(function (x) {
+        return x.empCode.toUpperCase() === String(empCode || '').toUpperCase(); })[0];
+      if (!v) throw new Error('VRM not found: ' + empCode);
+      /* The same refusal the server gives, so the demo cannot make a promise
+         the real thing will not keep. */
+      if (!v.neverUsed) {
+        throw new Error(v.name + ' (' + v.empCode + ') has used this account, so the ' +
+          'password is stored hashed and cannot be read back - not here, not in the ' +
+          'sheet, not by anyone. Use Reset password to set a new one and tell them what it is.');
+      }
+      log('ADMIN', 'ADMIN', 'REVEAL_ISSUED_PASSWORD',
+        'Viewed the unused issued password for ' + v.empCode + ' ("' + v.name + '")', 1);
+      return ok({ empCode: v.empCode, name: v.name, password: v.password });
     },
 
     getAuditLog: function (token, limit) {
@@ -3555,7 +3635,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-30c no-blink';
+var PAGE_BUILD = '2026-08-31 pw-status';
 
 var API_URL = '';        /* set by the Pages build */
 
@@ -6808,6 +6888,48 @@ function stampAgo(iso) {
   return dmy(t.slice(0, 10));
 }
 
+/* ---------------------------------------------------------------------------
+ * PASSWORD STATE
+ *
+ * Four states, chosen because they differ in what the admin should DO, not in
+ * how they came about. The distinction that matters on this screen is whether
+ * anybody other than the VRM still knows the password.
+ * ------------------------------------------------------------------------ */
+var PW_STATES = {
+  NEVER_USED: { label: 'Never signed in', cls: 'warn',
+                note: 'The issued password is still readable and can be handed over.' },
+  ISSUED:     { label: 'Still the issued one', cls: 'warn',
+                note: 'Signed in, but has never set their own password.' },
+  ADMIN_SET:  { label: 'Set by admin', cls: '',
+                note: 'An admin reset it. The VRM has not chosen their own since.' },
+  OWN:        { label: 'Changed by them', cls: 'ok',
+                note: 'The VRM chose this password. Nobody else has seen it.' }
+};
+
+function pwPill(v) {
+  var st = PW_STATES[v.pwState] || { label: v.pwState || 'Unknown', cls: '' };
+  return '<span class="pill ' + st.cls + '">' + esc(st.label) + '</span>';
+}
+
+/*
+ * "Since when" means a different date in each state, so it is labelled rather
+ * than printed bare. A date with no word in front of it invites the reader to
+ * assume it is the last sign-in, which it usually is not.
+ */
+function pwWhen(v) {
+  if (v.pwState === 'OWN' && v.lastChanged) return 'changed ' + dmy(v.lastChanged.slice(0, 10));
+  if (v.pwState === 'ADMIN_SET' && v.lastReset) return 'reset ' + dmy(v.lastReset.slice(0, 10));
+  if (v.pwState === 'NEVER_USED') return 'never used';
+  if (v.lastLogin) return 'in use since first sign-in';
+  return '';
+}
+
+function lastSeen(v) {
+  if (!v.lastLogin) return '<span class="muted">never</span>';
+  return esc(dmy(v.lastLogin.slice(0, 10))) +
+    (v.logins ? ' <span class="muted">\u00b7 ' + v.logins + ' sign-in' + (v.logins === 1 ? '' : 's') + '</span>' : '');
+}
+
 function viewAccess() {
   if (!S.creds) { after(loadCreds); return loadingPanel('VRMs & Access', 'Reading credentials from the sheet...'); }
   var q = (S.q.access || '').toLowerCase();
@@ -6815,26 +6937,66 @@ function viewAccess() {
     return !q || (v.empCode + ' ' + v.name).toLowerCase().indexOf(q) >= 0;
   });
   var lockedCount = S.creds.filter(function (v) { return v.locked; }).length;
+  var never = S.creds.filter(function (v) { return v.pwState === 'NEVER_USED'; }).length;
+  var issued = S.creds.filter(function (v) { return v.pwState === 'ISSUED'; }).length;
+  var own = S.creds.filter(function (v) { return v.pwState === 'OWN'; }).length;
   var c = S.data.config || {};
 
   return pageHead('VRMs & access', S.creds.length + ' VRM(s)' +
       (lockedCount ? ' - ' + lockedCount + ' currently locked' : ''),
       '<button class="btn sm pri" data-act="addvrm">' + IC.plus + ' Add VRM</button>') +
     resetRequestPanel() +
+
+    /*
+     * The one line an admin actually wants off this page: how many people are
+     * still using a password somebody else picked. It is above the table
+     * because it is a standing question, not something you go looking for.
+     */
+    '<div class="panel pwsum"><div class="pwsumrow">' +
+      '<div class="pwstat"><b>' + own + '</b><span>chose their own password</span></div>' +
+      '<div class="pwstat' + (issued ? ' warn' : '') + '"><b>' + issued + '</b>' +
+        '<span>still on the password they were issued</span></div>' +
+      '<div class="pwstat' + (never ? ' warn' : '') + '"><b>' + never + '</b>' +
+        '<span>never signed in</span></div>' +
+    '</div>' +
+    '<div class="fbnote">A password is hashed the moment it is first used, so it ' +
+      'cannot be read back afterwards - not here, not from the Sheet. The only one ' +
+      'that can still be shown is an issued password on an account nobody has ' +
+      'signed into yet. For anyone else, reset it and tell them the new one. ' +
+      'Who changed what is read from the Activity Log, so it only goes back as ' +
+      'far as that does.</div>' +
+    '</div>' +
+
     '<div class="panel"><div class="ptop">' +
     '<div><h3>Accounts &amp; access</h3></div>' +
     '<div class="tools">' + searchBox('access', 'Search VRM...') + '</div></div>' +
     '<div class="twrap"><table><thead><tr><th>Emp Code</th><th>Name</th>' +
-    '<th class="num">Entries</th><th>Status</th><th></th></tr></thead><tbody>' +
+    '<th class="num">Entries</th><th>Password</th><th>Last sign-in</th>' +
+    '<th>Status</th><th></th></tr></thead><tbody>' +
     (rows.length ? rows.map(function (v) {
       var status = v.locked
         ? '<span class="pill lock">LOCKED until ' + esc(stamp(v.lockedUntil)) + '</span>'
         : (v.failedAttempts > 0
             ? '<span class="pill warn">' + v.failedAttempts + ' failed attempt(s)</span>'
             : '<span class="pill ok">Active</span>');
+      var when = pwWhen(v);
       return '<tr><td class="mono"><b>' + esc(v.empCode) + '</b></td><td>' + esc(v.name) + '</td>' +
-        '<td class="num">' + num(v.entries) + '</td><td>' + status + '</td>' +
+        '<td class="num">' + num(v.entries) + '</td>' +
+        '<td>' + pwPill(v) +
+          (when ? '<div class="muted" style="font-size:11.5px;margin-top:3px">' + esc(when) + '</div>' : '') +
+          (v.lastRequest && !v.locked
+            ? '<div style="font-size:11.5px;margin-top:3px;color:var(--p-ink);font-weight:600">' +
+              'reset requested ' + esc(dmy(v.lastRequest.slice(0, 10))) + '</div>' : '') +
+        '</td>' +
+        '<td style="white-space:nowrap;font-size:12.5px">' + lastSeen(v) + '</td>' +
+        '<td>' + status + '</td>' +
         '<td style="text-align:right"><div class="row" style="justify-content:flex-end;gap:6px">' +
+          (v.canReveal
+            ? '<button class="btn xs" data-act="showpw" data-code="' + esc(v.empCode) +
+              '" data-name="' + esc(v.name) + '" title="This account has never been ' +
+              'signed into, so the password it was issued can still be shown">' +
+              IC.eye + ' Show password</button>'
+            : '') +
           '<button class="btn xs" data-act="resetpw" data-code="' + esc(v.empCode) + '" data-name="' + esc(v.name) + '">' + IC.key + ' Reset password</button>' +
           (v.locked || v.failedAttempts > 0
             ? guard('un:' + v.empCode,
@@ -6845,7 +7007,7 @@ function viewAccess() {
             '<button class="btn xs dan" data-act="delvrm" data-code="' + esc(v.empCode) + '">Confirm - delete VRM + data</button>',
             '<button class="btn xs" data-act="arm">' + IC.trash + '</button>') +
         '</div></td></tr>';
-    }).join('') : '<tr><td colspan="5" class="empty">No VRMs match that search.</td></tr>') +
+    }).join('') : '<tr><td colspan="7" class="empty">No VRMs match that search.</td></tr>') +
     '</tbody></table></div></div>';
 }
 
@@ -7456,11 +7618,54 @@ function addVrmDialog() {
     '<button class="btn pri" data-act="doaddvrm">Create VRM</button>');
 }
 
+
+/*
+ * Show the password an unused account was issued.
+ *
+ * The server decides whether there is anything to show and logs the read; this
+ * side only asks. It deliberately does not cache the value anywhere - the
+ * dialog holds it, closing the dialog loses it, and looking again is another
+ * logged read.
+ */
+function showIssuedPassword(code, name) {
+  api('revealIssuedPassword', S.session.token, code).then(function (d) {
+    modal('Issued password for ' + esc(d.empCode),
+      '<b>' + esc(d.name) + '</b> has never signed in, so this is still the password ' +
+      'they were given. The moment they sign in it is hashed and this stops working.',
+      '<div class="pwreveal"><code>' + esc(d.password) + '</code></div>' +
+      '<div class="fbnote" style="border:0;padding:12px 0 0">Give it to them over a ' +
+      'channel you trust, and ask them to change it after signing in. This view was ' +
+      'recorded in the Activity Log.</div>',
+      '<button class="btn pri" data-act="close">Done</button>');
+  }).catch(fail);
+}
+
+/*
+ * A password worth handing over: long enough to be safe, and made of characters
+ * that survive being read down a phone line. No l/I/1 or O/0, because the cost
+ * of a misread character here is a locked account and a second phone call.
+ */
+function suggestPassword() {
+  var abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ', num = '23456789', low = 'abcdefghijkmnpqrstuvwxyz';
+  var pool = abc + low + num, out = '';
+  var pick = function (set) { return set.charAt(Math.floor(Math.random() * set.length)); };
+  out += pick(abc) + pick(low) + pick(num);
+  for (var i = 0; i < 7; i++) out += pick(pool);
+  return out;
+}
+
 function resetPwDialog(code, name) {
   var minLen = num((S.data.config || {}).minPasswordLen) || 6;
   modal('Reset password for ' + code,
     'This overwrites the password for <b>' + esc(name) + ' (' + esc(code) + ')</b> and clears any lockout. Minimum ' + minLen + ' characters.',
-    '<div class="f"><label class="lbl">New password</label><input class="inp" id="d_pw" placeholder="At least ' + minLen + ' characters"></div>' +
+    '<div class="f"><label class="lbl">New password</label>' +
+      '<div class="row" style="gap:8px">' +
+        '<input class="inp" id="d_pw" style="flex:1" placeholder="At least ' + minLen + ' characters">' +
+        '<button class="btn sm" data-act="suggestpw" title="Fill in a strong one">Suggest</button>' +
+      '</div>' +
+      '<div class="muted" style="font-size:12px;margin-top:7px">Write it down before ' +
+      'you press Reset. It is hashed on the way into the Sheet, so this is the only ' +
+      'time it can be read.</div></div>' +
     '<input type="hidden" id="d_code" value="' + esc(code) + '">',
     '<button class="btn gh" data-act="close">Cancel</button>' +
     '<button class="btn dan" data-act="doresetpw">Reset password</button>');
@@ -8742,6 +8947,15 @@ var ACT = {
   addvrm: addVrmDialog,
   edittxn: function (btn) { editTxnDialog(btn.dataset.id); },
   resetpw: function (btn) { resetPwDialog(btn.dataset.code, btn.dataset.name); },
+  showpw: function (btn) { showIssuedPassword(btn.dataset.code, btn.dataset.name); },
+  suggestpw: function () {
+    var el = $('d_pw');
+    if (!el) return;
+    el.value = suggestPassword();
+    el.type = 'text';           /* it is no use suggested and hidden */
+    el.focus();
+    el.select();
+  },
   upload: function () {
     window.__expectShape = 'PURCHASE'; $('fileIn').click(); },
 
