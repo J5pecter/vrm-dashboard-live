@@ -3686,7 +3686,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-09-01 add-entry';
+var PAGE_BUILD = '2026-09-01b analysis-range';
 
 var API_URL = '';        /* set by the Pages build */
 
@@ -5110,10 +5110,15 @@ function ovFilterBar() {
 }
 
 
-/* The quarter / financial-year picker. `ns` says which filter it writes to. */
-function qtrRow(f, ns) {
-  var selAttr = (ns === 'tf') ? 'data-tfs' : 'data-ovsel';
-  var qAttr   = (ns === 'tf') ? 'data-tfqtr' : 'data-ovq';
+/*
+ * The quarter / financial-year picker, shared by every filter bar that offers a
+ * quarter. The attribute names come in rather than being switched on a
+ * namespace: three callers through one if/else is where that pattern starts
+ * costing more to read than the markup it saves.
+ */
+function qtrRow(f, selAttr, qAttr) {
+  selAttr = selAttr || 'data-ovsel';
+  qAttr = qAttr || 'data-ovq';
   var ref = (kpis(S.data.txns || []).refMonth) || today().slice(0, 7);
   var fy = f.fy || fyStartYear(ref);
   var q = f.q || fyQuarterOf(ref);
@@ -6418,7 +6423,7 @@ function txnFilterBar(shown, total) {
         (f.range === 'custom' ? dateInput('from') + dateInput('to') : '') +
         '<button class="btn xs gh" data-act="clearTf">Clear filters</button>' +
       '</div>' +
-      ((f.range === 'quarter' || f.range === 'year') ? qtrRow(f, 'tf') : '') +
+      ((f.range === 'quarter' || f.range === 'year') ? qtrRow(f, 'data-tfs', 'data-tfqtr') : '') +
     '</div>' +
 
     '<div class="tfgrid">' +
@@ -7102,7 +7107,7 @@ function viewAccess() {
         '<span>never signed in</span></div>' +
       '<div class="pwstat"><b>' + readable + ' <span class="of">of ' + S.creds.length + '</span></b>' +
         '<span>passwords can still be shown' +
-        (gone ? ' · ' + gone + ' hashed and unrecoverable' : '') + '</span></div>' +
+        (gone ? ' · ' + gone + ' fill in as those VRMs next sign in' : '') + '</span></div>' +
     '</div>' +
     '<div class="fbnote"><b>Passwords are stored readably on this sheet</b>, at the ' +
       'firm\u2019s instruction, so they can be read here. Two things follow. Anyone with ' +
@@ -7259,7 +7264,13 @@ function viewActivity() {
  * earlier, plus a per-VRM performance league table for the admin.
  * ========================================================================== */
 
-S.an = { from: '', to: '', vrm: '', metric: 'net', gran: 'month' };
+/*
+ * `range` drives from/to the way it does on every other page; the two dates are
+ * still here because "Custom" needs somewhere to put them, and because a range
+ * of 'all' means "no bounds" rather than a computed pair.
+ */
+S.an = { from: '', to: '', vrm: '', metric: 'net', gran: 'month',
+         range: 'all', q: 0, fy: 0 };
 S.navMore = false;   /* is the sidebar's "More" group open */
 /*
  * The consolidated view's filter. "month" means the newest month that has data
@@ -7308,13 +7319,26 @@ var METRICS = {
 };
 
 /** Transactions passing the analytics filters (date range + VRM). */
-function anRows() {
+/*
+ * The window Revenue analysis is looking at. 'all' keeps the old meaning of two
+ * empty date boxes - everything up to today - and every other range is computed
+ * by the same rangeOf() the other pages use, so a quarter here is the same
+ * Apr-Jun it is everywhere else.
+ */
+function anRange() {
   var f = S.an;
+  if (f.range === 'all') return { from: '', to: today(), label: 'all time' };
+  return rangeOf(f);
+}
+
+function anRows() {
+  var f = S.an, r = anRange();
   return S.data.txns.filter(function (t) {
     if (!t.date) return false;
-    if (f.from && t.date < f.from) return false;
-    /* An empty "to" still means "up to today", never into the future. */
-    if (t.date > (f.to || today())) return false;
+    if (r.from && t.date < r.from) return false;
+    /* Never past today: a range running into the future invents empty months
+       and then reports the last of them as a collapse. */
+    if (t.date > (r.to || today())) return false;
     if (f.vrm && t.vrmEmpCode.toUpperCase() !== f.vrm.toUpperCase()) return false;
     return true;
   });
@@ -7404,12 +7428,33 @@ function viewAnalytics() {
 
   var head =
     pageHead('Revenue analysis',
-      met.label + ' · ' + g.name.toLowerCase() + ' · ' + rows.length + ' transactions',
+      met.label + ' · ' + g.name.toLowerCase() + ' · ' + anRange().label,
       expBtns('analytics'));
 
+  var ar = anRange();
   var filters =
-    '<div class="panel"><div class="ptop"><div><h3>Filters</h3></div>' +
+    '<div class="panel filterbar"><div class="ptop"><div><h3>Filters</h3></div>' +
     '<div class="tools"><button class="btn sm" data-act="anreset">Reset</button></div></div>' +
+
+    /* The same six ranges as My summary and Consolidated overview, so a period
+       means one thing across the whole app. */
+    '<div class="fbrow">' +
+      '<span class="fbqlab">Period</span>' +
+      '<div class="pills">' + OV_RANGES.map(function (g2) {
+        return '<button class="pill-btn' + (f.range === g2.id ? ' on' : '') +
+               '" data-anr="' + g2.id + '">' + esc(g2.label) + '</button>';
+      }).join('') + '</div>' +
+      '<div class="fbend">' +
+        (isAdmin()
+          ? ''
+          : '<span class="fblock" title="You can only see your own transactions">' +
+            IC.user + esc(S.session.name) +
+            '<span class="fbcode">' + esc(S.session.empCode) + '</span></span>') +
+      '</div>' +
+      ((f.range === 'quarter' || f.range === 'year')
+        ? qtrRow(f, 'data-an', 'data-anq') : '') +
+    '</div>' +
+
     '<div style="padding:16px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">' +
       '<div><label class="lbl">View by</label><select class="inp" data-an="gran">' +
         Object.keys(GRAN).map(function (k) {
@@ -7428,11 +7473,22 @@ function viewAnalytics() {
        * empty months, and the KPI then reports the last of them: "Net Sales —
        * Oct-26, down 93%" is a arithmetic on a month that has not happened.
        */
-      '<div><label class="lbl">From</label><input class="inp" type="date" data-an="from" max="' +
-        esc(today()) + '" value="' + esc(f.from) + '"></div>' +
-      '<div><label class="lbl">To</label><input class="inp" type="date" data-an="to" max="' +
-        esc(today()) + '" value="' + esc(f.to || today()) + '"></div>' +
-    '</div></div>';
+      /*
+       * Only on Custom. Two date boxes that a pill silently overrides are two
+       * controls telling the reader different things about the same window.
+       */
+      (f.range === 'custom'
+        ? '<div><label class="lbl">From</label><input class="inp" type="date" data-an="from" max="' +
+            esc(today()) + '" value="' + esc(f.from) + '"></div>' +
+          '<div><label class="lbl">To</label><input class="inp" type="date" data-an="to" max="' +
+            esc(today()) + '" value="' + esc(f.to || today()) + '"></div>'
+        : '') +
+    '</div>' +
+    '<div class="fbnote">Showing <b>' + esc(ar.label) + '</b>' +
+      (!isAdmin() ? ' · ' + esc(S.session.name)
+                  : (f.vrm ? ' · ' + esc(vrmNameByCode(f.vrm)) : ' · all VRMs')) +
+      ' · ' + rows.length + ' transaction(s)</div>' +
+    '</div>';
 
   var cards = [
     { t: met.label + ' — ' + (last ? g.label(last.key) : '—'), v: last ? met.pick(last) : 0,
@@ -9486,7 +9542,8 @@ var ACT = {
     }).catch(function (e) { un(); fail(e); });
   },
   anreset: function () {
-    S.an = { from: '', to: '', vrm: '', metric: 'net', gran: 'month' };
+    S.an = { from: '', to: '', vrm: '', metric: 'net', gran: 'month',
+             range: 'all', q: 0, fy: 0 };
     render();
   },
 
@@ -9964,8 +10021,26 @@ document.addEventListener('change', function (e) {
 document.addEventListener('change', function (e) {
   var el = e.target.closest('[data-an]');
   if (!el) return;
-  S.an[el.dataset.an] = el.value;
+  var k = el.dataset.an;
+  /* fy and q come from the shared quarter picker and are numbers there. */
+  S.an[k] = (k === 'fy' || k === 'q') ? +el.value : el.value;
   render();
+});
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('[data-anr]');
+  if (b) {
+    S.an.range = b.dataset.anr;
+    /* Land on the quarter the newest data is in, not on Q1 by default. */
+    if (S.an.range === 'quarter' && !S.an.q) {
+      var ref = (kpis(S.data.txns || []).refMonth) || today().slice(0, 7);
+      S.an.q = fyQuarterOf(ref);
+      S.an.fy = fyStartYear(ref);
+    }
+    render();
+    return;
+  }
+  var q2 = e.target.closest('[data-anq]');
+  if (q2) { S.an.q = +q2.dataset.anq; render(); }
 });
 
 /* Enter submits the open dialog. */
