@@ -1277,6 +1277,27 @@ html[data-corner="round"]{--r:20px; --r2:16px; --r3:14px}
 .chip.on{background:var(--p-soft);border-color:var(--p-ink);color:var(--p-ink);
   animation:pillOn var(--t-mid) var(--pop)}
 
+
+/* ---- an in-view update repaints; it does not arrive ---------------------- */
+/*
+ * Everything under a still repaint keeps its final state instead of playing in.
+ * The blanket covers pseudo-elements too, because several of the entry effects
+ * live on ::before and ::after.
+ *
+ * Two things are exempt and have to be named back, because they are not
+ * arrivals: the spinner and the skeleton shimmer both mean "still working", and
+ * a progress indicator that freezes is worse than one that never moved.
+ * Transitions are untouched throughout - hovers, the growing waterfall bars and
+ * the caret on an open list all still animate, because none of them fire merely
+ * because an element was created.
+ */
+#main.still .view,
+#main.still .view *,
+#main.still .view *::before,
+#main.still .view *::after{animation:none!important}
+#main.still .view .spin{animation:spin .7s linear infinite!important}
+#main.still .view .sk::after{animation:shimmer 1.25s infinite!important}
+
 </style>
 
 <div id="login">
@@ -1553,7 +1574,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-30b txn-pickers';
+var PAGE_BUILD = '2026-08-30c no-blink';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbyjWQvuhyAwrYrRnAxGDmuHY4iw37G-BQSm3fNbKJKj5iJAYXa42Q5Au9yMnuyH3dTF/exec';        /* set by the Pages build */
 
@@ -2228,6 +2249,9 @@ function tabs() {
 function isAdmin() { return S.session && S.session.role === 'ADMIN'; }
 
 function enterApp() {
+  /* A fresh session is an arrival even onto the same tab id as last time, so
+     the entry animations are allowed to play once more. */
+  LAST_TAB_ = null;
   $('login').style.display = 'none';
   $('app').style.display = 'block';
   S.tab = tabs()[0].id;
@@ -3070,13 +3094,20 @@ function statusStrip(m) {
 }
 
 /* Count-up animation on load / refresh. */
-function animateCounts() {
+function animateCounts(animate) {
   var els = document.querySelectorAll('.kv[data-count]');
   Array.prototype.forEach.call(els, function (el) {
     var target = num(el.dataset.count), plain = el.dataset.plain === '1';
-    var dur = REDUCED ? 0 : 780, t0 = 0, done = false;
+    var dur = (REDUCED || animate === false) ? 0 : 780, t0 = 0, done = false;
     function fmt(v) { return plain ? inr(Math.round(v)) : rupee(Math.round(v)); }
     if (!target) { el.textContent = fmt(0); return; }
+    /*
+     * No count-up wanted: write the figure NOW, not on the next frame. Going
+     * through requestAnimationFrame with a zero duration still leaves one frame
+     * showing the markups zero, and a KPI that flicks to nil and back on every
+     * keystroke is precisely the blink this is meant to remove.
+     */
+    if (!dur) { el.textContent = fmt(target); return; }
     function step(ts) {
       if (done) return;
       if (!t0) t0 = ts;
@@ -4647,12 +4678,37 @@ var VIEWS = {
   restore: viewRestore, batches: viewBatches, unassigned: viewUnassigned
 };
 
+/*
+ * Entry animations belong to arriving somewhere, not to changing something you
+ * are already looking at.
+ *
+ * render() rebuilds #main outright, so every keystroke in a filter box replayed
+ * the whole arrival sequence: the view rising, panels dealing in, headings
+ * sliding, the KPI figures counting up from zero, and one rowIn per row - over
+ * a hundred of them at once. Typing three characters ran it three times. What
+ * that looks like is blinking.
+ *
+ * The test is simply whether the tab changed. Moving between pages still gets
+ * the full sequence; filtering, sorting and searching - which is every render
+ * that leaves you on the page you were already reading - gets none of it.
+ */
+var LAST_TAB_ = null;
 function render() {
   if (!S.session || !S.data) return;
+  var arriving = (S.tab !== LAST_TAB_);
+  LAST_TAB_ = S.tab;
+
   var fn = VIEWS[S.tab] || VIEWS[tabs()[0].id];
-  $('main').innerHTML = '<div class="view">' +
+  var main = $('main');
+  /*
+   * Set BEFORE the HTML lands. The rule has to be in force the first time the
+   * new nodes have their style resolved; adding the class afterwards is a
+   * frame too late and the animation has already started.
+   */
+  main.classList.toggle('still', !arriving);
+  main.innerHTML = '<div class="view">' +
     (S.tab === 'unassigned' ? '' : provisionalBanner()) + fn() + '</div>';
-  animateCounts();
+  animateCounts(arriving);
   flushAfter_();
 }
 
@@ -7248,16 +7304,45 @@ document.addEventListener('change', function (e) {
   render();
 });
 
+/*
+ * Typing re-renders the page, which destroys the box being typed into and
+ * builds a new one. Doing that per keystroke rebuilt every row in the table for
+ * each character and threw the caret away and put it back each time - the other
+ * half of what looked like blinking.
+ *
+ * The state moves immediately, so nothing is lost and any other control clicked
+ * next sees the new value. Only the repaint waits, and the input goes on
+ * showing what was typed by itself in the meantime.
+ */
+var TYPE_T_ = null;
+function renderAfterTyping(sel) {
+  clearTimeout(TYPE_T_);
+  TYPE_T_ = setTimeout(function () {
+    var el = document.querySelector(sel);
+    var pos = null, hadFocus = false;
+    if (el) {
+      hadFocus = (document.activeElement === el);
+      try { pos = el.selectionStart; } catch (err) {}
+    }
+    render();
+    /* Only take the caret back if it was still here. Someone who typed and then
+       clicked a chip should not be yanked back into the box they left. */
+    if (!hadFocus) return;
+    var again = document.querySelector(sel);
+    if (again) {
+      again.focus();
+      if (pos !== null) { try { again.setSelectionRange(pos, pos); } catch (err2) {} }
+    }
+  }, 140);
+}
+
 /* search boxes */
 document.addEventListener('input', function (e) {
   var el = e.target.closest('[data-q]');
   if (!el) return;
   S.q[el.dataset.q] = el.value;
   S.confirm = null;
-  var key = el.dataset.q, pos = el.selectionStart;
-  render();
-  var again = document.querySelector('[data-q="' + key + '"]');
-  if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (err) {} }
+  renderAfterTyping('[data-q="' + el.dataset.q + '"]');
 });
 
 /* activity-log filter controls */
@@ -7374,29 +7459,17 @@ document.addEventListener('change', function (e) {
 document.addEventListener('input', function (e) {
   var se = e.target.closest('[data-tfsearch]');
   if (!se) return;
-  var sk = se.dataset.tfsearch, spos = se.selectionStart, sf = tfField(sk);
+  var sk = se.dataset.tfsearch, sf = tfField(sk);
   sf.q = se.value;
   sf.pick = '';   /* typing replaces whatever was pinned */
-  render();
-  var back = document.querySelector('[data-tfsearch="' + sk + '"]');
-  if (back) {
-    back.focus();
-    try { back.setSelectionRange(spos, spos); } catch (err) {}
-  }
+  renderAfterTyping('[data-tfsearch="' + sk + '"]');
 });
 
 document.addEventListener('input', function (e) {
   var el = e.target.closest('[data-tfi]');
   if (!el) return;
-  var k = el.dataset.tfi, pos = null;
-  S.tf[k] = el.value;
-  try { pos = el.selectionStart; } catch (err) {}
-  render();
-  var again = document.querySelector('[data-tfi="' + k + '"]');
-  if (again) {
-    again.focus();
-    if (pos !== null) { try { again.setSelectionRange(pos, pos); } catch (err2) {} }
-  }
+  S.tf[el.dataset.tfi] = el.value;
+  renderAfterTyping('[data-tfi="' + el.dataset.tfi + '"]');
 });
 
 /* transaction-table filters and the VRM-wise sort */
