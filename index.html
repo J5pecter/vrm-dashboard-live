@@ -1330,6 +1330,24 @@ html[data-corner="round"]{--r:20px; --r2:16px; --r3:14px}
   background:var(--p-soft);border-radius:var(--rp);padding:3px 8px;user-select:all;
   white-space:nowrap}
 
+
+/* A filter control that cannot be changed, so it reads as a fact not a choice */
+.fblock{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;
+  background:var(--surf2);border:1px solid var(--line);border-radius:var(--r3);
+  font-size:13px;font-weight:600;color:var(--ink2);white-space:nowrap}
+.fblock svg{color:var(--ink3)}
+.fbcode{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:11.5px;font-weight:600;color:var(--ink3);background:var(--surf);
+  border-radius:var(--rp);padding:2px 7px}
+
+
+/* ---- the add-entry form ------------------------------------------------- */
+.egrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+.egrid .f.wide{grid-column:1/-1}
+.egrid .inp{width:100%}
+.egrid .opt{font-weight:500;color:var(--ink3);font-size:11px;letter-spacing:0}
+.egrid .inp[readonly]{background:var(--surf2);color:var(--ink2);cursor:not-allowed}
+
 </style>
 
 <div id="login">
@@ -1606,7 +1624,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-31c readable-pw';
+var PAGE_BUILD = '2026-09-01 add-entry';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbyjWQvuhyAwrYrRnAxGDmuHY4iw37G-BQSm3fNbKJKj5iJAYXa42Q5Au9yMnuyH3dTF/exec';        /* set by the Pages build */
 
@@ -2998,7 +3016,17 @@ function ovFilterBar() {
       }).join('') +
     '</div>' +
     '<div class="fbend">' +
-      '<select class="inp sm" data-ovsel="vrm"><option value="">All VRMs</option>' + vrmOpts + '</select>' +
+      /*
+       * A VRM has exactly one VRM to look at, so the control is a label rather
+       * than a dropdown with one option. A select that can only be set to the
+       * thing it is already set to asks a question with no answer, and it reads
+       * as something being broken.
+       */
+      (isAdmin()
+        ? '<select class="inp sm" data-ovsel="vrm"><option value="">All VRMs</option>' + vrmOpts + '</select>'
+        : '<span class="fblock" title="You can only see your own transactions">' +
+          IC.user + esc(S.session.name) +
+          '<span class="fbcode">' + esc(S.session.empCode) + '</span></span>') +
       (f.range === 'custom'
         ? '<input class="inp sm" type="date" data-ovsel="from" max="' + esc(today()) + '" value="' + esc(f.from) + '">' +
           '<input class="inp sm" type="date" data-ovsel="to" max="' + esc(today()) + '" value="' + esc(f.to) + '">'
@@ -3014,7 +3042,8 @@ function ovFilterBar() {
     ((f.range === 'quarter' || f.range === 'year') ? qtrRow(f) : '') +
     '</div>' +
     '<div class="fbnote">Showing <b>' + esc(r.label) + '</b>' +
-      (f.vrm ? ' · ' + esc(vrmNameByCode(f.vrm)) : ' · all VRMs') + '</div>' +
+      (!isAdmin() ? ' · ' + esc(S.session.name)
+                  : (f.vrm ? ' · ' + esc(vrmNameByCode(f.vrm)) : ' · all VRMs')) + '</div>' +
   '</div>';
 }
 
@@ -3464,15 +3493,29 @@ function txnFoot(rows, extraCols) {
 }
 
 /* ------------------------------ VRM: Summary ------------------------------ */
+/*
+ * My summary and the admin's Consolidated overview are the same report over
+ * different rows: a VRM sees their own book because that is all the server ever
+ * sent them. So they now share the filter, the cards and the range, rather than
+ * the VRM getting a fixed view of the newest month with no way to ask about
+ * last quarter. The only difference is the VRM control, which is a locked label
+ * for a VRM and a dropdown for an admin.
+ */
 function viewSummary() {
-  var t = S.data.txns, k = kpis(t), m = monthly(t);
+  var rows = ovRows();
+  var r = ovRange();
+  var mx = metrics(rows);
+  var m = monthly(rows);
   after(function () { drawTrend('c1', m); });
 
-  return pageHead('My summary', S.session.name + ' (' + S.session.empCode + ') — ' + k.refLabel, '') +
-    kpiCards(k) +
-    waterfall(k.month, k.refMonth ? 'How ' + k.refLabel + ' adds up' : 'How the month adds up') +
+  return pageHead('My summary',
+      S.session.name + ' (' + S.session.empCode + ') · ' +
+      r.label + ' · ' + rows.length + ' transaction(s)', '') +
+    ovFilterBar() +
+    rangeCards(mx, rows, r.label) +
+    waterfall(mx, 'How ' + r.label + ' adds up') +
     trendPanel('c1', m) +
-    statusStrip(k.all);
+    statusStrip(mx);
 }
 
 /* ------------------------------- VRM: Data -------------------------------- */
@@ -3481,6 +3524,7 @@ function viewData() {
   var rows = allTxnRows();
 
   return pageHead('My data', rows.length + ' of ' + S.data.txns.length + ' rows',
+      '<button class="btn sm pri" data-act="addentry">' + IC.plus + ' Add entry</button>' +
       '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload CSV/Excel</button>' +
       '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Upload template</button>' +
       '<button class="btn xs gh" data-act="tplslimcsv" ' +
@@ -4076,6 +4120,30 @@ function tfAnyActive() {
  * already set sends the reader to an empty table, where the natural conclusion
  * is that the data is missing rather than that the filters disagree.
  */
+/*
+ * Distinct values of one field, and the <datalist> that offers them. The value
+ * lists on the filter bar build their own options with counts; these two are
+ * the plain version, for a form field where a suggestion is a convenience
+ * rather than the whole control.
+ */
+function tfUnique(get, cap) {
+  var seen = {}, out = [];
+  (S.data && S.data.txns || []).forEach(function (t) {
+    var v = String(get(t) || '').trim();
+    if (!v) return;
+    var k = v.toUpperCase();
+    if (seen[k]) return;
+    seen[k] = 1; out.push(v);
+  });
+  out.sort(function (a, b) { return a.localeCompare(b); });
+  return out.slice(0, cap || 400);
+}
+function tfList(id, vals) {
+  return '<datalist id="' + id + '">' +
+    vals.map(function (v) { return '<option value="' + esc(v) + '"></option>'; }).join('') +
+    '</datalist>';
+}
+
 function tfOptions(key) {
   var get = TF_FIELDS[key].get;
   var counts = {}, label = {};
@@ -4339,6 +4407,7 @@ function viewAllTxns() {
   var allShown = rows.length > 0 && shownSel === rows.length;
 
   return pageHead('All transactions', rows.length + ' of ' + S.data.txns.length + ' rows',
+      '<button class="btn sm pri" data-act="addentry">' + IC.plus + ' Add entry</button>' +
       '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload purchases</button>' +
       '<button class="btn sm acc" data-act="uploadred">' + IC.up + ' Upload redemptions</button>' +
       '<button class="btn sm" data-act="tplxlsx">' + IC.down + ' Purchase template</button>' +
@@ -5670,6 +5739,138 @@ function suggestPassword() {
   return out;
 }
 
+
+/* ---------------------------------------------------------------------------
+ * ADD ONE TRANSACTION BY HAND
+ *
+ * Everything until now arrived as a file. That is right for a platform export
+ * of two hundred rows and wrong for the one trade somebody keyed at four
+ * o'clock and needs in tonight's figures: building a one-line spreadsheet to
+ * upload it is a workaround, not a workflow.
+ *
+ * The server already understood this - addTxns() has taken mode 'ADD' since it
+ * was written - so this is a form over an endpoint that was waiting for one.
+ * It goes through exactly the same path as an upload, which means it inherits
+ * the duplicate guard, the name resolution, the basket rule and the redemption
+ * restriction without any of them being re-implemented here.
+ * ------------------------------------------------------------------------ */
+function addEntryDialog() {
+  var admin = isAdmin();
+  var today_ = today();
+
+  /* A VRM can only file their own business, so the field is fixed and says so.
+     An admin picks, and may leave it blank for the resolver to work out. */
+  var vrmField = admin
+    ? '<label class="lbl">VRM</label><select class="inp" id="e_vrm">' +
+        '<option value="">- work it out from the name -</option>' +
+        (S.data.vrms || []).map(function (v) {
+          return '<option value="' + esc(v.name) + '">' + esc(v.name) +
+                 ' (' + esc(v.empCode) + ')</option>';
+        }).join('') + '</select>'
+    : '<label class="lbl">VRM</label>' +
+      '<input class="inp" id="e_vrm" value="' + esc(S.session.name) + '" readonly ' +
+      'title="A VRM can only file their own transactions">';
+
+  /*
+   * Redemption is Admin-only, and the server refuses it from a VRM. Leaving it
+   * in the list for a VRM would mean offering a choice that always fails, so
+   * the option is simply not there.
+   */
+  var types = admin
+    ? [TT.SIP, TT.LUMPSUM, TT.SIP_BASKET, TT.LUMPSUM_BASKET, TT.REDEMPTION]
+    : [TT.SIP, TT.LUMPSUM, TT.SIP_BASKET, TT.LUMPSUM_BASKET];
+
+  modal('Add a transaction',
+    'One row, straight into the same place an upload lands. It goes through the ' +
+    'same duplicate check and the same VRM matching.',
+    '<div class="egrid">' +
+      '<div class="f"><label class="lbl">Txn Date</label>' +
+        '<input class="inp" id="e_date" type="date" max="' + esc(today_) + '" value="' + esc(today_) + '"></div>' +
+      '<div class="f"><label class="lbl">Txn Time <span class="opt">optional</span></label>' +
+        '<input class="inp" id="e_time" type="time"></div>' +
+      '<div class="f"><label class="lbl">Client Code</label>' +
+        '<input class="inp" id="e_ccode" list="eCodes" placeholder="e.g. S70810"></div>' +
+      '<div class="f"><label class="lbl">Client Name</label>' +
+        '<input class="inp" id="e_cname" list="eNames" placeholder="Full name as on the folio"></div>' +
+      '<div class="f wide"><label class="lbl">Scheme Name</label>' +
+        '<input class="inp" id="e_scheme" list="eSchemes" placeholder="e.g. AXIS MIDCAP FUND GROWTH"></div>' +
+      '<div class="f">' + vrmField + '</div>' +
+      '<div class="f"><label class="lbl">TXN Type</label><select class="inp" id="e_type">' +
+        types.map(function (x) {
+          return '<option value="' + x + '">' + TT_LABEL[x] + '</option>';
+        }).join('') + '</select></div>' +
+      '<div class="f"><label class="lbl">Amount</label>' +
+        '<input class="inp" id="e_amt" type="number" min="0" step="0.01" placeholder="0"></div>' +
+      '<div class="f"><label class="lbl">Txn Status</label><select class="inp" id="e_status">' +
+        [TS.COMPLETED, TS.IN_PROCESS, TS.REJECTED].map(function (x) {
+          return '<option value="' + x + '"' + (x === TS.COMPLETED ? ' selected' : '') + '>' +
+                 TS_LABEL[x] + '</option>';
+        }).join('') + '</select></div>' +
+      (admin
+        ? '<div class="f"><label class="lbl">Folio No. <span class="opt">optional</span></label>' +
+            '<input class="inp" id="e_folio" placeholder="If you have it"></div>' +
+          '<div class="f"><label class="lbl">RM Name <span class="opt">optional</span></label>' +
+            '<input class="inp" id="e_rm" placeholder="If you have it"></div>'
+        : '') +
+    '</div>' +
+    '<div class="fbnote" style="border:0;padding:10px 0 0">Put a basket in the scheme ' +
+    'name and the type is recorded as a basket purchase automatically. ' +
+    'PAN is not asked for here and is never sent.</div>' +
+    tfList('eCodes', tfUnique(function (t) { return t.clientCode; }, 400)) +
+    tfList('eNames', tfUnique(function (t) { return t.clientName; }, 400)) +
+    tfList('eSchemes', tfUnique(function (t) { return t.scheme; }, 400)),
+    '<button class="btn gh" data-act="close">Cancel</button>' +
+    '<button class="btn pri" data-act="doaddentry">Add transaction</button>');
+}
+
+/*
+ * Checked here so the reader is told all of what is wrong at once, rather than
+ * being sent back by the server one field at a time. The server checks again
+ * regardless - this is a courtesy, not the guard.
+ */
+function addEntrySubmit() {
+  var v = function (id) { var e = $(id); return e ? String(e.value || '').trim() : ''; };
+  var rec = {
+    date: v('e_date'), time: v('e_time'),
+    clientCode: v('e_ccode'), clientName: v('e_cname'),
+    pan: '', vrm: v('e_vrm'), rmName: v('e_rm'),
+    scheme: v('e_scheme'), txnType: v('e_type'),
+    amount: num(v('e_amt')), status: v('e_status'),
+    folio: v('e_folio'), reason: ''
+  };
+
+  var bad = [];
+  if (!rec.date) bad.push('a transaction date');
+  else if (rec.date > today()) bad.push('a date that is not in the future');
+  if (!rec.clientCode && !rec.clientName) bad.push('a client code or a client name');
+  if (!rec.scheme) bad.push('a scheme name');
+  if (!rec.txnType) bad.push('a transaction type');
+  if (!(rec.amount > 0)) bad.push('an amount above zero');
+  if (bad.length) {
+    return toast('Still needs ' + bad.join(', ') + '.', 'e');
+  }
+
+  /* Same rule the preview and the server use, so the toast can name the type
+     that will actually be stored rather than the one that was picked. */
+  rec.txnType = applyBasketType(rec.txnType, rec.scheme);
+
+  api('addTxns', S.session.token, [rec], 'ADD', { fileName: 'manual entry' })
+    .then(function (d) {
+      var r = d.result || {};
+      if (r.rejected) { uploadErrorDialog(r, 'manual entry'); return; }
+      closeModal();
+      absorb(d);
+      if (!num(r.inserted)) {
+        return toast(num(r.skippedDuplicates)
+          ? 'Not added - that exact transaction is already here.'
+          : 'Nothing was added.', 'e');
+      }
+      toast('Added ' + esc(TT_LABEL[rec.txnType] || rec.txnType) + ' ' +
+        rupee(rec.amount) + ' for ' + esc(rec.clientName || rec.clientCode) +
+        (num(r.unassigned) ? ' - needs a VRM, see Unassigned' : ''));
+    }).catch(fail);
+}
+
 function resetPwDialog(code, name) {
   var minLen = num((S.data.config || {}).minPasswordLen) || 6;
   modal('Reset password for ' + code,
@@ -6962,6 +7163,8 @@ var ACT = {
   changepw: changePwDialog,
   addvrm: addVrmDialog,
   edittxn: function (btn) { editTxnDialog(btn.dataset.id); },
+  addentry: function () { addEntryDialog(); },
+  doaddentry: function () { addEntrySubmit(); },
   resetpw: function (btn) { resetPwDialog(btn.dataset.code, btn.dataset.name); },
   showpw: function (btn) { showIssuedPassword(btn.dataset.code, btn.dataset.name); },
   togglepw: function () {
