@@ -1203,10 +1203,68 @@ html[data-corner="round"]{--r:20px; --r2:16px; --r3:14px}
 .sortth.on .sarr{opacity:1;color:var(--p-ink)}
 .sortth:hover .sarr{opacity:.75}
 
-.tfgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
-  gap:12px 14px;padding:0 16px 14px}
+.tfgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));
+  gap:12px 14px;padding:0 16px 14px;align-items:start}
 .tfgrid .inp{width:100%}
 .tfgrid>div{animation:cardIn var(--t-mid) var(--ease) both}
+
+/* ---- a value list: pick from what is there, or search it ---------------- */
+/*
+ * A dropdown that is also a search. The list is the answer to "what codes do I
+ * even have"; the search is the answer to "is 570810 one of them". Offering one
+ * without the other sends half the people who open it away again.
+ */
+/*
+ * Every .tfgrid child carries the card-in animation, and an animated element is
+ * its own stacking context - so without these the Amount row, which comes later
+ * in the DOM, painted straight through an open list above it. The z-index on
+ * .tfmenu alone could never have won that: it only orders things inside the
+ * picker, not the picker against its siblings.
+ */
+.tfgrid>div{position:relative;z-index:0}
+.tfpick{position:relative}
+.tfpick.open{z-index:80}
+.tfbtn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  cursor:pointer;font-weight:500}
+.tfbtn .tfval{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tfbtn .tfcar{font-style:normal;font-size:10px;color:var(--ink3);flex:0 0 auto;
+  transition:transform var(--t-fast) var(--ease)}
+.tfpick.open .tfbtn .tfcar{transform:rotate(180deg)}
+.tfbtn.set{border-color:var(--p);color:var(--ink);font-weight:600}
+.tfpick.open .tfbtn{border-color:var(--p);box-shadow:0 0 0 3px var(--p-soft)}
+
+.tfmenu{position:absolute;z-index:60;top:calc(100% + 6px);left:0;right:0;min-width:260px;
+  background:var(--surf);border:1px solid var(--line);border-radius:var(--r3);
+  box-shadow:0 18px 40px -12px rgba(0,0,0,.28),0 2px 8px rgba(0,0,0,.06);
+  overflow:hidden;animation:menuIn var(--t-fast) var(--ease) both}
+@keyframes menuIn{from{opacity:0;transform:translateY(-6px) scale(.985)}
+                  to{opacity:1;transform:none}}
+.tfmtop{display:flex;gap:8px;align-items:center;padding:10px;border-bottom:1px solid var(--line)}
+.tfmtop .search{flex:1;min-width:0;padding-left:10px}
+.tfmtop .search .inp{padding:7px 8px 7px 0;font-size:13px}
+.tfmlist{max-height:264px;overflow-y:auto;padding:6px}
+.tfopt{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  padding:7px 10px;border-radius:var(--rp);font-size:13px;color:var(--ink2);
+  transition:background var(--t-fast),color var(--t-fast)}
+.tfopt:hover{background:var(--surf2);color:var(--ink)}
+.tfoptv{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tfoptn{flex:0 0 auto;font-size:11.5px;font-weight:600;color:var(--ink3);
+  background:var(--surf2);border-radius:999px;padding:2px 8px}
+.tfopt.on{background:var(--p-soft);color:var(--p-ink);font-weight:600}
+.tfopt.on .tfoptn{background:transparent;color:var(--p-ink)}
+.tfnone,.tfmfoot{padding:12px;font-size:12.5px;color:var(--ink3);text-align:center}
+.tfmfoot{border-top:1px solid var(--line);padding:8px 12px}
+
+/* ---- amount: any, exact, or between ------------------------------------ */
+.tfamt{grid-column:1/-1}
+.tfamtrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tfamtrow .inp{width:auto;min-width:150px;flex:0 1 190px}
+.tfamtrow select.inp{flex:0 0 auto;min-width:140px}
+.tfand{font-size:12.5px;color:var(--ink3);font-weight:600}
+.tfhint{font-size:12.5px;color:var(--ink3)}
+
+.fbspan{padding:0 16px 14px;margin-top:-4px;font-size:12.5px;color:var(--ink3)}
+.fbspan b{color:var(--ink2)}
 
 .tfq{display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:0 16px 15px}
 .tfq .lab{font-size:12px;font-weight:600;color:var(--ink3);margin-right:2px}
@@ -3476,7 +3534,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-30 txn-filters';
+var PAGE_BUILD = '2026-08-30b txn-pickers';
 
 var API_URL = '';        /* set by the Pages build */
 
@@ -5338,10 +5396,7 @@ function viewSummary() {
 /* ------------------------------- VRM: Data -------------------------------- */
 function viewData() {
   var q = S.q.data || '';
-  var rows = S.data.txns.filter(function (t) { return matches(t, q); })
-    .sort(function (a, b) {
-      return (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || '');
-    });
+  var rows = allTxnRows();
 
   return pageHead('My data', rows.length + ' of ' + S.data.txns.length + ' rows',
       '<button class="btn sm acc" data-act="upload">' + IC.up + ' Upload CSV/Excel</button>' +
@@ -5381,14 +5436,16 @@ function viewData() {
       '<b>Lumpsum</b> or <b>Redemption</b>. Leave Txn Status blank and every row counts ' +
       'as Completed. A PAN column is accepted but redacted in your browser before upload.</div>' +
     '</div>' +
-    '<div class="panel"><div class="ptop"><div><h3>Transactions</h3></div>' +
-    '<div class="tools">' + searchBox('data', 'Search client, PAN, scheme, amount…') + expBtns('vrmtxns') + '</div></div>' +
+    txnFilterBar(rows.length, (S.data.txns || []).length) +
+    '<div class="panel"><div class="ptop"><div><h3>Transactions</h3></div></div>' +
     (rows.length
-      ? '<div class="twrap"><table><thead><tr>' + txnCols(false) + '</tr></thead><tbody>' +
+      ? '<div class="twrap"><table><thead><tr>' + txnCols(true) + '</tr></thead><tbody>' +
         rows.map(function (t) { return '<tr>' + txnCells(t) + '</tr>'; }).join('') +
         '</tbody>' + txnFoot(rows, 0) + '</table></div>'
-      : emptyState(q ? 'No matching transactions' : 'No transactions yet',
-          q ? 'Try a different search term.' : 'Upload a CSV or Excel file to get started.')) +
+      : emptyState(tfAnyActive() || q ? 'No matching transactions' : 'No transactions yet',
+          tfAnyActive() || q
+            ? 'Nothing survives the filters above. Clear filters puts them all back.'
+            : 'Upload a CSV or Excel file to get started.')) +
     '</div>';
 }
 
@@ -5765,21 +5822,113 @@ function viewVrmwise() {
 }
 
 /* ---------------------------------------------------------------------------
- * ALL TRANSACTIONS - one filter, one sort, one list.
+ * TRANSACTION FILTERS - one filter, one sort, one list, both portals.
  *
- * The page and the CSV/Excel export both call allTxnRows(). They used to hold
- * two copies of the same three-line predicate, which was survivable while there
- * were three filters and a fixed sort; with a date range, three text matches, an
- * amount band and a user-chosen sort it stops being survivable. A download that
- * silently disagrees with the screen it was taken from is the worst kind of bug
- * in a reporting tool, because nothing about it looks wrong.
+ * The admin's All transactions and the VRM's My data show the same rows in the
+ * same columns and differ only in which rows the server sent. They now share
+ * this filter outright rather than each growing a version of it: a VRM asking
+ * "what did I do for this client in July" is the same question an admin asks,
+ * and answering it twice in two places is how the two answers start differing.
+ *
+ * The export calls allTxnRows() too. A download that silently disagrees with
+ * the screen it was taken from is the worst kind of bug in a reporting tool,
+ * because nothing about it looks wrong.
  * ------------------------------------------------------------------------ */
+
+/* Each portal keeps its own search text, because they are separate pages. */
+function txnSearchKey() { return isAdmin() ? 'alltxns' : 'data'; }
+
+/*
+ * The three list filters share a shape: `q` is what was typed, `pick` is a value
+ * chosen from the list. A pinned value matches exactly; typed text matches
+ * anywhere. A field offering only one of the two sends half its users away -
+ * picking is what a list is for, typing is what a search is for.
+ */
+var TF_FIELDS = {
+  client: { label: 'Client Code', all: 'All client codes',
+            ph: 'Search client code\u2026', get: function (t) { return t.clientCode; } },
+  name:   { label: 'Client Name', all: 'All client names',
+            ph: 'Search client name\u2026', get: function (t) { return t.clientName; } },
+  scheme: { label: 'Scheme Name', all: 'All schemes',
+            ph: 'Search scheme name\u2026', get: function (t) { return t.scheme; } }
+};
+
+function tfField(k) {
+  var f = S.tf[k];
+  if (!f || typeof f !== 'object') { f = { q: '', pick: '' }; S.tf[k] = f; }
+  return f;
+}
+function fieldMatch(hay, f) {
+  var v = String(hay == null ? '' : hay).trim();
+  if (f.pick) return v.toUpperCase() === String(f.pick).toUpperCase();
+  var n = String(f.q || '').trim();
+  if (!n) return true;
+  return v.toUpperCase().indexOf(n.toUpperCase()) >= 0;
+}
+function fieldActive(f) { return !!(f.pick || String(f.q || '').trim()); }
+
+/*
+ * The first and last transaction date this session can actually see.
+ *
+ * A VRM's date picker is bounded by it. Their book starts when their first
+ * upload starts, and offering them January when nothing exists before July
+ * answers "no transactions" to a question that was never askable - which reads
+ * as data missing rather than as a period that never had any. An admin is not
+ * bounded: comparing periods is the job, and an empty quarter is a finding.
+ */
+function dataDateSpan() {
+  var lo = '', hi = '';
+  (S.data && S.data.txns || []).forEach(function (t) {
+    if (!t.date) return;
+    if (!lo || t.date < lo) lo = t.date;
+    if (!hi || t.date > hi) hi = t.date;
+  });
+  return { from: lo, to: hi, any: !!lo };
+}
+function dateBounds() {
+  var sp = dataDateSpan();
+  /* The admin may look back as far as they like but never forward: a range
+     running into the future reports a fall that is only the calendar. */
+  if (isAdmin()) return { min: '', max: today() };
+  return { min: sp.from || '', max: sp.to || today() };
+}
+
+/* Any amount, one exact amount, or a band. */
+function amountMatch(a) {
+  var f = S.tf;
+  if (f.amtMode === 'exact') {
+    if (String(f.amtExact) === '') return true;
+    /*
+     * To the paisa. The redemption report carries amounts like 3000.03, and an
+     * exact search that quietly rounded would hand back a row nobody asked for
+     * while calling it exact. The tolerance is there for binary floating point,
+     * not for rounding.
+     */
+    return Math.abs(a - num(f.amtExact)) < 0.005;
+  }
+  if (f.amtMode === 'range') {
+    if (String(f.amtMin) !== '' && a < num(f.amtMin)) return false;
+    if (String(f.amtMax) !== '' && a > num(f.amtMax)) return false;
+  }
+  return true;
+}
+function amountActive() {
+  var f = S.tf;
+  if (f.amtMode === 'exact') return String(f.amtExact) !== '';
+  if (f.amtMode === 'range') return String(f.amtMin) !== '' || String(f.amtMax) !== '';
+  return false;
+}
 
 /* {from, to, label} for the date pills. */
 function tfRange() { return rangeOf(S.tf); }
 
-/* Does the row survive every filter except the free-text search? */
-function passesTxnFilters(t) {
+/*
+ * Does the row survive every filter except the free-text search?
+ *
+ * `skip` leaves one field out. The lists use it to show what is still reachable
+ * under the OTHER filters without a field hiding its own options from itself.
+ */
+function passesTxnFilters(t, skip) {
   var f = S.tf;
   if (S.fType && t.txnType !== S.fType) return false;
   if (S.fStatus && t.status !== S.fStatus) return false;
@@ -5793,21 +5942,11 @@ function passesTxnFilters(t) {
     if (!t.date || t.date < r.from || t.date > r.to) return false;
   }
 
-  if (!hasText(t.clientCode, f.client)) return false;
-  if (!hasText(t.clientName, f.name)) return false;
-  if (!hasText(t.scheme, f.scheme)) return false;
-
-  var a = num(t.amount);
-  if (String(f.amtMin) !== '' && a < num(f.amtMin)) return false;
-  if (String(f.amtMax) !== '' && a > num(f.amtMax)) return false;
+  if (skip !== 'client' && !fieldMatch(t.clientCode, tfField('client'))) return false;
+  if (skip !== 'name'   && !fieldMatch(t.clientName, tfField('name')))   return false;
+  if (skip !== 'scheme' && !fieldMatch(t.scheme,     tfField('scheme'))) return false;
+  if (skip !== 'amount' && !amountMatch(num(t.amount))) return false;
   return true;
-}
-
-/* Contains-match, case-blind. An empty needle matches everything. */
-function hasText(hay, needle) {
-  var n = String(needle == null ? '' : needle).trim();
-  if (!n) return true;
-  return String(hay == null ? '' : hay).toUpperCase().indexOf(n.toUpperCase()) >= 0;
 }
 
 function txnSorter() {
@@ -5829,7 +5968,7 @@ function txnSorter() {
 }
 
 function allTxnRows() {
-  var q = S.q.alltxns || '';
+  var q = S.q[txnSearchKey()] || '';
   return (S.data.txns || []).filter(function (t) {
     return passesTxnFilters(t) && matches(t, q);
   }).sort(txnSorter());
@@ -5839,32 +5978,120 @@ function allTxnRows() {
 function tfAnyActive() {
   var f = S.tf;
   return !!(S.fType || S.fStatus || S.fVrm || f.basket || f.range !== 'all' ||
-            String(f.client).trim() || String(f.name).trim() || String(f.scheme).trim() ||
-            String(f.amtMin) !== '' || String(f.amtMax) !== '');
+            fieldActive(tfField('client')) || fieldActive(tfField('name')) ||
+            fieldActive(tfField('scheme')) || amountActive());
 }
 
 /*
- * The values actually present in the data, offered as a datalist so the three
- * text filters can be picked as well as typed. Client codes and scheme names
- * are long and easy to mistype, and a filter that silently matches nothing
- * because of one wrong character is indistinguishable from no data.
+ * What a list offers: the values still reachable once every OTHER filter has
+ * been applied, each with the number of rows behind it.
+ *
+ * A list that keeps offering a client who cannot appear under the filters
+ * already set sends the reader to an empty table, where the natural conclusion
+ * is that the data is missing rather than that the filters disagree.
  */
-function tfUnique(get, cap) {
-  var seen = {}, out = [];
+function tfOptions(key) {
+  var get = TF_FIELDS[key].get;
+  var counts = {}, label = {};
   (S.data.txns || []).forEach(function (t) {
+    if (!passesTxnFilters(t, key)) return;
     var v = String(get(t) || '').trim();
     if (!v) return;
     var k = v.toUpperCase();
-    if (seen[k]) return;
-    seen[k] = 1; out.push(v);
+    if (!(k in counts)) { counts[k] = 0; label[k] = v; }
+    counts[k]++;
   });
-  out.sort(function (a, b) { return a.localeCompare(b); });
-  return out.slice(0, cap || 400);
+
+  var needle = String(tfField(key).q || '').trim().toUpperCase();
+  var out = [];
+  Object.keys(counts).forEach(function (k) {
+    if (needle && k.indexOf(needle) < 0) return;
+    out.push({ v: label[k], n: counts[k] });
+  });
+
+  var dir = (S.tf.listSort && S.tf.listSort[key]) || 'az';
+  out.sort(function (a, b) {
+    if (dir === 'count') return b.n - a.n || a.v.localeCompare(b.v);
+    var c = a.v.localeCompare(b.v, undefined, { numeric: true, sensitivity: 'base' });
+    return dir === 'za' ? -c : c;
+  });
+  return out;
 }
-function tfList(id, vals) {
-  return '<datalist id="' + id + '">' +
-    vals.map(function (v) { return '<option value="' + esc(v) + '"></option>'; }).join('') +
-    '</datalist>';
+var TF_LIST_ORDER = { az: 'A\u2013Z', za: 'Z\u2013A', count: 'Most rows' };
+var TF_LIST_NEXT  = { az: 'za', za: 'count', count: 'az' };
+
+/* One field: a button showing what is chosen, and a searchable list under it. */
+function tfPicker(key) {
+  var spec = TF_FIELDS[key], f = tfField(key);
+  var open = S.tf.open === key;
+  var dir = (S.tf.listSort && S.tf.listSort[key]) || 'az';
+  var badge = f.pick
+    ? esc(f.pick)
+    : (String(f.q).trim() ? 'contains \u201C' + esc(String(f.q).trim()) + '\u201D' : spec.all);
+
+  var menu = '';
+  if (open) {
+    var opts = tfOptions(key);
+    var shown = opts.slice(0, 300);
+    menu = '<div class="tfmenu">' +
+      '<div class="tfmtop">' +
+        '<div class="search">' + IC.search +
+          '<input class="inp" type="search" data-tfsearch="' + key + '" ' +
+            'placeholder="' + esc(spec.ph) + '" value="' + esc(f.q) + '">' +
+        '</div>' +
+        '<button class="btn xs gh" data-tflsort="' + key + '" ' +
+          'title="Change the order of this list">' + TF_LIST_ORDER[dir] + '</button>' +
+      '</div>' +
+      '<div class="tfmlist">' +
+        '<button class="tfopt' + (f.pick ? '' : ' on') + '" data-tfpick="' + key + '" data-v="">' +
+          '<span class="tfoptv">' + esc(spec.all) + '</span></button>' +
+        (shown.length
+          ? shown.map(function (op) {
+              var on = String(f.pick).toUpperCase() === op.v.toUpperCase();
+              return '<button class="tfopt' + (on ? ' on' : '') + '" data-tfpick="' + key +
+                '" data-v="' + esc(op.v) + '" title="' + esc(op.v) + '">' +
+                '<span class="tfoptv">' + esc(op.v) + '</span>' +
+                '<span class="tfoptn">' + op.n + '</span></button>';
+            }).join('')
+          : '<div class="tfnone">Nothing here matches that search.</div>') +
+      '</div>' +
+      (opts.length > shown.length
+        ? '<div class="tfmfoot">First ' + shown.length + ' of ' + opts.length +
+          ' \u00b7 keep typing to narrow it</div>'
+        : (shown.length ? '<div class="tfmfoot">' + shown.length + ' to choose from</div>' : '')) +
+    '</div>';
+  }
+
+  return '<div class="tfpick' + (open ? ' open' : '') + '">' +
+    '<label class="lbl">' + spec.label + '</label>' +
+    '<button class="inp tfbtn' + (fieldActive(f) ? ' set' : '') + '" data-tfopen="' + key + '">' +
+      '<span class="tfval">' + badge + '</span><i class="tfcar">\u25BE</i></button>' +
+    menu + '</div>';
+}
+
+var TF_AMT_MODES = [['any', 'Any amount'], ['exact', 'Exactly'], ['range', 'Between']];
+
+function tfAmount() {
+  var f = S.tf;
+  return '<div class="tfamt">' +
+    '<label class="lbl">Amount</label>' +
+    '<div class="tfamtrow">' +
+      '<select class="inp" data-tfs="amtMode">' + TF_AMT_MODES.map(function (kv) {
+        return '<option value="' + kv[0] + '"' + (f.amtMode === kv[0] ? ' selected' : '') + '>' +
+               kv[1] + '</option>';
+      }).join('') + '</select>' +
+      (f.amtMode === 'exact'
+        ? '<input class="inp" type="number" min="0" step="0.01" data-tfi="amtExact" ' +
+            'placeholder="e.g. 5000" value="' + esc(f.amtExact) + '">' +
+          '<span class="tfhint">matched to the paisa</span>'
+        : f.amtMode === 'range'
+          ? '<input class="inp" type="number" min="0" step="1000" data-tfi="amtMin" ' +
+              'placeholder="From" value="' + esc(f.amtMin) + '">' +
+            '<span class="tfand">and</span>' +
+            '<input class="inp" type="number" min="0" step="1000" data-tfi="amtMax" ' +
+              'placeholder="To" value="' + esc(f.amtMax) + '">'
+          : '<span class="tfhint">every transaction, whatever its size</span>') +
+    '</div></div>';
 }
 
 /* One-click combinations, each a toggle so the same chip also clears it. */
@@ -5873,12 +6100,17 @@ function txnQuick(k) {
   if (k === 'basket') { f.basket = !f.basket; return; }
   if (k === 'rej')    { S.fStatus = (S.fStatus === TS.REJECTED ? '' : TS.REJECTED); return; }
   if (k === 'proc')   { S.fStatus = (S.fStatus === TS.IN_PROCESS ? '' : TS.IN_PROCESS); return; }
-  if (k === 'lakh')   { f.amtMin = (String(f.amtMin) === '100000' ? '' : '100000'); return; }
   if (k === 'sip')    { S.fType = (S.fType === TT.SIP ? '' : TT.SIP); return; }
   if (k === 'red')    { S.fType = (S.fType === TT.REDEMPTION ? '' : TT.REDEMPTION); return; }
+  if (k === 'lakh') {
+    var lakhOn = (f.amtMode === 'range' && String(f.amtMin) === '100000');
+    if (lakhOn) { f.amtMode = 'any'; f.amtMin = ''; }
+    else { f.amtMode = 'range'; f.amtMin = '100000'; f.amtMax = ''; }
+    return;
+  }
   if (k === 'big') {
-    var on = (f.sort === 'amount' && f.dir === 'desc');
-    f.sort = on ? 'date' : 'amount';
+    var bigOn = (f.sort === 'amount' && f.dir === 'desc');
+    f.sort = bigOn ? 'date' : 'amount';
     f.dir = 'desc';
     return;
   }
@@ -5892,33 +6124,54 @@ function txnQuick(k) {
 /* A sentence saying what is on, so nobody reads a filtered figure as the whole book. */
 function tfSummary(shown, total) {
   var f = S.tf, bits = [];
+  var say = function (key, word) {
+    var fd = tfField(key);
+    if (fd.pick) bits.push(word + ' <b>' + esc(fd.pick) + '</b>');
+    else if (String(fd.q).trim()) bits.push(word + ' contains <b>' + esc(String(fd.q).trim()) + '</b>');
+  };
+
   if (f.range !== 'all') bits.push(esc(tfRange().label));
   if (S.fType) bits.push(esc(TT_LABEL[S.fType] || S.fType));
   if (f.basket) bits.push('baskets only');
   if (S.fStatus) bits.push(esc(TS_LABEL[S.fStatus] || S.fStatus));
   if (S.fVrm) bits.push(esc(vrmNameByCode(S.fVrm)));
-  if (String(f.client).trim()) bits.push('code contains <b>' + esc(f.client.trim()) + '</b>');
-  if (String(f.name).trim()) bits.push('name contains <b>' + esc(f.name.trim()) + '</b>');
-  if (String(f.scheme).trim()) bits.push('scheme contains <b>' + esc(f.scheme.trim()) + '</b>');
-  if (String(f.amtMin) !== '' && String(f.amtMax) !== '') {
-    bits.push(rupee(num(f.amtMin)) + ' to ' + rupee(num(f.amtMax)));
-  } else if (String(f.amtMin) !== '') {
-    bits.push(rupee(num(f.amtMin)) + ' and above');
-  } else if (String(f.amtMax) !== '') {
-    bits.push('up to ' + rupee(num(f.amtMax)));
+  say('client', 'code');
+  say('name', 'client');
+  say('scheme', 'scheme');
+  if (f.amtMode === 'exact' && String(f.amtExact) !== '') {
+    bits.push('exactly ' + rupeeExact(num(f.amtExact)));
+  } else if (f.amtMode === 'range') {
+    if (String(f.amtMin) !== '' && String(f.amtMax) !== '') {
+      bits.push(rupee(num(f.amtMin)) + ' to ' + rupee(num(f.amtMax)));
+    } else if (String(f.amtMin) !== '') {
+      bits.push(rupee(num(f.amtMin)) + ' and above');
+    } else if (String(f.amtMax) !== '') {
+      bits.push('up to ' + rupee(num(f.amtMax)));
+    }
   }
-  if (String(S.q.alltxns || '').trim()) bits.push('search <b>' + esc(S.q.alltxns.trim()) + '</b>');
+  var q = String(S.q[txnSearchKey()] || '').trim();
+  if (q) bits.push('search <b>' + esc(q) + '</b>');
 
   var sp = TXN_SORTS[f.sort] || TXN_SORTS.date;
   var order = esc(sp.label) + (f.dir === 'asc' ? ' \u2191' : ' \u2193');
+
+  /* A VRM is told the span their dates are bounded to, rather than discovering
+     it by finding a date greyed out in the picker. */
+  var span = dataDateSpan();
+  var bound = (!isAdmin() && span.any)
+    ? '<div class="fbspan">Your transactions run <b>' + esc(dmy(span.from)) +
+      '</b> to <b>' + esc(dmy(span.to)) + '</b> \u00b7 dates outside that are not selectable</div>'
+    : '';
+
   return '<div class="fbnote">Showing <b>' + shown + '</b> of ' + total + ' rows' +
     (bits.length ? ' \u00b7 ' + bits.join(' \u00b7 ') : ' \u00b7 no filters') +
-    ' \u00b7 sorted by <b>' + order + '</b></div>';
+    ' \u00b7 sorted by <b>' + order + '</b></div>' + bound;
 }
 
-/* The filter panel itself. */
+/* The filter panel. The same one on both portals; the VRM column is dropped
+   for a VRM, who only ever sees their own rows. */
 function txnFilterBar(shown, total) {
-  var f = S.tf;
+  var f = S.tf, admin = isAdmin(), b = dateBounds();
   var vrmOpts = (S.data.vrms || []).map(function (v) {
     return '<option value="' + esc(v.empCode) + '"' + (S.fVrm === v.empCode ? ' selected' : '') + '>' +
            esc(v.name) + ' (' + esc(v.empCode) + ')</option>';
@@ -5926,12 +6179,19 @@ function txnFilterBar(shown, total) {
   var chip = function (key, label, on) {
     return '<button class="chip' + (on ? ' on' : '') + '" data-tfquick="' + key + '">' + label + '</button>';
   };
+  var dateInput = function (which) {
+    return '<input class="inp sm" type="date" data-tfs="' + which + '"' +
+      (b.min ? ' min="' + esc(b.min) + '"' : '') +
+      (b.max ? ' max="' + esc(b.max) + '"' : '') +
+      ' value="' + esc(f[which]) + '">';
+  };
 
   return '<div class="panel filterbar">' +
     '<div class="ptop"><div><h3>Filters</h3></div>' +
-      '<div class="tools">' + searchBox('alltxns', 'Search any column\u2026') + expBtns('alltxns') + '</div></div>' +
+      '<div class="tools">' +
+        searchBox(txnSearchKey(), 'Search any column\u2026') +
+        expBtns(admin ? 'alltxns' : 'vrmtxns') + '</div></div>' +
 
-    /* the date range, as a segmented control rather than two date boxes */
     '<div class="fbrow">' +
       '<span class="fbqlab">Txn Date</span>' +
       '<div class="pills">' + OV_RANGES.map(function (g) {
@@ -5939,18 +6199,12 @@ function txnFilterBar(shown, total) {
                '" data-tfr="' + g.id + '">' + esc(g.label) + '</button>';
       }).join('') + '</div>' +
       '<div class="fbend">' +
-        (f.range === 'custom'
-          ? '<input class="inp sm" type="date" data-tfs="from" max="' + esc(today()) +
-              '" value="' + esc(f.from) + '">' +
-            '<input class="inp sm" type="date" data-tfs="to" max="' + esc(today()) +
-              '" value="' + esc(f.to) + '">'
-          : '') +
+        (f.range === 'custom' ? dateInput('from') + dateInput('to') : '') +
         '<button class="btn xs gh" data-act="clearTf">Clear filters</button>' +
       '</div>' +
       ((f.range === 'quarter' || f.range === 'year') ? qtrRow(f, 'tf') : '') +
     '</div>' +
 
-    /* everything that narrows by column */
     '<div class="tfgrid">' +
       '<div><label class="lbl">TXN Type</label><select class="inp" data-tf="fType">' +
         '<option value="">All types</option>' +
@@ -5962,29 +6216,18 @@ function txnFilterBar(shown, total) {
         [TS.COMPLETED, TS.IN_PROCESS, TS.REJECTED].map(function (x) {
           return '<option value="' + x + '"' + (S.fStatus === x ? ' selected' : '') + '>' + TS_LABEL[x] + '</option>';
         }).join('') + '</select></div>' +
-      '<div><label class="lbl">VRM</label><select class="inp" data-tf="fVrm">' +
-        '<option value="">All VRMs</option>' + vrmOpts + '</select></div>' +
-      '<div><label class="lbl">Client Code</label>' +
-        '<input class="inp" data-tfi="client" list="tfCodes" placeholder="Any code" ' +
-          'value="' + esc(f.client) + '"></div>' +
-      '<div><label class="lbl">Client Name</label>' +
-        '<input class="inp" data-tfi="name" list="tfNames" placeholder="Any name" ' +
-          'value="' + esc(f.name) + '"></div>' +
-      '<div><label class="lbl">Scheme Name</label>' +
-        '<input class="inp" data-tfi="scheme" list="tfSchemes" placeholder="Any scheme" ' +
-          'value="' + esc(f.scheme) + '"></div>' +
-      '<div><label class="lbl">Amount from</label>' +
-        '<input class="inp" type="number" min="0" step="1000" data-tfi="amtMin" ' +
-          'placeholder="No minimum" value="' + esc(f.amtMin) + '"></div>' +
-      '<div><label class="lbl">Amount to</label>' +
-        '<input class="inp" type="number" min="0" step="1000" data-tfi="amtMax" ' +
-          'placeholder="No maximum" value="' + esc(f.amtMax) + '"></div>' +
+      (admin
+        ? '<div><label class="lbl">VRM</label><select class="inp" data-tf="fVrm">' +
+          '<option value="">All VRMs</option>' + vrmOpts + '</select></div>'
+        : '') +
+      tfPicker('client') + tfPicker('name') + tfPicker('scheme') +
+      tfAmount() +
     '</div>' +
 
     /*
-     * Quick select. Each chip is one click for a combination people ask for
-     * every day, and clicking it again takes it back off - a chip that can only
-     * be set and not unset makes the reader hunt for which control it moved.
+     * Quick select. One click for the combinations people ask for daily, and
+     * each chip is a toggle - one that could be set but not unset leaves the
+     * reader hunting for whichever control it moved.
      */
     '<div class="tfq"><span class="lab">Quick select</span>' +
       chip('sip', 'SIP only', S.fType === TT.SIP) +
@@ -5992,15 +6235,12 @@ function txnFilterBar(shown, total) {
       chip('basket', 'Baskets only', !!f.basket) +
       chip('rej', 'Rejected', S.fStatus === TS.REJECTED) +
       chip('proc', 'In process', S.fStatus === TS.IN_PROCESS) +
-      chip('lakh', '\u20B91 L and above', String(f.amtMin) === '100000') +
+      chip('lakh', '\u20B91 L and above', f.amtMode === 'range' && String(f.amtMin) === '100000') +
       chip('big', 'Largest first', f.sort === 'amount' && f.dir === 'desc') +
       chip('oldest', 'Oldest first', f.sort === 'date' && f.dir === 'asc') +
     '</div>' +
 
     tfSummary(shown, total) +
-    tfList('tfCodes', tfUnique(function (t) { return t.clientCode; }, 500)) +
-    tfList('tfNames', tfUnique(function (t) { return t.clientName; }, 500)) +
-    tfList('tfSchemes', tfUnique(function (t) { return t.scheme; }, 500)) +
   '</div>';
 }
 
@@ -6676,8 +6916,13 @@ S.ov = { range: 'month', from: '', to: '', vrm: '', q: 0, fy: 0 };
  * one picker in qtrRow() can drive either.
  */
 S.tf = { range: 'all', from: '', to: '', q: 0, fy: 0,
-         client: '', name: '', scheme: '', amtMin: '', amtMax: '',
-         basket: false, sort: 'date', dir: 'desc' };
+         client: { q: '', pick: '' },
+         name:   { q: '', pick: '' },
+         scheme: { q: '', pick: '' },
+         listSort: { client: 'az', name: 'az', scheme: 'az' },
+         amtMode: 'any', amtExact: '', amtMin: '', amtMax: '',
+         basket: false, sort: 'date', dir: 'desc',
+         open: '' };   /* which value list is showing, if any */
 var TF_DEFAULT = JSON.stringify(S.tf);
 
 var GRAN = {
@@ -7576,18 +7821,12 @@ function exportSpec(what) {
      * they are on the screen - it calls the very function the table is built
      * from, so the two cannot drift apart as filters are added.
      */
-    if (what === 'alltxns') {
+    if (what === 'alltxns' || what === 'vrmtxns') {
       rows = allTxnRows().map(txnRow);
     } else {
-      var q = what === 'clientdetail' ? '' : (S.q.data || '');
-      var src = S.data.txns;
-      if (what === 'clientdetail') {
-        src = src.filter(function (t) {
-          return String(t.clientCode).toUpperCase() === String(S.clientCode).toUpperCase();
-        });
-      }
-      rows = src.filter(function (t) { return matches(t, q); })
-        .sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); })
+      rows = S.data.txns.filter(function (t) {
+        return String(t.clientCode).toUpperCase() === String(S.clientCode).toUpperCase();
+      }).sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); })
         .map(txnRow);
     }
     return {
@@ -9039,8 +9278,39 @@ document.addEventListener('click', function (e) {
   var ch = e.target.closest('[data-tfquick]');
   if (ch) { txnQuick(ch.dataset.tfquick); render(); return; }
 
+  /* open or close a value list */
+  var op = e.target.closest('[data-tfopen]');
+  if (op) {
+    var ok = op.dataset.tfopen;
+    S.tf.open = (S.tf.open === ok ? '' : ok);
+    render();
+    focusTfSearch();
+    return;
+  }
+  /* pin one value from the list, or unpin with the "All ..." row */
+  var pk = e.target.closest('[data-tfpick]');
+  if (pk) {
+    var pkey = pk.dataset.tfpick, fd = tfField(pkey);
+    fd.pick = pk.dataset.v || '';
+    /* A pinned value replaces the typed one, so the button says one thing. */
+    if (fd.pick) fd.q = '';
+    S.tf.open = '';
+    render();
+    return;
+  }
+  /* A-Z, Z-A, most rows */
+  var ls = e.target.closest('[data-tflsort]');
+  if (ls) {
+    var lk = ls.dataset.tflsort;
+    S.tf.listSort[lk] = TF_LIST_NEXT[S.tf.listSort[lk]] || 'az';
+    render();
+    focusTfSearch();
+    return;
+  }
+
   var th = e.target.closest('[data-tsort]');
   if (th) {
+    if (S.tf.open) S.tf.open = '';
     var k = th.dataset.tsort;
     if (S.tf.sort === k) {
       S.tf.dir = (S.tf.dir === 'asc' ? 'desc' : 'asc');
@@ -9050,8 +9320,30 @@ document.addEventListener('click', function (e) {
       S.tf.dir = (TXN_SORTS[k] && (TXN_SORTS[k].num || k === 'date')) ? 'desc' : 'asc';
     }
     render();
+    return;
   }
+
+  /*
+   * A click anywhere else closes an open list. It comes last so every control
+   * above has already had its turn - a blanket close first would swallow the
+   * click that opened the thing.
+   */
+  if (S.tf.open && !e.target.closest('.tfmenu')) { S.tf.open = ''; render(); }
 });
+
+/* Escape closes the open list, the way every other menu on the web does. */
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && S.tf && S.tf.open) { S.tf.open = ''; render(); }
+});
+
+/* Put the cursor back in the list's search box after the panel re-renders. */
+function focusTfSearch() {
+  if (!S.tf.open) return;
+  var el = document.querySelector('[data-tfsearch="' + S.tf.open + '"]');
+  if (!el) return;
+  el.focus();
+  try { el.setSelectionRange(el.value.length, el.value.length); } catch (err) {}
+}
 document.addEventListener('change', function (e) {
   var el = e.target.closest('[data-tfs]');
   if (!el) return;
@@ -9059,6 +9351,21 @@ document.addEventListener('change', function (e) {
   S.tf[k] = (k === 'fy' || k === 'q') ? +el.value : el.value;
   render();
 });
+/* typing inside a value list: it searches the list AND filters the table */
+document.addEventListener('input', function (e) {
+  var se = e.target.closest('[data-tfsearch]');
+  if (!se) return;
+  var sk = se.dataset.tfsearch, spos = se.selectionStart, sf = tfField(sk);
+  sf.q = se.value;
+  sf.pick = '';   /* typing replaces whatever was pinned */
+  render();
+  var back = document.querySelector('[data-tfsearch="' + sk + '"]');
+  if (back) {
+    back.focus();
+    try { back.setSelectionRange(spos, spos); } catch (err) {}
+  }
+});
+
 document.addEventListener('input', function (e) {
   var el = e.target.closest('[data-tfi]');
   if (!el) return;
