@@ -1322,6 +1322,15 @@ html[data-corner="round"]{--r:20px; --r2:16px; --r3:14px}
   white-space:nowrap;cursor:help;padding:0 4px}
 .nopw svg{opacity:.6}
 
+
+/* ---- the password column ------------------------------------------------ */
+.pwdots{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  letter-spacing:.18em;color:var(--ink3);font-size:13px}
+.pwval{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:13px;font-weight:600;letter-spacing:.02em;color:var(--p-ink);
+  background:var(--p-soft);border-radius:var(--rp);padding:3px 8px;user-select:all;
+  white-space:nowrap}
+
 </style>
 
 <div id="login">
@@ -2447,7 +2456,8 @@ function unassignedClusters_(txns, vrms, ctx) {
           VRM_SEES_FULL_PAN: CFG.VRM_SEES_FULL_PAN || 'YES',
           VRM_CAN_EXPORT: CFG.VRM_CAN_EXPORT || 'NO',
           STRICT_VRM_UPLOAD: CFG.STRICT_VRM_UPLOAD || 'YES',
-          ADMIN_LOCKOUT: CFG.ADMIN_LOCKOUT || 'NO',
+          READABLE_VRM_PASSWORDS: 'YES',
+        ADMIN_LOCKOUT: CFG.ADMIN_LOCKOUT || 'NO',
           COUNTED_STATUSES: (CFG.COUNTED_STATUSES || ['COMPLETED']).join(','),
           MAX_FAILED_ATTEMPTS: CFG.MAX_FAILED_ATTEMPTS,
           LOCKOUT_MINUTES: CFG.LOCKOUT_MINUTES,
@@ -3368,6 +3378,23 @@ function unassignedClusters_(txns, vrms, ctx) {
                  lastRequest: f.lastRequest || '' }; }) });
     },
 
+    /* Mirrors getVrmPasswords: readable where the demo says the account has
+       never been used, a stated reason everywhere else. */
+    getVrmPasswords: function (token) {
+      adminOnly(token, 'view passwords');
+      var out = VRMS.map(function (v) {
+        return { empCode: v.empCode, name: v.name,
+                 readable: !!v.neverUsed,
+                 password: v.neverUsed ? v.password : '',
+                 why: v.neverUsed ? '' : 'Hashed on an earlier sign-in. It becomes '
+                    + 'readable again the next time they sign in, change it, or you reset it.' };
+      });
+      var n = out.filter(function (x) { return x.readable; }).length;
+      log('ADMIN', 'ADMIN', 'REVEAL_ISSUED_PASSWORD',
+        'Viewed the VRM password list (' + n + ' of ' + out.length + ' readable)', out.length);
+      return ok({ vrms: out, policy: 'READABLE' });
+    },
+
     revealIssuedPassword: function (token, empCode) {
       adminOnly(token, 'view an issued password');
       var v = VRMS.filter(function (x) {
@@ -3641,7 +3668,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-31b reveal-gate';
+var PAGE_BUILD = '2026-08-31c readable-pw';
 
 var API_URL = '';        /* set by the Pages build */
 
@@ -5827,6 +5854,10 @@ function configPanel() {
           'Reject rows in a VRM upload that name a different VRM', [['YES', 'Reject'], ['NO', 'Accept']]) +
       seg('ADMIN_LOCKOUT', 'Lock the admin account',
           'There is no second admin to unlock it — think before enabling', [['NO', 'Never'], ['YES', 'Enable']]) +
+      seg('READABLE_VRM_PASSWORDS', 'VRM passwords readable by Admin',
+          'Readable puts them in the Sheet as typed, so anyone with the Sheet can read them. ' +
+          'Hashed cannot be undone for passwords already stored either way.',
+          [['YES', 'Readable'], ['NO', 'Hashed']]) +
       seg('SUGGEST_GATE', 'Name-suggestion gate',
           'TIERED also requires a word-level match before scoring', [['NONE', 'Score only'], ['TIERED', 'Tiered']]) +
       numRow('MAX_FAILED_ATTEMPTS', 'Failed attempts before lockout', 'Wrong passwords a VRM may try', 1, 50) +
@@ -6936,6 +6967,39 @@ function lastSeen(v) {
     (v.logins ? ' <span class="muted">\u00b7 ' + v.logins + ' sign-in' + (v.logins === 1 ? '' : 's') + '</span>' : '');
 }
 
+
+/*
+ * The passwords themselves are NOT part of the credentials payload. They come
+ * only when asked for, so an admin who never opens the column never pulls them
+ * into the browser, and the one server call that hands them over is the one
+ * thing worth having a line in the AuditLog for.
+ *
+ * They live in memory for the life of the page and are dropped on Hide.
+ */
+function loadPasswords() {
+  if (S.loadingPw) return;
+  S.loadingPw = true;
+  api('getVrmPasswords', S.session.token).then(function (d) {
+    S.loadingPw = false;
+    S.pwMap = {};
+    (d.vrms || []).forEach(function (v) { S.pwMap[v.empCode.toUpperCase()] = v; });
+    S.pwShow = true;
+    render();
+  }).catch(function (e) { S.loadingPw = false; S.pwShow = false; fail(e); });
+}
+
+function pwCell(v) {
+  if (!S.pwShow) return '<span class="pwdots">' + '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' + '</span>';
+  var e = (S.pwMap || {})[String(v.empCode).toUpperCase()];
+  if (!e) return '<span class="muted">-</span>';
+  if (e.readable) return '<code class="pwval">' + esc(e.password) + '</code>';
+  /*
+   * Not blank. A blank cell here reads as a bug, and the reason is the whole
+   * story: this one is a hash, and there is no value to print.
+   */
+  return '<span class="nopw" title="' + esc(e.why) + '">' + IC.eyeoff + ' hashed</span>';
+}
+
 function viewAccess() {
   if (!S.creds) { after(loadCreds); return loadingPanel('VRMs & Access', 'Reading credentials from the sheet...'); }
   var q = (S.q.access || '').toLowerCase();
@@ -6971,20 +7035,25 @@ function viewAccess() {
         '<span>passwords can still be shown' +
         (gone ? ' · ' + gone + ' hashed and unrecoverable' : '') + '</span></div>' +
     '</div>' +
-    '<div class="fbnote">A password is hashed the moment it is first used, so it ' +
-      'cannot be read back afterwards - not here, not from the Sheet. The only one ' +
-      'that can still be shown is an issued password on an account nobody has ' +
-      'signed into yet. For anyone else, reset it and tell them the new one. ' +
-      'Who changed what is read from the Activity Log, so it only goes back as ' +
-      'far as that does.</div>' +
+    '<div class="fbnote"><b>Passwords are stored readably on this sheet</b>, at the ' +
+      'firm\u2019s instruction, so they can be read here. Two things follow. Anyone with ' +
+      'access to the Google Sheet can read them too, now or in future. And any ' +
+      'password already hashed by an earlier sign-in stays unreadable until that ' +
+      'VRM next signs in, changes it, or you reset it \u2014 hashing is one-way and ' +
+      'nothing recovers the old value. Admin\u2019s own password is always hashed and ' +
+      'is never shown. Who changed what is read from the Activity Log, so it goes ' +
+      'back only as far as that does.</div>' +
     '</div>' +
 
     '<div class="panel"><div class="ptop">' +
     '<div><h3>Accounts &amp; access</h3></div>' +
-    '<div class="tools">' + searchBox('access', 'Search VRM...') + '</div></div>' +
+    '<div class="tools">' +
+      '<button class="btn sm' + (S.pwShow ? ' acc' : '') + '" data-act="togglepw">' +
+        (S.pwShow ? IC.eyeoff + ' Hide passwords' : IC.eye + ' Show passwords') + '</button>' +
+      searchBox('access', 'Search VRM...') + '</div></div>' +
     '<div class="twrap"><table><thead><tr><th>Emp Code</th><th>Name</th>' +
-    '<th class="num">Entries</th><th>Password</th><th>Last sign-in</th>' +
-    '<th>Status</th><th></th></tr></thead><tbody>' +
+    '<th class="num">Entries</th><th>Password</th><th>Where it came from</th>' +
+    '<th>Last sign-in</th><th>Status</th><th></th></tr></thead><tbody>' +
     (rows.length ? rows.map(function (v) {
       var status = v.locked
         ? '<span class="pill lock">LOCKED until ' + esc(stamp(v.lockedUntil)) + '</span>'
@@ -6994,6 +7063,7 @@ function viewAccess() {
       var when = pwWhen(v);
       return '<tr><td class="mono"><b>' + esc(v.empCode) + '</b></td><td>' + esc(v.name) + '</td>' +
         '<td class="num">' + num(v.entries) + '</td>' +
+        '<td>' + pwCell(v) + '</td>' +
         '<td>' + pwPill(v) +
           (when ? '<div class="muted" style="font-size:11.5px;margin-top:3px">' + esc(when) + '</div>' : '') +
           (v.lastRequest && !v.locked
@@ -7003,18 +7073,8 @@ function viewAccess() {
         '<td style="white-space:nowrap;font-size:12.5px">' + lastSeen(v) + '</td>' +
         '<td>' + status + '</td>' +
         '<td style="text-align:right"><div class="row" style="justify-content:flex-end;gap:6px">' +
-          (v.canReveal
-            ? '<button class="btn xs" data-act="showpw" data-code="' + esc(v.empCode) +
-              '" data-name="' + esc(v.name) + '" title="This password is still stored ' +
-              'readably, so it can be shown">' + IC.eye + ' Show password</button>'
-            /*
-             * An absent button is a question. This answers it in place, rather
-             * than leaving the reader to conclude the feature is broken.
-             */
-            : '<span class="nopw" title="This password was hashed the first time it ' +
-              'was used. Hashing is one-way: the original cannot be recovered from it ' +
-              'by this app, by the Sheet, or by anyone. Reset it to set a new one.">' +
-              IC.eyeoff + ' Cannot be shown</span>') +
+          /* The Password column says whether there is a value and what it is,
+             so saying it a second time in the actions column is just noise. */
           '<button class="btn xs" data-act="resetpw" data-code="' + esc(v.empCode) + '" data-name="' + esc(v.name) + '">' + IC.key + ' Reset password</button>' +
           (v.locked || v.failedAttempts > 0
             ? guard('un:' + v.empCode,
@@ -7025,7 +7085,7 @@ function viewAccess() {
             '<button class="btn xs dan" data-act="delvrm" data-code="' + esc(v.empCode) + '">Confirm - delete VRM + data</button>',
             '<button class="btn xs" data-act="arm">' + IC.trash + '</button>') +
         '</div></td></tr>';
-    }).join('') : '<tr><td colspan="7" class="empty">No VRMs match that search.</td></tr>') +
+    }).join('') : '<tr><td colspan="8" class="empty">No VRMs match that search.</td></tr>') +
     '</tbody></table></div></div>';
 }
 
@@ -8966,6 +9026,10 @@ var ACT = {
   edittxn: function (btn) { editTxnDialog(btn.dataset.id); },
   resetpw: function (btn) { resetPwDialog(btn.dataset.code, btn.dataset.name); },
   showpw: function (btn) { showIssuedPassword(btn.dataset.code, btn.dataset.name); },
+  togglepw: function () {
+    if (S.pwShow) { S.pwShow = false; S.pwMap = null; render(); return; }
+    loadPasswords();      /* fetches, logs the read, then shows */
+  },
   suggestpw: function () {
     var el = $('d_pw');
     if (!el) return;
