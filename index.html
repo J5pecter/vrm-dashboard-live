@@ -1315,6 +1315,12 @@ html[data-corner="round"]{--r:20px; --r2:16px; --r3:14px}
 .pwreveal code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:22px;font-weight:600;
   letter-spacing:.08em;color:var(--p-ink);user-select:all}
 
+
+.pwstat b .of{font-size:14px;font-weight:600;color:var(--ink3);letter-spacing:0}
+.nopw{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink3);
+  white-space:nowrap;cursor:help;padding:0 4px}
+.nopw svg{opacity:.6}
+
 </style>
 
 <div id="login">
@@ -1591,7 +1597,7 @@ function toIsoOrdered(v, order) {
  * So the number travels with the errors that matter. Anything pasted back names
  * the build that produced it, and there is nothing left to guess about.
  */
-var PAGE_BUILD = '2026-08-31 pw-status';
+var PAGE_BUILD = '2026-08-31b reveal-gate';
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbyjWQvuhyAwrYrRnAxGDmuHY4iw37G-BQSm3fNbKJKj5iJAYXa42Q5Au9yMnuyH3dTF/exec';        /* set by the Pages build */
 
@@ -4896,6 +4902,9 @@ function viewAccess() {
   var never = S.creds.filter(function (v) { return v.pwState === 'NEVER_USED'; }).length;
   var issued = S.creds.filter(function (v) { return v.pwState === 'ISSUED'; }).length;
   var own = S.creds.filter(function (v) { return v.pwState === 'OWN'; }).length;
+  /* The count that answers "why can I not see these" without having to ask. */
+  var readable = S.creds.filter(function (v) { return v.canReveal; }).length;
+  var gone = S.creds.length - readable;
   var c = S.data.config || {};
 
   return pageHead('VRMs & access', S.creds.length + ' VRM(s)' +
@@ -4914,6 +4923,9 @@ function viewAccess() {
         '<span>still on the password they were issued</span></div>' +
       '<div class="pwstat' + (never ? ' warn' : '') + '"><b>' + never + '</b>' +
         '<span>never signed in</span></div>' +
+      '<div class="pwstat"><b>' + readable + ' <span class="of">of ' + S.creds.length + '</span></b>' +
+        '<span>passwords can still be shown' +
+        (gone ? ' · ' + gone + ' hashed and unrecoverable' : '') + '</span></div>' +
     '</div>' +
     '<div class="fbnote">A password is hashed the moment it is first used, so it ' +
       'cannot be read back afterwards - not here, not from the Sheet. The only one ' +
@@ -4949,10 +4961,16 @@ function viewAccess() {
         '<td style="text-align:right"><div class="row" style="justify-content:flex-end;gap:6px">' +
           (v.canReveal
             ? '<button class="btn xs" data-act="showpw" data-code="' + esc(v.empCode) +
-              '" data-name="' + esc(v.name) + '" title="This account has never been ' +
-              'signed into, so the password it was issued can still be shown">' +
-              IC.eye + ' Show password</button>'
-            : '') +
+              '" data-name="' + esc(v.name) + '" title="This password is still stored ' +
+              'readably, so it can be shown">' + IC.eye + ' Show password</button>'
+            /*
+             * An absent button is a question. This answers it in place, rather
+             * than leaving the reader to conclude the feature is broken.
+             */
+            : '<span class="nopw" title="This password was hashed the first time it ' +
+              'was used. Hashing is one-way: the original cannot be recovered from it ' +
+              'by this app, by the Sheet, or by anyone. Reset it to set a new one.">' +
+              IC.eyeoff + ' Cannot be shown</span>') +
           '<button class="btn xs" data-act="resetpw" data-code="' + esc(v.empCode) + '" data-name="' + esc(v.name) + '">' + IC.key + ' Reset password</button>' +
           (v.locked || v.failedAttempts > 0
             ? guard('un:' + v.empCode,
